@@ -116,5 +116,7 @@ interface file that talks to the engine.
 - DXF import done (2026-11-15): engine DXF reader (lines, arcs, circles, polylines, points,
   exact splines/ellipses, blocks), inch prompt, selection in the drawing (click/box), delete,
   undo/redo. Demo drawing removed. File dialog via tauri-plugin-dialog.
+- Layers (2026-11-15): delete layer, colours (drawn in layer colour, own preset picker),
+  rename in tree (double-click) or Properties; click a layer to open/close it.
 - Next: drawing tools (Part 2: click + snap, typed coordinates, editable properties), then
   the offsetting library (candidate: cavalier_contours) and toolpaths.

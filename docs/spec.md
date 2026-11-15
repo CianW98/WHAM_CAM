@@ -131,6 +131,16 @@ A classic CAD/CAM layout, with a toolbar:
 - Box select: drag left-to-right selects shapes fully inside; right-to-left selects anything touched.
 - Delete removes the selection. Undo/redo (Ctrl+Z, Ctrl+Y) cover every change.
 
+### 5.2b Layers
+- Every layer has a name and a colour; everything on a layer is drawn in its colour.
+  New layers get a colour automatically from a set of strong, distinct colours.
+- Layer colours are plain colours (no transparency). Yellow is reserved for the selection highlight.
+- In the tree: click a layer to select it and open/close it; double-click to rename it in place;
+  click its colour square to change the colour. Name and colour can also be edited in Properties.
+- Colour picker: 24 preset colours plus a box for an exact #rrggbb value.
+- Layer names must be unique and not empty. Renames and colour changes are undoable.
+- Deleting a layer deletes everything on it. An emptied layer stays until deleted.
+
 ### 5.3 Edit
 - Transform: move, rotate, scale, mirror, with typed values.
 - Join (lines/arcs into polylines, with a tolerance), split/explode, close polyline.

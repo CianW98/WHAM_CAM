@@ -70,6 +70,16 @@ fn delete_layer(name: String, state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
+fn rename_layer(old: String, new: String, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().rename_layer(&old, &new)
+}
+
+#[tauri::command]
+fn set_layer_color(name: String, color: String, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_layer_color(&name, &color)
+}
+
+#[tauri::command]
 fn undo(state: State<AppState>) -> bool {
     state.0.lock().unwrap().undo()
 }
@@ -100,6 +110,8 @@ pub fn run() {
             import_dxf,
             delete_objects,
             delete_layer,
+            rename_layer,
+            set_layer_color,
             undo,
             redo,
             pick,

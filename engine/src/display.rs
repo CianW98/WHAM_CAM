@@ -6,7 +6,7 @@ use std::f64::consts::TAU;
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::Document;
+use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{Point, Polyline, Shape, Spline};
 
 /// Maximum distance between a true arc and its on-screen approximation, in mm.
@@ -33,12 +33,20 @@ pub struct DisplayShape {
     pub closed: bool,
     /// True if the points are separate markers (a point list), not a connected path.
     pub markers: bool,
+    /// Colour to draw it in ("#rrggbb"): its layer's colour.
+    pub color: String,
 }
 
 pub fn display_data(doc: &Document) -> DisplayData {
     let shapes: Vec<DisplayShape> = doc
-        .objects()
-        .map(|obj| display_shape(obj.id, &obj.shape))
+        .layers
+        .iter()
+        .flat_map(|layer| {
+            layer.objects.iter().map(|obj| DisplayShape {
+                color: layer.color.clone(),
+                ..display_shape(obj.id, &obj.shape)
+            })
+        })
         .collect();
     let mut bounds: Option<[f64; 4]> = None;
     for p in shapes.iter().flat_map(|s| s.points.iter()) {
@@ -102,6 +110,7 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
         points,
         closed,
         markers,
+        color: LAYER_PALETTE[0].to_string(),
     }
 }
 

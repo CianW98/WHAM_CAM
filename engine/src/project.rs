@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::display::{DisplayData, DisplayShape, display_data};
-use crate::document::{Document, DrawingObject};
+use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::geometry::Transform;
 
@@ -189,6 +189,43 @@ impl Project {
             }
         });
         true
+    }
+
+    /// Renames a layer as one undo step. The new name is trimmed, must not be empty and
+    /// must not already be used by another layer. Errors are plain-English messages.
+    pub fn rename_layer(&mut self, old: &str, new: &str) -> Result<(), String> {
+        let new = new.trim();
+        let index = self.layer_position(old)?;
+        if new.is_empty() {
+            return Err("A layer name can't be empty.".to_string());
+        }
+        if new == old {
+            return Ok(());
+        }
+        if self.doc.layers.iter().any(|l| l.name == new) {
+            return Err(format!("There is already a layer called \"{new}\"."));
+        }
+        self.edit(|doc| doc.layers[index].name = new.to_string());
+        Ok(())
+    }
+
+    /// Sets a layer's display colour ("#rrggbb") as one undo step.
+    pub fn set_layer_color(&mut self, name: &str, color: &str) -> Result<(), String> {
+        let index = self.layer_position(name)?;
+        if !is_hex_color(color) {
+            return Err(format!("\"{color}\" is not a colour (expected #rrggbb)."));
+        }
+        let color = color.to_ascii_lowercase();
+        self.edit(|doc| doc.layers[index].color = color);
+        Ok(())
+    }
+
+    fn layer_position(&self, name: &str) -> Result<usize, String> {
+        self.doc
+            .layers
+            .iter()
+            .position(|l| l.name == name)
+            .ok_or_else(|| format!("There is no layer called \"{name}\"."))
     }
 
     /// The object nearest to (x, y) within `tolerance` mm, if any.

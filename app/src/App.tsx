@@ -88,6 +88,30 @@ export default function App() {
     await refresh();
   }, [selection, view, refresh]);
 
+  const renameLayer = useCallback(
+    async (oldName: string, newName: string) => {
+      try {
+        await engine.renameLayer(oldName, newName);
+        await refresh();
+        return true;
+      } catch (err) {
+        notify("error", String(err));
+        return false;
+      }
+    },
+    [notify, refresh],
+  );
+
+  const setLayerColor = useCallback(
+    (name: string, color: string) => {
+      engine
+        .setLayerColor(name, color)
+        .then(refresh)
+        .catch((err) => notify("error", String(err)));
+    },
+    [notify, refresh],
+  );
+
   const undoRedo = useCallback(
     async (which: "undo" | "redo") => {
       const done = await (which === "undo" ? engine.undo() : engine.redo());
@@ -168,11 +192,22 @@ export default function App() {
       <div className="side">
         <section className="panel tree-panel">
           <h2>Project</h2>
-          <Tree doc={view?.document ?? null} selection={selection} onSelect={setSelection} />
+          <Tree
+            doc={view?.document ?? null}
+            selection={selection}
+            onSelect={setSelection}
+            onRenameLayer={renameLayer}
+            onSetLayerColor={setLayerColor}
+          />
         </section>
         <section className="panel props-panel">
           <h2>Properties</h2>
-          <Properties doc={view?.document ?? null} selection={selection} />
+          <Properties
+            doc={view?.document ?? null}
+            selection={selection}
+            onRenameLayer={renameLayer}
+            onSetLayerColor={setLayerColor}
+          />
         </section>
       </div>
       <Viewport

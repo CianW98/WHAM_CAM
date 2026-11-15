@@ -196,3 +196,57 @@ fn deleting_the_last_layer_leaves_an_empty_default_layer() {
     p.undo();
     assert_eq!(layer_names(&p), vec!["CUT"]);
 }
+
+#[test]
+fn rename_layer_checks_the_name_and_is_undoable() {
+    let mut p = Project::new();
+    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    assert_eq!(p.rename_layer("CUT", "  Outline  "), Ok(()));
+    assert_eq!(layer_names(&p), vec!["Default", "Outline"]);
+    assert!(p.rename_layer("Outline", "").is_err());
+    assert!(p.rename_layer("Outline", "Default").is_err());
+    assert!(p.rename_layer("Missing", "X").is_err());
+    // Renaming to the same name is fine and is not an undo step.
+    assert_eq!(p.rename_layer("Outline", "Outline"), Ok(()));
+    p.undo();
+    assert_eq!(layer_names(&p), vec!["Default", "CUT"]);
+}
+
+#[test]
+fn layer_colour_is_used_for_its_shapes_and_is_undoable() {
+    let mut p = Project::new();
+    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    // New layers get a different palette colour from existing ones.
+    let colors: Vec<&str> = p
+        .document()
+        .layers
+        .iter()
+        .map(|l| l.color.as_str())
+        .collect();
+    assert_eq!(colors, vec![LAYER_PALETTE[0], LAYER_PALETTE[1]]);
+    assert!(
+        p.display()
+            .shapes
+            .iter()
+            .all(|s| s.color == LAYER_PALETTE[1])
+    );
+
+    assert_eq!(p.set_layer_color("CUT", "#00FF80"), Ok(()));
+    assert!(p.display().shapes.iter().all(|s| s.color == "#00ff80"));
+    assert!(p.set_layer_color("CUT", "green").is_err());
+    assert!(p.set_layer_color("CUT", "#12345").is_err());
+    p.undo();
+    assert!(
+        p.display()
+            .shapes
+            .iter()
+            .all(|s| s.color == LAYER_PALETTE[1])
+    );
+}
+
+#[test]
+fn documents_saved_without_layer_colours_still_load() {
+    let json = r#"{"name":"old","layers":[{"name":"L","objects":[]}],"parts":[]}"#;
+    let doc: Document = serde_json::from_str(json).unwrap();
+    assert_eq!(doc.layers[0].color, LAYER_PALETTE[0]);
+}

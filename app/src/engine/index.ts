@@ -49,6 +49,8 @@ export interface DrawingObject {
 
 export interface Layer {
   name: string;
+  /** Display colour for everything on the layer, "#rrggbb". */
+  color: string;
   objects: DrawingObject[];
 }
 
@@ -69,6 +71,8 @@ export interface DisplayShape {
   closed: boolean;
   /** Separate point markers rather than a connected path. */
   markers: boolean;
+  /** Colour to draw it in, "#rrggbb" (its layer's colour). */
+  color: string;
 }
 
 export interface DisplayData {
@@ -136,6 +140,16 @@ export function deleteObjects(ids: number[]): Promise<number> {
 /** Deletes a layer and everything on it. */
 export function deleteLayer(name: string): Promise<boolean> {
   return invoke<boolean>("delete_layer", { name });
+}
+
+/** Renames a layer. Rejects with a plain-English message if the name isn't allowed. */
+export function renameLayer(oldName: string, newName: string): Promise<void> {
+  return invoke<void>("rename_layer", { old: oldName, new: newName });
+}
+
+/** Sets a layer's colour ("#rrggbb"). */
+export function setLayerColor(name: string, color: string): Promise<void> {
+  return invoke<void>("set_layer_color", { name, color });
 }
 
 export function undo(): Promise<boolean> {

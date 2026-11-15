@@ -12,7 +12,6 @@ const COLORS = {
   gridMajor: 0x4a4a58,
   axisX: 0xd03030,
   axisY: 0x30b030,
-  shape: 0xff4a4a,
   selected: 0xffd24a,
 };
 const GRID_EXTENT = 1000; // mm either side of the origin
@@ -40,9 +39,10 @@ interface Scene3 {
   /** Drawn objects by engine id, so selection can recolour them without rebuilding. */
   byId: Map<number, THREE.Object3D[]>;
   materials: {
-    line: THREE.LineBasicMaterial;
+    /** One line / marker material per layer colour, created on first use. */
+    line: (color: string) => THREE.LineBasicMaterial;
+    marker: (color: string) => THREE.PointsMaterial;
     lineSelected: THREE.LineBasicMaterial;
-    marker: THREE.PointsMaterial;
     markerSelected: THREE.PointsMaterial;
   };
   view: View2D;
@@ -155,8 +155,18 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
     const orbit = new OrbitControls(persp, renderer.domElement);
     orbit.enabled = false;
 
-    const marker = (color: number) =>
+    const marker = (color: number | string) =>
       new THREE.PointsMaterial({ color, size: MARKER_SIZE_PX, sizeAttenuation: false, depthTest: false });
+    const lineCache = new Map<string, THREE.LineBasicMaterial>();
+    const markerCache = new Map<string, THREE.PointsMaterial>();
+    const cached = <M,>(cache: Map<string, M>, make: (c: string) => M) => (color: string) => {
+      let m = cache.get(color);
+      if (!m) {
+        m = make(color);
+        cache.set(color, m);
+      }
+      return m;
+    };
     const s: Scene3 = {
       renderer,
       scene,
@@ -166,9 +176,9 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       shapes,
       byId: new Map(),
       materials: {
-        line: new THREE.LineBasicMaterial({ color: COLORS.shape, depthTest: false }),
+        line: cached(lineCache, (color) => new THREE.LineBasicMaterial({ color, depthTest: false })),
+        marker: cached(markerCache, marker),
         lineSelected: new THREE.LineBasicMaterial({ color: COLORS.selected, depthTest: false }),
-        marker: marker(COLORS.shape),
         markerSelected: marker(COLORS.selected),
       },
       view: { cx: 0, cy: 0, scale: 0.5 },
@@ -298,12 +308,13 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       const geom = new THREE.BufferGeometry();
       geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       const obj: THREE.Object3D = shape.markers
-        ? new THREE.Points(geom, s.materials.marker)
+        ? new THREE.Points(geom, s.materials.marker(shape.color))
         : shape.closed
-          ? new THREE.LineLoop(geom, s.materials.line)
-          : new THREE.Line(geom, s.materials.line);
+          ? new THREE.LineLoop(geom, s.materials.line(shape.color))
+          : new THREE.Line(geom, s.materials.line(shape.color));
       obj.renderOrder = 10;
       obj.userData.markers = shape.markers;
+      obj.userData.color = shape.color;
       s.shapes.add(obj);
       const list = s.byId.get(shape.id) ?? [];
       list.push(obj);
@@ -320,13 +331,14 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       const selected = selectedIds.has(id);
       for (const obj of objs) {
         const o = obj as THREE.Line | THREE.Points;
+        const color: string = obj.userData.color;
         o.material = obj.userData.markers
           ? selected
             ? s.materials.markerSelected
-            : s.materials.marker
+            : s.materials.marker(color)
           : selected
             ? s.materials.lineSelected
-            : s.materials.line;
+            : s.materials.line(color);
         o.renderOrder = selected ? 11 : 10;
       }
     }

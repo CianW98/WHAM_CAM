@@ -268,3 +268,106 @@ button.primary {
   gap: 6px;
   justify-content: flex-end;
 }
+
+/* Editable properties */
+.prop-input {
+  width: 100%;
+  font: inherit;
+  padding: 2px 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+}
+.prop-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.muted {
+  color: var(--muted);
+}
+.swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border: 1px solid rgb(0 0 0 / 0.35);
+  vertical-align: baseline;
+}
+
+/* Tree: layer open/close arrow, clickable colour square, rename box */
+.chevron {
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+}
+.tree-item.selected .chevron {
+  color: var(--select-text);
+}
+.swatch-picker {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+.swatch-picker.large .swatch {
+  width: 28px;
+  height: 16px;
+  vertical-align: middle;
+}
+.swatch-picker:hover .swatch {
+  outline: 1px solid var(--accent);
+}
+/* Colour picker pop-up: presets + hex box, no transparency */
+.color-popover {
+  position: fixed;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+  padding: 8px;
+}
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 22px);
+  gap: 4px;
+}
+.color-cell {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 0.3);
+  border-radius: 2px;
+}
+.color-cell:hover {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+.color-cell.current {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.color-hex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.color-hex .swatch {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.color-hex .prop-input {
+  width: 90px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.prop-input.invalid {
+  border-color: #d03030;
+}
+.tree-rename {
+  font: inherit;
+  padding: 0 3px;
+  width: 150px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  color: var(--text);
+}

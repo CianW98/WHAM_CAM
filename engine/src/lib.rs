@@ -11,7 +11,7 @@ pub mod geometry;
 pub mod project;
 
 pub use display::{DISPLAY_TOLERANCE, DisplayData, DisplayShape, display_data};
-pub use document::{Document, DrawingObject, Layer, Part};
+pub use document::{Document, DrawingObject, LAYER_PALETTE, Layer, Part};
 pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};
 pub use project::{BoxMode, DxfInfo, ImportReport, Project};

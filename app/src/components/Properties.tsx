@@ -1,6 +1,8 @@
-import type { Document, Point, Shape } from "../engine";
+import { useState } from "react";
+import type { Document, Layer, Point, Shape } from "../engine";
 import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
+import ColorSwatch from "./ColorSwatch";
 
 type Row = [string, string];
 
@@ -62,14 +64,8 @@ function rowsFor(doc: Document, sel: Selection): Row[] | string {
   switch (sel.kind) {
     case "project":
       return [["Name", doc.name]];
-    case "layer": {
-      const layer = doc.layers[sel.layer];
-      if (!layer) return [];
-      return [
-        ["Name", layer.name],
-        ["Objects", String(layer.objects.length)],
-      ];
-    }
+    case "layer":
+      return []; // shown by LayerProperties
     case "part":
       return doc.parts[sel.part] ? [["Name", doc.parts[sel.part].name]] : [];
     case "objects": {
@@ -86,7 +82,66 @@ function rowsFor(doc: Document, sel: Selection): Row[] | string {
   }
 }
 
-export default function Properties({ doc, selection }: { doc: Document | null; selection: Selection }) {
+interface LayerEdits {
+  /** Resolves false if the rename was rejected (the box then shows the old name again). */
+  onRenameLayer: (oldName: string, newName: string) => Promise<boolean>;
+  onSetLayerColor: (name: string, color: string) => void;
+}
+
+/** Editable layer properties. Name: Enter or leaving the box saves, Esc cancels. */
+function LayerProperties({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer } & LayerEdits) {
+  const [name, setName] = useState(layer.name);
+  const save = async () => {
+    if (name.trim() === layer.name || !(await onRenameLayer(layer.name, name))) setName(layer.name);
+  };
+
+  return (
+    <table className="props">
+      <tbody>
+        <tr>
+          <th>Name</th>
+          <td>
+            <input
+              className="prop-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={save}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") {
+                  setName(layer.name);
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </td>
+        </tr>
+        <tr>
+          <th>Colour</th>
+          <td>
+            <ColorSwatch color={layer.color} onPick={(c) => onSetLayerColor(layer.name, c)} size="large" />{" "}
+            <span className="muted">{layer.color}</span>
+          </td>
+        </tr>
+        <tr>
+          <th>Objects</th>
+          <td>{layer.objects.length}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+export default function Properties({
+  doc,
+  selection,
+  ...edits
+}: { doc: Document | null; selection: Selection } & LayerEdits) {
+  if (doc && selection.kind === "layer" && doc.layers[selection.layer]) {
+    const layer = doc.layers[selection.layer];
+    // Keyed by name and colour so the boxes reset after a rename, undo or failed edit.
+    return <LayerProperties key={`${layer.name}|${layer.color}`} layer={layer} {...edits} />;
+  }
   const rows = doc ? rowsFor(doc, selection) : [];
   if (typeof rows === "string") return <div className="empty">{rows}</div>;
   if (rows.length === 0) return <div className="empty">Select an item to see its properties.</div>;

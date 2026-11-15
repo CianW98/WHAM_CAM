@@ -11,10 +11,35 @@ pub struct Document {
     pub parts: Vec<Part>,
 }
 
+/// Colours given to new layers, in order: strong, clearly different hues that stand out on
+/// the dark drawing area. Yellow is left out: it is the "selected" highlight.
+pub const LAYER_PALETTE: [&str; 8] = [
+    "#ff0000", // red
+    "#00ffff", // cyan
+    "#00ff00", // green
+    "#ff8000", // orange
+    "#00b0ff", // sky blue
+    "#ff00ff", // magenta
+    "#ffffff", // white
+    "#80ff00", // lime
+];
+
+fn default_layer_color() -> String {
+    LAYER_PALETTE[0].to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
     pub name: String,
+    /// Display colour for everything on this layer, as "#rrggbb".
+    #[serde(default = "default_layer_color")]
+    pub color: String,
     pub objects: Vec<DrawingObject>,
+}
+
+/// True if `color` is a "#rrggbb" hex colour.
+pub fn is_hex_color(color: &str) -> bool {
+    color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +61,7 @@ impl Document {
             name: name.to_string(),
             layers: vec![Layer {
                 name: "Default".to_string(),
+                color: default_layer_color(),
                 objects: Vec::new(),
             }],
             parts: vec![Part {
@@ -54,13 +80,24 @@ impl Document {
         match self.layers.iter().position(|l| l.name == name) {
             Some(i) => i,
             None => {
+                let color = self.next_layer_color();
                 self.layers.push(Layer {
                     name: name.to_string(),
+                    color,
                     objects: Vec::new(),
                 });
                 self.layers.len() - 1
             }
         }
+    }
+
+    /// The first palette colour not used by any layer yet (cycling once all are used).
+    fn next_layer_color(&self) -> String {
+        LAYER_PALETTE
+            .iter()
+            .find(|c| !self.layers.iter().any(|l| l.color.eq_ignore_ascii_case(c)))
+            .unwrap_or(&LAYER_PALETTE[self.layers.len() % LAYER_PALETTE.len()])
+            .to_string()
     }
 
     /// Highest object id in use (0 if empty).
