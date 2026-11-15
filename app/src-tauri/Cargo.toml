@@ -1,0 +1,17 @@
+[package]
+name = "wham_cam_app"
+version = "0.1.0"
+description = "WHAM_CAM desktop app (Tauri layer: windows, files, and the bridge to the engine)"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "wham_cam_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.5", features = [] }
+wham_engine = { path = "../../engine" }

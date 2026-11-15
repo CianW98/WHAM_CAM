@@ -82,7 +82,19 @@ Before adding a Rust library to the engine, check it compiles for wasm32-unknown
 
 
 ## Commands
-TBD. Add exact commands to run, test and build once the stack is chosen.
+Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeScript interface),
+`app/src-tauri/` (Tauri app layer, crate `wham_cam_app`). `app/src/engine/index.ts` is the only
+interface file that talks to the engine.
+
+- First-time setup: `cd app && npm install`
+- Run the app (dev mode, reloads on change): `cd app && npm run tauri dev`
+- Engine tests: `cargo test -p wham_engine`
+- Engine WebAssembly check: `cargo build -p wham_engine --target wasm32-unknown-unknown`
+- Lint/format: `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings`
+- Interface type check + build: `cd app && npm run build`
+- Release build (installer): `cd app && npm run tauri build`
+- CI (`.github/workflows/ci.yml`) runs the engine tests, lint and WASM build, the interface build,
+  and an app check on Ubuntu and Windows.
 
 ## Workflow
 - After initial build, never commit straight to `main`. Use a branch per feature and merge when it works.
@@ -96,4 +108,9 @@ TBD. Add exact commands to run, test and build once the stack is chosen.
   (generic G-code; toolbar and pop-up notifications in the layout). Open questions in section 9.
 - The reference program reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`.
   They are git-ignored, so they live on this machine only.
-- Next: agree the spec, then build the skeleton app (engine crate + Tauri/React shell + CI).
+- Skeleton app built (2026-11-15): engine crate with a demo document, Tauri + React window with
+  toolbar, tree, properties, three.js drawing area (2D pan/zoom, 3D orbit) and pop-up notifications. CI added.
+  Toolbar buttons are placeholders. No toolpaths or G-code yet.
+- From now on, use a branch per feature (see Workflow).
+- Next: choose and test the offsetting library (candidate: cavalier_contours) against the the reference program
+  Profile/Pocket references, then drawing tools / DXF import.

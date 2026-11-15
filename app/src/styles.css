@@ -1,0 +1,216 @@
+:root {
+  --panel-bg: #f4f4f6;
+  --panel-border: #c8c8d0;
+  --text: #1d1d22;
+  --muted: #6a6a75;
+  --accent: #2f6fd6;
+  --select-bg: #2f6fd6;
+  --select-text: #ffffff;
+  --toolbar-bg: #e6e6ea;
+  font-family: system-ui, "Segoe UI", Ubuntu, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--panel-bg);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+/* Toolbar */
+.toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--panel-border);
+}
+.brand {
+  font-weight: 700;
+  margin-right: 8px;
+}
+.tool-group {
+  display: flex;
+  gap: 2px;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid var(--panel-border);
+}
+.tool-group:last-child {
+  border-right: none;
+}
+button {
+  font: inherit;
+  padding: 4px 9px;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--accent);
+}
+
+/* Left side: tree above properties */
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--panel-border);
+}
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px;
+}
+.tree-panel {
+  border-bottom: 1px solid var(--panel-border);
+}
+.panel h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.empty {
+  color: var(--muted);
+}
+
+.tree,
+.tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 14px;
+}
+.tree {
+  padding-left: 0;
+}
+.tree-item {
+  padding: 2px 4px;
+  border-radius: 2px;
+  cursor: default;
+  user-select: none;
+}
+.tree-item:hover {
+  background: #e2e6f0;
+}
+.tree-item.selected {
+  background: var(--select-bg);
+  color: var(--select-text);
+}
+
+.props {
+  width: 100%;
+  border-collapse: collapse;
+}
+.props th,
+.props td {
+  text-align: left;
+  padding: 3px 4px;
+  border-bottom: 1px solid #e2e2e8;
+  vertical-align: top;
+  font-weight: normal;
+}
+.props th {
+  width: 45%;
+  color: var(--muted);
+}
+.props td {
+  word-break: break-word;
+}
+
+/* Drawing area */
+.viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #2b2b33;
+}
+.viewport canvas {
+  display: block;
+}
+.view-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+}
+.view-toggle button {
+  background: #3a3a44;
+  color: #ddd;
+  border-color: #50505c;
+}
+.view-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.cursor-readout {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  color: #c8c8d0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* Pop-up notifications, bottom-right over the drawing area */
+.notifications {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 380px;
+  z-index: 10;
+}
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+  background: #fff;
+  border-left: 4px solid var(--accent);
+}
+.note-error {
+  border-left-color: #d03030;
+  background: #fff1f1;
+}
+.note span {
+  flex: 1;
+}
+.note-close {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  font-size: 16px;
+  line-height: 1;
+}
