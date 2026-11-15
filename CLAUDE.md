@@ -125,12 +125,8 @@ interface file that talks to the engine.
      four version numbers, runs the engine tests on Linux and Windows, builds the installers
      (Windows `.msi`/`.exe`, Linux `.deb`/`.rpm`/`.AppImage`) and creates a draft GitHub Release
      with them attached.
-  5. Add the release notes to the draft, let the user look, then publish it. This machine's `gh` has
-     no `release edit`, so use the API: find the id with
-     `gh api repos/CianW98/WHAM_CAM/releases -q '.[] | select(.tag_name=="vX.Y.Z") | .id'`, then
-     `gh api -X PATCH repos/CianW98/WHAM_CAM/releases/<id>` with `body` (notes). Publish with
-     `-F draft=false -f tag_name=vX.Y.Z`: always name the tag, or GitHub publishes under a new
-     `untagged-…` tag on the latest `main` (happened with v0.1.0). Check `gh release list` after.
+  5. Add the release notes to the draft, let the user look, then publish it, making sure it
+     stays on the `vX.Y.Z` tag.
      Releases are normal releases, not pre-releases (0.x already says unfinished).
      Installers are unsigned for now (Windows warns "unknown publisher").
 - **Safety in releases:** if a release changes toolpath or G-code output, the notes say so in a
