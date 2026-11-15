@@ -17,6 +17,12 @@ Installers for Windows and Linux are on the [Releases](https://github.com/CianW9
 
 ## Building from source
 
+You need Rust and Node.js. On Linux, Tauri also needs these system libraries:
+```
+sudo apt install libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev build-essential libssl-dev libayatana-appindicator3-dev
+```
+For the engine's WebAssembly check: `rustup target add wasm32-unknown-unknown`
+
 - Setup: `cd app && npm install`
 - Run in development mode: `cd app && npm run tauri dev`
 - Engine tests: `cargo test -p wham_engine`

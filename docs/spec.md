@@ -272,14 +272,3 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 ## 10. Out of scope for v1
 
 Ideas for after v1 are kept in `docs/roadmap.md`.
-
-## 11. Setup (for the build step)
-
-Linux system libraries for Tauri:
-```
-sudo apt install libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev build-essential libssl-dev libayatana-appindicator3-dev
-```
-WebAssembly target for the engine check:
-```
-rustup target add wasm32-unknown-unknown
-```
