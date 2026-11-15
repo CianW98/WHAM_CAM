@@ -56,7 +56,7 @@ N.B. This program drives a real machine. A bug can crash the spindle, break tool
 6. Toolpath preview
 7. G-code output through a post processor
 8. Save and open project files
-Anything not on this list waits until v1 works end to end.
+Anything not on this list waits until v1 works end to end. Note such ideas in `docs/roadmap.md`.
 
 ## Stack
 - Tauri desktop app: Rust core with a web-based (HTML/CSS/TypeScript) interface.
@@ -103,7 +103,9 @@ interface file that talks to the engine.
 - Commit small and often, with clear messages.
 - Never commit secrets. Keys and credentials go in `.env`, which is git-ignored.
 - Tasks are tracked in GitHub Issues. Use the `gh` CLI to read and update them.
-- At the end of a session, update the Status section below and any decisions above.
+- Ideas beyond v1 go in `docs/roadmap.md` (with reasoning and any decisions), not the spec.
+- At the end of a session, update the Status section below, any decisions above, and
+  `docs/roadmap.md` if new ideas came up.
 
 ## Releases
 - **Version numbers** use semantic versioning, `MAJOR.MINOR.PATCH`. While building towards v1,

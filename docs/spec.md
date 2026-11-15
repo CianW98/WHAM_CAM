@@ -271,9 +271,7 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 10. Out of scope for v1
 
-Inches, lead-ins/lead-outs, holding tabs, CAM styles/templates, machine-specific post-processors
-(e.g. RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3) and the per-machine post-processor settings panel,
-browser/WebAssembly app, importing other CAM programs' project files, 3D operations, machine control.
+Ideas for after v1 are kept in `docs/roadmap.md`.
 
 ## 11. Setup (for the build step)
 
