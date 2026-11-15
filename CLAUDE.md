@@ -94,8 +94,9 @@ interface file that talks to the engine.
 - Lint/format: `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings`
 - Interface type check + build: `cd app && npm run build`
 - Release build (installer): `cd app && npm run tauri build`
-- CI (`.github/workflows/ci.yml`) runs the engine tests, lint and WASM build, the interface build,
-  and an app check on Ubuntu and Windows.
+- CI (`.github/workflows/ci.yml`) runs the engine tests on Ubuntu and Windows, lint and WASM build,
+  the interface build, and an app check on Ubuntu and Windows.
+- Release workflow (`.github/workflows/release.yml`) runs when a `vX.Y.Z` tag is pushed.
 
 ## Workflow
 - Core v1 features are committed straight to `main` (user's decision, 2026-11-15). Use a branch
@@ -120,9 +121,13 @@ interface file that talks to the engine.
   2. Bump the version in the four files.
   3. Write the release notes from the commit history since the last tag, in plain English,
      grouped as New / Changed / Fixed.
-  4. Tag the commit `vX.Y.Z` and create a GitHub Release with those notes.
-  5. Attach the Windows and Linux installers. Not set up yet: when the first real release
-     happens, add a GitHub Actions workflow that builds them from the tag.
+  4. Tag the commit `vX.Y.Z` and push the tag. The release workflow checks the tag matches the
+     four version numbers, runs the engine tests on Linux and Windows, builds the installers
+     (Windows `.msi`/`.exe`, Linux `.deb`/`.rpm`/`.AppImage`) and creates a draft GitHub Release
+     with them attached.
+  5. Add the release notes to the draft (`gh release edit`), let the user look, then publish it.
+     Releases are normal releases, not pre-releases (0.x already says unfinished).
+     Installers are unsigned for now (Windows warns "unknown publisher").
 - **Safety in releases:** if a release changes toolpath or G-code output, the notes say so in a
   separate "G-code output changed" section, saying what changed and reminding the user to
   re-check in a simulator and with an air cut. Every release is checked against the

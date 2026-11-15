@@ -1,0 +1,98 @@
+name: Release
+
+# Runs only when a version tag such as v0.1.0 is pushed.
+# Builds the Windows and Linux installers and attaches them to a DRAFT GitHub
+# Release. The draft is only visible to the repo owner until it is published,
+# so a failed run never leaves a half-finished public release.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Check version numbers match the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare tag with the four version files
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          engine=$(grep -m1 '^version' engine/Cargo.toml | cut -d'"' -f2)
+          app=$(grep -m1 '^version' app/src-tauri/Cargo.toml | cut -d'"' -f2)
+          pkg=$(jq -r .version app/package.json)
+          conf=$(jq -r .version app/src-tauri/tauri.conf.json)
+          echo "tag=$tag engine=$engine app=$app package.json=$pkg tauri.conf.json=$conf"
+          for v in "$engine" "$app" "$pkg" "$conf"; do
+            if [ "$v" != "$tag" ]; then
+              echo "::error::Version mismatch: tag is $tag but a version file says $v"
+              exit 1
+            fi
+          done
+
+  test:
+    name: Engine tests (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p wham_engine
+
+  draft:
+    name: Create draft release
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.create.outputs.id }}
+    steps:
+      - id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+            -f tag_name="${GITHUB_REF_NAME}" \
+            -f name="WHAM_CAM ${GITHUB_REF_NAME}" \
+            -f body="Release notes to follow." \
+            -F draft=true -F prerelease=false --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Installers (${{ matrix.os }})
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        # Ubuntu 22.04 so the Linux builds also run on older Linux versions.
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux libraries for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev build-essential libssl-dev libayatana-appindicator3-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: app
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: app
+          releaseId: ${{ needs.draft.outputs.id }}

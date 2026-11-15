@@ -7,8 +7,14 @@ on:
 
 jobs:
   engine:
-    name: Engine (tests, lint, WebAssembly build)
-    runs-on: ubuntu-latest
+    # Tests run on Linux and Windows. Formatting, lint and the WebAssembly build
+    # give the same answer on both, so they run on Linux only.
+    name: Engine (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -16,10 +22,13 @@ jobs:
           targets: wasm32-unknown-unknown
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all --check
+      - if: runner.os == 'Linux'
+        run: cargo fmt --all --check
       - run: cargo test -p wham_engine
-      - run: cargo clippy -p wham_engine --all-targets -- -D warnings
-      - run: cargo build -p wham_engine --target wasm32-unknown-unknown
+      - if: runner.os == 'Linux'
+        run: cargo clippy -p wham_engine --all-targets -- -D warnings
+      - if: runner.os == 'Linux'
+        run: cargo build -p wham_engine --target wasm32-unknown-unknown
 
   ui:
     name: Interface (type check and build)
