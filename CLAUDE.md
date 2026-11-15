@@ -28,7 +28,8 @@ The best simple CAM programs are still worth using because they are not overcomp
   Do NOT decompile, disassemble or read any other CAM program's code or binaries (clean room only).
 - Published user documentation of such programs is the main source for features and settings.
 - Open-source CAM projects (FreeCAD CAM, Kiri:Moto, FabexCNC, OpenCAMLib) may be studied
-  and used,respecting their licences. Check a licence before copying or linking code. Ask before commiting anything from other opensource projects to verify the license matches our requirements.
+  and used, respecting their licences. Check a licence before copying or linking code. Ask before
+  committing anything from other open-source projects, to verify the licence matches our requirements.
 
 ## G-code output and machines
 - WHAM_CAM is not tied to one machine or controller.
@@ -49,17 +50,17 @@ N.B. This program drives a real machine. A bug can crash the spindle, break tool
 ## Version 1 scope
 1. Import DXF (and SVG)
 2. Basic 2D drawing: lines, arcs, circles, rectangles, polylines.
-3. Basic Dimensioning, Transforming, Joining and splitting of geometries etc. aligned to a grid
-3. Operations: profile (inside / outside / on line), pocket, drill
-4. Tool library: diameter, flutes, feeds and speeds
-5. Toolpath preview
-6. G-code output through a post processor
-7. Save and open project files
+3. Basic dimensioning, transforming, joining and splitting of geometry, aligned to a grid
+4. Operations: profile (inside / outside / on line), pocket, drill
+5. Tool library: diameter, flutes, feeds and speeds
+6. Toolpath preview
+7. G-code output through a post processor
+8. Save and open project files
 Anything not on this list waits until v1 works end to end.
 
 ## Stack
 - Tauri desktop app: Rust core with a web-based (HTML/CSS/TypeScript) interface.
-- Front-end framework: React + TypeScript (decided 2026-11-15).
+- Front-end framework: React + TypeScript.
 - Drawing area: WebGL via three.js (MIT), with a 2D top view and a 3D view. Used directly
   from one React component; it only draws what the engine sends.
 - Units: mm only in v1. Inches come later, with CAM styles and workspaces.
@@ -73,14 +74,13 @@ Anything not on this list waits until v1 works end to end.
 - UI changes must never change G-code output. If a UI change needs an engine change, stop and explain it before doing it.
 
 ## Future option: browser version via WebAssembly
-
-- Not in v1 scope, but keep the door open. A later goal is a browser build: the same web interface plus the engine compiled to WebAssembly, served as static files, with all CAM work running on the user's device (no server-side processing). To keep this possible:
-
+Not in v1 scope, but keep the door open. A later goal is a browser build: the same web interface
+plus the engine compiled to WebAssembly, served as static files, with all CAM work running on the
+user's device (no server-side processing). To keep this possible:
 - The engine must stay WebAssembly-compatible. No direct file system access, OS-specific code or native-only threading inside the engine: it takes data in and returns data. File opening/saving and machine communication live in the app layer (Tauri), not the engine.
-- The interface talks to the engine through one thin connection layer, not calls scattered through the UI, so that layer can be swapped between Tauri and a WebAssembly build.
-Before adding a Rust library to the engine, check it compiles for wasm32-unknown-unknown. Ask before adding one that doesn't.
-- Add a CI check that builds the engine for WebAssembly once the engine exists.
-
+- The interface talks to the engine through one thin connection layer (`app/src/engine/index.ts`), not calls scattered through the UI, so that layer can be swapped between Tauri and a WebAssembly build.
+- Before adding a Rust library to the engine, check it compiles for wasm32-unknown-unknown. Ask before adding one that doesn't.
+- CI builds the engine for WebAssembly on every push, so a break is caught straight away.
 
 ## Commands
 Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeScript interface),
@@ -105,18 +105,39 @@ interface file that talks to the engine.
 - Tasks are tracked in GitHub Issues. Use the `gh` CLI to read and update them.
 - At the end of a session, update the Status section below and any decisions above.
 
+## Releases
+- **Version numbers** use semantic versioning, `MAJOR.MINOR.PATCH`. While building towards v1,
+  MAJOR stays 0: a release that adds features bumps MINOR (0.2.0), a release with only fixes
+  bumps PATCH (0.2.1). 1.0.0 = the v1 scope works end to end. After that, MAJOR goes up only for
+  breaking changes (e.g. old project files no longer open). The current version, 0.1.0, becomes the first release.
+- **One version everywhere:** `engine/Cargo.toml`, `app/src-tauri/Cargo.toml`, `app/package.json`
+  and `app/src-tauri/tauri.conf.json` must always carry the same version. A release bumps all
+  four in one commit ("Release vX.Y.Z").
+- **Releasing** (only when the user asks):
+  1. All CI checks pass on `main`.
+  2. Bump the version in the four files.
+  3. Write the release notes from the commit history since the last tag, in plain English,
+     grouped as New / Changed / Fixed.
+  4. Tag the commit `vX.Y.Z` and create a GitHub Release with those notes.
+  5. Attach the Windows and Linux installers. Not set up yet: when the first real release
+     happens, add a GitHub Actions workflow that builds them from the tag.
+- **Safety in releases:** if a release changes toolpath or G-code output, the notes say so in a
+  separate "G-code output changed" section, saying what changed and reminding the user to
+  re-check in a simulator and with an air cut. Every release is checked against the
+  `tests/reference/` G-code before tagging.
+- **Traceability:** once G-code output exists, every G-code file's header comment includes the
+  WHAM_CAM version that produced it, e.g. `( WHAM_CAM 0.4.0 )`.
+
 ## Status
-- Stack chosen (see Stack). Draft spec written: `docs/spec.md`, revised to be machine-neutral
-  (generic G-code; toolbar and pop-up notifications in the layout). Open questions in section 9.
-- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`.
-  They are git-ignored, so they live on this machine only.
-- Skeleton app built (2026-11-15): engine crate with a demo document, Tauri + React window with
-  toolbar, tree, properties, three.js drawing area (2D pan/zoom, 3D orbit) and pop-up notifications. CI added.
-  Toolbar buttons are placeholders. No toolpaths or G-code yet.
-- DXF import done (2026-11-15): engine DXF reader (lines, arcs, circles, polylines, points,
-  exact splines/ellipses, blocks), inch prompt, selection in the drawing (click/box), delete,
-  undo/redo. Demo drawing removed. File dialog via tauri-plugin-dialog.
-- Layers (2026-11-15): delete layer, colours (drawn in layer colour, own preset picker),
-  rename in tree (double-click) or Properties; click a layer to open/close it.
-- Next: drawing tools (Part 2: click + snap, typed coordinates, editable properties), then
-  the offsetting library (candidate: cavalier_contours) and toolpaths.
+Done:
+- Spec: `docs/spec.md` (machine-neutral; open questions in section 9).
+- Skeleton: engine crate, Tauri + React window with toolbar, tree, properties, three.js drawing
+  area (2D pan/zoom, 3D orbit), pop-up notifications, CI on Linux and Windows.
+- DXF import: engine DXF reader (lines, arcs, circles, polylines, points, exact splines/ellipses,
+  blocks), unit prompt for inch DXFs, click/box selection, delete, undo/redo.
+- Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree.
+- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`, git-ignored (this machine only).
+
+Next:
+- Drawing tools: click + snap, typed coordinates, editable properties.
+- Then the offsetting library (candidate: cavalier_contours) and toolpaths.
