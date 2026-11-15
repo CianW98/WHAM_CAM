@@ -214,3 +214,57 @@ button:hover {
   font-size: 16px;
   line-height: 1;
 }
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-color: var(--panel-border);
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Box selection in the drawing area: solid = fully inside, dashed = touching */
+.select-box {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid #5aa0ff;
+  background: rgb(90 160 255 / 0.12);
+}
+.select-box.crossing {
+  border: 1px dashed #5ad08a;
+  background: rgb(90 208 138 / 0.12);
+}
+
+/* Question dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.modal {
+  background: #fff;
+  border-radius: 6px;
+  padding: 16px 18px;
+  max-width: 440px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.4);
+}
+.modal h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.modal p {
+  margin: 0 0 14px;
+}
+.modal-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}

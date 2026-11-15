@@ -1,10 +1,10 @@
-// The drawing area. It only DRAWS what the engine sends (display point lists);
-// it does no geometry or toolpath calculations of its own.
+// The drawing area. It only DRAWS what the engine sends (display point lists) and reports
+// where the user clicked or dragged, in mm. Deciding which shape was clicked is done by the engine.
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { DisplayData } from "../engine";
+import type { BoxMode, DisplayData } from "../engine";
 
 const COLORS = {
   background: 0x2b2b33,
@@ -19,6 +19,9 @@ const GRID_EXTENT = 1000; // mm either side of the origin
 const GRID_MINOR = 10; // mm
 const GRID_MAJOR = 50; // mm
 const ZOOM_STEP = 1.15;
+const PICK_RADIUS_PX = 6; // how close (in screen pixels) a click must be to a shape
+const DRAG_THRESHOLD_PX = 4; // movement before a click becomes a box drag
+const MARKER_SIZE_PX = 7;
 
 /** 2D view: centre of the screen in mm, and mm per screen pixel. */
 interface View2D {
@@ -34,12 +37,35 @@ interface Scene3 {
   persp: THREE.PerspectiveCamera;
   orbit: OrbitControls;
   shapes: THREE.Group;
+  /** Drawn objects by engine id, so selection can recolour them without rebuilding. */
+  byId: Map<number, THREE.Object3D[]>;
+  materials: {
+    line: THREE.LineBasicMaterial;
+    lineSelected: THREE.LineBasicMaterial;
+    marker: THREE.PointsMaterial;
+    markerSelected: THREE.PointsMaterial;
+  };
   view: View2D;
   mode: "2D" | "3D";
   width: number;
   height: number;
-  fitted: boolean;
   render: () => void;
+}
+
+interface BoxDrag {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+interface Props {
+  display: DisplayData | null;
+  selectedIds: Set<number>;
+  /** Changes whenever the view should zoom to fit the drawing. */
+  fitRequest: number;
+  onPick: (x: number, y: number, tolerance: number, add: boolean) => void;
+  onBox: (x0: number, y0: number, x1: number, y1: number, mode: BoxMode, add: boolean) => void;
 }
 
 function lineSegments(positions: number[], color: number, order: number): THREE.LineSegments {
@@ -87,11 +113,28 @@ function screenToWorld(s: Scene3, px: number, py: number) {
   };
 }
 
-export default function Viewport({ display, selectedId }: { display: DisplayData | null; selectedId: number | null }) {
+function fitTo(s: Scene3, bounds: [number, number, number, number]) {
+  const [minX, minY, maxX, maxY] = bounds;
+  const w = Math.max(maxX - minX, 1);
+  const h = Math.max(maxY - minY, 1);
+  s.view = {
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    scale: Math.max(w / s.width, h / s.height) * 1.15,
+  };
+  applyOrtho(s);
+}
+
+export default function Viewport({ display, selectedIds, fitRequest, onPick, onBox }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene3 | null>(null);
   const [mode, setMode] = useState<"2D" | "3D">("2D");
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [box, setBox] = useState<BoxDrag | null>(null);
+
+  // Latest callbacks, so the once-only event listeners below always call the current ones.
+  const callbacks = useRef({ onPick, onBox });
+  callbacks.current = { onPick, onBox };
 
   // Create the WebGL scene once.
   useEffect(() => {
@@ -112,6 +155,8 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
     const orbit = new OrbitControls(persp, renderer.domElement);
     orbit.enabled = false;
 
+    const marker = (color: number) =>
+      new THREE.PointsMaterial({ color, size: MARKER_SIZE_PX, sizeAttenuation: false, depthTest: false });
     const s: Scene3 = {
       renderer,
       scene,
@@ -119,11 +164,17 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
       persp,
       orbit,
       shapes,
+      byId: new Map(),
+      materials: {
+        line: new THREE.LineBasicMaterial({ color: COLORS.shape, depthTest: false }),
+        lineSelected: new THREE.LineBasicMaterial({ color: COLORS.selected, depthTest: false }),
+        marker: marker(COLORS.shape),
+        markerSelected: marker(COLORS.selected),
+      },
       view: { cx: 0, cy: 0, scale: 0.5 },
       mode: "2D",
       width: 1,
       height: 1,
-      fitted: false,
       render: () => renderer.render(scene, s.mode === "2D" ? ortho : persp),
     };
     sceneRef.current = s;
@@ -142,15 +193,21 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
     observer.observe(container);
     resize();
 
-    // 2D pan (middle or right drag) and zoom at cursor (wheel). 3D uses the orbit controls.
+    // 2D mouse: left click = pick, left drag = box select, middle/right drag = pan, wheel = zoom.
+    // In 3D the orbit controls take over.
     const canvas = renderer.domElement;
     let panFrom: { x: number; y: number } | null = null;
+    let leftDown: { x: number; y: number; dragging: boolean } | null = null;
+    const local = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
 
     const onWheel = (e: WheelEvent) => {
       if (s.mode !== "2D") return;
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      const p = screenToWorld(s, e.clientX - rect.left, e.clientY - rect.top);
+      const m = local(e);
+      const p = screenToWorld(s, m.x, m.y);
       const factor = e.deltaY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
       s.view = {
         cx: p.x - (p.x - s.view.cx) * factor,
@@ -161,13 +218,19 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
       s.render();
     };
     const onPointerDown = (e: PointerEvent) => {
-      if (s.mode !== "2D" || (e.button !== 1 && e.button !== 2)) return;
-      e.preventDefault();
-      panFrom = { x: e.clientX, y: e.clientY };
+      if (s.mode !== "2D") return;
+      if (e.button === 1 || e.button === 2) {
+        e.preventDefault();
+        panFrom = { x: e.clientX, y: e.clientY };
+      } else if (e.button === 0) {
+        const m = local(e);
+        leftDown = { ...m, dragging: false };
+      } else return;
       canvas.setPointerCapture(e.pointerId);
     };
     const onPointerMove = (e: PointerEvent) => {
       if (s.mode !== "2D") return;
+      const m = local(e);
       if (panFrom) {
         s.view.cx -= (e.clientX - panFrom.x) * s.view.scale;
         s.view.cy += (e.clientY - panFrom.y) * s.view.scale;
@@ -175,11 +238,31 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
         applyOrtho(s);
         s.render();
       }
-      const rect = canvas.getBoundingClientRect();
-      setCursor(screenToWorld(s, e.clientX - rect.left, e.clientY - rect.top));
+      if (leftDown) {
+        if (!leftDown.dragging && Math.hypot(m.x - leftDown.x, m.y - leftDown.y) > DRAG_THRESHOLD_PX) {
+          leftDown.dragging = true;
+        }
+        if (leftDown.dragging) setBox({ x0: leftDown.x, y0: leftDown.y, x1: m.x, y1: m.y });
+      }
+      setCursor(screenToWorld(s, m.x, m.y));
     };
-    const onPointerUp = () => {
+    const onPointerUp = (e: PointerEvent) => {
       panFrom = null;
+      if (!leftDown || e.button !== 0) return;
+      const m = local(e);
+      const add = e.shiftKey || e.ctrlKey;
+      if (leftDown.dragging) {
+        const a = screenToWorld(s, leftDown.x, leftDown.y);
+        const b = screenToWorld(s, m.x, m.y);
+        // CAD convention: drag left-to-right = fully inside; right-to-left = touching.
+        const mode: BoxMode = m.x >= leftDown.x ? "Window" : "Crossing";
+        callbacks.current.onBox(a.x, a.y, b.x, b.y, mode, add);
+      } else {
+        const p = screenToWorld(s, m.x, m.y);
+        callbacks.current.onPick(p.x, p.y, PICK_RADIUS_PX * s.view.scale, add);
+      }
+      leftDown = null;
+      setBox(null);
     };
     const onContextMenu = (e: Event) => e.preventDefault();
     const onLeave = () => setCursor(null);
@@ -200,55 +283,67 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
     };
   }, []);
 
-  // Redraw shapes whenever the engine's display data or the selection changes.
+  // Rebuild the drawn shapes when the engine's display data changes.
   useEffect(() => {
     const s = sceneRef.current;
     if (!s) return;
     for (const child of [...s.shapes.children]) {
-      const line = child as THREE.Line;
-      line.geometry.dispose();
-      (line.material as THREE.Material).dispose();
-      s.shapes.remove(line);
+      (child as THREE.Line).geometry.dispose();
+      s.shapes.remove(child);
     }
-    if (!display) {
-      s.render();
-      return;
-    }
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const shape of display.shapes) {
+    s.byId.clear();
+    for (const shape of display?.shapes ?? []) {
       const positions: number[] = [];
-      for (const [x, y] of shape.points) {
-        positions.push(x, y, 0);
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
+      for (const [x, y] of shape.points) positions.push(x, y, 0);
       const geom = new THREE.BufferGeometry();
       geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      const selected = shape.id === selectedId;
-      const mat = new THREE.LineBasicMaterial({
-        color: selected ? COLORS.selected : COLORS.shape,
-        depthTest: false,
-      });
-      const line = shape.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat);
-      line.renderOrder = selected ? 11 : 10;
-      s.shapes.add(line);
-    }
-    // Zoom to fit the drawing the first time it arrives.
-    if (!s.fitted && Number.isFinite(minX)) {
-      const w = Math.max(maxX - minX, 1);
-      const h = Math.max(maxY - minY, 1);
-      s.view = {
-        cx: (minX + maxX) / 2,
-        cy: (minY + maxY) / 2,
-        scale: Math.max(w / s.width, h / s.height) * 1.3,
-      };
-      s.fitted = true;
-      applyOrtho(s);
+      const obj: THREE.Object3D = shape.markers
+        ? new THREE.Points(geom, s.materials.marker)
+        : shape.closed
+          ? new THREE.LineLoop(geom, s.materials.line)
+          : new THREE.Line(geom, s.materials.line);
+      obj.renderOrder = 10;
+      obj.userData.markers = shape.markers;
+      s.shapes.add(obj);
+      const list = s.byId.get(shape.id) ?? [];
+      list.push(obj);
+      s.byId.set(shape.id, list);
     }
     s.render();
-  }, [display, selectedId]);
+  }, [display]);
+
+  // Recolour selected shapes.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    for (const [id, objs] of s.byId) {
+      const selected = selectedIds.has(id);
+      for (const obj of objs) {
+        const o = obj as THREE.Line | THREE.Points;
+        o.material = obj.userData.markers
+          ? selected
+            ? s.materials.markerSelected
+            : s.materials.marker
+          : selected
+            ? s.materials.lineSelected
+            : s.materials.line;
+        o.renderOrder = selected ? 11 : 10;
+      }
+    }
+    s.render();
+  }, [display, selectedIds]);
+
+  // Zoom to fit: on request, and the first time there is something to show.
+  const lastFit = useRef<number | null>(null);
+  useEffect(() => {
+    const s = sceneRef.current;
+    const bounds = display?.bounds;
+    if (!s || !bounds) return;
+    if (lastFit.current !== null && lastFit.current === fitRequest) return;
+    lastFit.current = fitRequest;
+    fitTo(s, bounds);
+    s.render();
+  }, [fitRequest, display]);
 
   // Switch between 2D (top view) and 3D (orbit).
   useEffect(() => {
@@ -269,6 +364,17 @@ export default function Viewport({ display, selectedId }: { display: DisplayData
 
   return (
     <main className="viewport" ref={containerRef}>
+      {box && (
+        <div
+          className={`select-box ${box.x1 >= box.x0 ? "window" : "crossing"}`}
+          style={{
+            left: Math.min(box.x0, box.x1),
+            top: Math.min(box.y0, box.y1),
+            width: Math.abs(box.x1 - box.x0),
+            height: Math.abs(box.y1 - box.y0),
+          }}
+        />
+      )}
       <div className="view-toggle">
         {(["2D", "3D"] as const).map((m) => (
           <button key={m} className={mode === m ? "active" : ""} onClick={() => setMode(m)}>
