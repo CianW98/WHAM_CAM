@@ -4,7 +4,7 @@ Status: **draft for review**. Nothing here is built yet. Items marked **(?)** ne
 
 ## 1. Purpose
 
-WHAM_CAM is a simple 2.5D CAM program in the spirit of the reference program. You draw or import 2D geometry,
+WHAM_CAM is a simple 2.5D CAM program in the spirit of the classic simple 2.5D CAM programs. You draw or import 2D geometry,
 select shapes, apply machining operations (profile, pocket, drill), preview the toolpaths and
 output G-code for the machine.
 
@@ -13,7 +13,7 @@ Design principles (from CLAUDE.md):
 - **One main screen.** Drawing area, object/operation tree, properties panel.
 - **Every setting visible and editable.** No hidden wizards, no 3D modelling, no parametric history.
 - **Simple wins.** If a feature makes the common workflow slower or more confusing, it doesn't go in.
-- **The reference program is the behaviour reference** (clean room: we study its behaviour and output, never its code).
+- **An established simple CAM program is the behaviour reference** (clean room: we study behaviour and output, never code).
 
 ## 2. Stack
 
@@ -56,7 +56,7 @@ Rules:
 
 ## 4. Screen layout
 
-Based on the the reference program layout, with a toolbar added:
+A classic CAD/CAM layout, with a toolbar:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -113,7 +113,7 @@ Based on the the reference program layout, with a toolbar added:
   import message lists what was skipped. Binary DXF and broken files give a clear error.
 - **Splines and ellipses stay exact** in the drawing. They are converted to arcs and lines only
   when a toolpath is made (conversion tolerance is a toolpath setting). A "Convert to polyline"
-  command will allow editing them like the reference program.
+  command will allow editing them like any polyline.
 - **Units**: if a DXF says it is in inches (or other non-mm units), import asks whether to
   convert to mm or treat the numbers as mm.
 - Import adds to the current drawing as one undo step.
@@ -160,7 +160,7 @@ Holds geometry, layers, parts, operations, tools used and post-processor setting
 
 ## 6. Operation settings
 
-Names follow the reference program's where sensible. "v1" = editable in v1; "later" = shown greyed out or left out.
+Names follow common CAM terminology. "v1" = editable in v1; "later" = shown greyed out or left out.
 
 ### 6.1 Common to all operations
 
@@ -194,7 +194,7 @@ Names follow the reference program's where sensible. "v1" = editable in v1; "lat
 | Corner overcut | Dog-bone style corner relief | false | later |
 | Holding tabs | | none | later |
 
-Behaviour (observed in the reference program): outside corners get an arc of tool radius (G2/G3).
+Behaviour (observed in the reference output): outside corners get an arc of tool radius (G2/G3).
 For a closed shape, the cut overlaps back over its start point. **(?)** How much overlap does v1 need without lead-ins?
 
 ### 6.3 Pocket
@@ -208,7 +208,7 @@ For a closed shape, the cut overlaps back over its start point. **(?)** How much
 | Cut ordering | Depth first / Level first | Depth first | v1 |
 | Finish stepover | Light final wall pass | 0 | later |
 
-Islands: closed shapes inside the selected boundary are left uncut. **(?)** Confirm this matches how you use the reference program.
+Islands: closed shapes inside the selected boundary are left uncut. **(?)** Confirm this matches what you expect.
 
 ### 6.4 Drill
 
@@ -243,7 +243,7 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 ## 8. Testing
 
 - The engine has its own unit tests (`cargo test`) that run without the UI.
-- **The reference program toolpath comparison**: the the reference program examples in `tests/reference/local/` (git-ignored,
+- **Reference toolpath comparison**: the reference examples in `tests/reference/local/` (git-ignored,
   kept on this machine only) are used to check toolpath **shape**: offsets, stepovers, depth levels
   and cut order. They are not compared as exact text, because WHAM_CAM's G-code format differs from the reference program's.
 - **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
@@ -256,7 +256,7 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 ## 9. Open questions
 
 1. **Profile overlap** without lead-ins: how far past the start point should a closed profile cut?
-2. **Fast plunge height.** Between depth levels the reference program rapids down to 1 mm above the last cut level.
+2. **Fast plunge height.** Between depth levels the reference output rapids down to 1 mm above the last cut level.
    Should this be a setting, and is 1 mm the right default?
 
 ## 10. Out of scope for v1

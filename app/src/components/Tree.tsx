@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Document, Shape } from "../engine";
 import { selectedIds, selectObjects, type Selection } from "../selection";
 
-/** Tree label for a shape type, using the reference program's names. */
+/** Tree label for a shape type, using common CAM names. */
 export function shapeLabel(shape: Shape): string {
   return shape.type === "Points" ? "PointList" : shape.type;
 }

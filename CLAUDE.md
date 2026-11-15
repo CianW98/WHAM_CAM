@@ -1,13 +1,13 @@
 # CLAUDE.md
 
 ## Project
-A modern, simple 2.5D CAM program in the spirit of the reference program. Draw or import 2D geometry,
+A modern, simple 2.5D CAM program in the spirit of the classic simple 2.5D CAM programs. Draw or import 2D geometry,
 apply machining operations, preview the toolpaths, output G-code.
 
 Project name: WHAM_CAM
 
 ## Design principle: simple
-The reference program is still worth using because it is not overcomplicated. This project keeps that.
+The best simple CAM programs are still worth using because they are not overcomplicated. This project keeps that.
 - Geometry first, operations second: select shapes, then apply profile / pocket / drill etc.
 - One main screen: drawing area, object/operation tree, properties panel.
 - Every setting visible and editable. No hidden wizards, no 3D modelling, no parametric history.
@@ -19,13 +19,14 @@ The reference program is still worth using because it is not overcomplicated. Th
   whether anything else was affected.
 - Ask before large or structural changes, new dependencies, or changing the stack.
 - Never delete or rewrite working features without asking.
-- The user is an experienced the reference program user and CNC machinist. Trust their judgement on
+- The user is an experienced CAM user and CNC machinist. Trust their judgement on
   machining behaviour, and ask them when CAM behaviour is unclear rather than guessing.
 
 ## Reference material
-- The reference program is the behavioural reference. Study how it behaves and what it outputs.
-  Do NOT decompile, disassemble or read the reference program's code or binaries (clean room only).
-- The reference program's user guide is the main source for features and settings.
+- An established simple 2.5D CAM program is the behavioural reference; the user supplies example
+  output from it. Study how it behaves and what it outputs.
+  Do NOT decompile, disassemble or read any other CAM program's code or binaries (clean room only).
+- Published user documentation of such programs is the main source for features and settings.
 - Open-source CAM projects (FreeCAD CAM, Kiri:Moto, FabexCNC, OpenCAMLib) may be studied
   and used,respecting their licences. Check a licence before copying or linking code. Ask before commiting anything from other opensource projects to verify the license matches our requirements.
 
@@ -107,7 +108,7 @@ interface file that talks to the engine.
 ## Status
 - Stack chosen (see Stack). Draft spec written: `docs/spec.md`, revised to be machine-neutral
   (generic G-code; toolbar and pop-up notifications in the layout). Open questions in section 9.
-- The reference program reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`.
+- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`.
   They are git-ignored, so they live on this machine only.
 - Skeleton app built (2026-11-15): engine crate with a demo document, Tauri + React window with
   toolbar, tree, properties, three.js drawing area (2D pan/zoom, 3D orbit) and pop-up notifications. CI added.

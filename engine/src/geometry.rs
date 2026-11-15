@@ -1,5 +1,5 @@
 //! Basic 2D geometry. All units are millimetres. Angles in shapes are degrees,
-//! measured counter-clockwise from the +X axis (as in DXF and the reference program).
+//! measured counter-clockwise from the +X axis (as in DXF).
 
 use std::f64::consts::TAU;
 
@@ -22,7 +22,7 @@ impl Point {
 }
 
 /// A polyline corner. `bulge` describes the segment from this vertex to the next one,
-/// the same way DXF and the reference program do: 0 = straight line, otherwise tan(sweep angle / 4).
+/// the same way DXF does: 0 = straight line, otherwise tan(sweep angle / 4).
 /// Positive bulge = counter-clockwise arc, negative = clockwise.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vertex {
@@ -113,7 +113,7 @@ pub enum Shape {
 }
 
 impl Shape {
-    /// Name shown in the object tree, matching the reference program's wording where it has one.
+    /// Name shown in the object tree, using common CAM names.
     pub fn type_name(&self) -> &'static str {
         match self {
             Shape::Line { .. } => "Line",

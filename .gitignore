@@ -1,7 +1,7 @@
 # Secrets
 .env
 
-# the reference program reference examples: kept on this machine only (contain local paths)
+# Reference examples: kept on this machine only (contain local paths)
 tests/reference/local/
 
 # Build output (for when the app exists)
