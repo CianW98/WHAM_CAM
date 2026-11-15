@@ -72,12 +72,21 @@ export default function App() {
     notify("info", importMessage(report, scale !== 1 ? info.units.name : null));
   }, [ask, notify, refresh]);
 
+  /** Deletes the selected objects, or the selected layer (with everything on it). */
   const deleteSelected = useCallback(async () => {
+    if (selection.kind === "layer") {
+      const layer = view?.document.layers[selection.layer];
+      if (!layer) return;
+      await engine.deleteLayer(layer.name);
+      setSelection(NOTHING);
+      await refresh();
+      return;
+    }
     const ids = selectedIds(selection);
     if (ids.length === 0) return;
     await engine.deleteObjects(ids);
     await refresh();
-  }, [selection, refresh]);
+  }, [selection, view, refresh]);
 
   const undoRedo = useCallback(
     async (which: "undo" | "redo") => {
@@ -151,7 +160,7 @@ export default function App() {
   const disabled = new Set<string>();
   if (!view?.canUndo) disabled.add("Undo");
   if (!view?.canRedo) disabled.add("Redo");
-  if (ids.length === 0) disabled.add("Delete");
+  if (ids.length === 0 && selection.kind !== "layer") disabled.add("Delete");
 
   return (
     <div className="app">

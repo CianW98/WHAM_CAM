@@ -175,6 +175,22 @@ impl Project {
         count
     }
 
+    /// Deletes a layer and everything on it, as one undo step. If no layers would be left,
+    /// an empty "Default" layer takes its place so there is always somewhere to draw.
+    /// Returns false if there is no layer with that name.
+    pub fn delete_layer(&mut self, name: &str) -> bool {
+        let Some(index) = self.doc.layers.iter().position(|l| l.name == name) else {
+            return false;
+        };
+        self.edit(|doc| {
+            doc.layers.remove(index);
+            if doc.layers.is_empty() {
+                doc.layer_index("Default");
+            }
+        });
+        true
+    }
+
     /// The object nearest to (x, y) within `tolerance` mm, if any.
     pub fn pick(&self, x: f64, y: f64, tolerance: f64) -> Option<u32> {
         self.display

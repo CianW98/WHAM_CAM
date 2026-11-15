@@ -133,6 +133,11 @@ export function deleteObjects(ids: number[]): Promise<number> {
   return invoke<number>("delete_objects", { ids });
 }
 
+/** Deletes a layer and everything on it. */
+export function deleteLayer(name: string): Promise<boolean> {
+  return invoke<boolean>("delete_layer", { name });
+}
+
 export function undo(): Promise<boolean> {
   return invoke<boolean>("undo");
 }

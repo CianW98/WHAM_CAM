@@ -153,3 +153,46 @@ fn box_selection_window_and_crossing() {
         vec![1, 2]
     );
 }
+
+fn layer_names(p: &Project) -> Vec<&str> {
+    p.document()
+        .layers
+        .iter()
+        .map(|l| l.name.as_str())
+        .collect()
+}
+
+#[test]
+fn deleting_all_objects_keeps_the_empty_layer() {
+    let mut p = Project::new();
+    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.delete(&[1, 2]);
+    assert_eq!(layer_names(&p), vec!["Default", "CUT"]);
+    assert!(p.document().layers[1].objects.is_empty());
+}
+
+#[test]
+fn delete_layer_removes_it_and_its_objects_and_undo_restores_them() {
+    let mut p = Project::new();
+    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    assert!(p.delete_layer("CUT"));
+    assert_eq!(layer_names(&p), vec!["Default"]);
+    assert_eq!(p.document().objects().count(), 0);
+    assert!(p.undo());
+    assert_eq!(layer_names(&p), vec!["Default", "CUT"]);
+    assert_eq!(p.document().objects().count(), 2);
+    assert!(!p.delete_layer("NOPE"));
+}
+
+#[test]
+fn deleting_the_last_layer_leaves_an_empty_default_layer() {
+    let mut p = Project::new();
+    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.delete_layer("Default");
+    p.delete_layer("CUT");
+    assert_eq!(layer_names(&p), vec!["Default"]);
+    assert_eq!(p.document().objects().count(), 0);
+    // Undo goes back one step at a time.
+    p.undo();
+    assert_eq!(layer_names(&p), vec!["CUT"]);
+}
