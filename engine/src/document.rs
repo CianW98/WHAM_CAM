@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::geometry::{Point, Polyline, Shape};
+use crate::geometry::Shape;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
@@ -48,23 +48,23 @@ impl Document {
     pub fn objects(&self) -> impl Iterator<Item = &DrawingObject> {
         self.layers.iter().flat_map(|layer| layer.objects.iter())
     }
-}
 
-/// A small demo document used by the skeleton app to prove the engine-to-screen pipeline.
-pub fn demo_document() -> Document {
-    let mut doc = Document::new("Untitled");
-    doc.layers[0].objects = vec![
-        DrawingObject {
-            id: 1,
-            shape: Shape::Polyline(Polyline::rectangle(0.0, 0.0, 100.0, 80.0)),
-        },
-        DrawingObject {
-            id: 2,
-            shape: Shape::Circle {
-                center: Point::new(50.0, 40.0),
-                radius: 25.0,
-            },
-        },
-    ];
-    doc
+    /// Index of the layer with this name, creating it if needed.
+    pub fn layer_index(&mut self, name: &str) -> usize {
+        match self.layers.iter().position(|l| l.name == name) {
+            Some(i) => i,
+            None => {
+                self.layers.push(Layer {
+                    name: name.to_string(),
+                    objects: Vec::new(),
+                });
+                self.layers.len() - 1
+            }
+        }
+    }
+
+    /// Highest object id in use (0 if empty).
+    pub fn max_id(&self) -> u32 {
+        self.objects().map(|o| o.id).max().unwrap_or(0)
+    }
 }

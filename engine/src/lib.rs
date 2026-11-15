@@ -6,8 +6,12 @@
 
 pub mod display;
 pub mod document;
+pub mod dxf;
 pub mod geometry;
+pub mod project;
 
 pub use display::{DISPLAY_TOLERANCE, DisplayData, DisplayShape, display_data};
-pub use document::{Document, DrawingObject, Layer, Part, demo_document};
-pub use geometry::{Point, Polyline, Shape, Vertex};
+pub use document::{Document, DrawingObject, Layer, Part};
+pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};
+pub use geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};
+pub use project::{BoxMode, DxfInfo, ImportReport, Project};

@@ -88,8 +88,56 @@ fn bulge_semicircle_is_drawn_on_the_correct_side() {
 
 #[test]
 fn document_json_round_trips() {
-    let doc = demo_document();
+    let mut doc = Document::new("t");
+    doc.layers[0].objects.push(DrawingObject {
+        id: 1,
+        shape: Shape::Polyline(Polyline::rectangle(0.0, 0.0, 100.0, 80.0)),
+    });
+    doc.layers[0].objects.push(DrawingObject {
+        id: 2,
+        shape: Shape::Arc {
+            center: Point::new(1.0, 2.0),
+            radius: 3.0,
+            start_angle: 10.0,
+            end_angle: 100.0,
+        },
+    });
     let json = serde_json::to_string(&doc).unwrap();
     let back: Document = serde_json::from_str(&json).unwrap();
     assert_eq!(doc, back);
+}
+
+#[test]
+fn mirroring_an_arc_keeps_it_counter_clockwise_on_the_mirrored_points() {
+    // Quarter arc centre (10,0) r 5 from 0 deg (15,0) to 90 deg (10,5).
+    let arc = Shape::Arc {
+        center: Point::new(10.0, 0.0),
+        radius: 5.0,
+        start_angle: 0.0,
+        end_angle: 90.0,
+    };
+    let Shape::Arc {
+        center,
+        radius,
+        start_angle,
+        end_angle,
+    } = arc.transformed(&Transform::mirror_x()).unwrap()
+    else {
+        panic!("still an arc")
+    };
+    assert_eq!(center, Point::new(-10.0, 0.0));
+    assert_eq!(radius, 5.0);
+    // Mirrored ends are (-15,0) at 180 deg and (-10,5) at 90 deg: CCW from 90 to 180.
+    assert!((start_angle - 90.0).abs() < 1e-9, "{start_angle}");
+    assert!((end_angle - 180.0).abs() < 1e-9, "{end_angle}");
+}
+
+#[test]
+fn uneven_scale_cannot_keep_a_circle_exact() {
+    let c = Shape::Circle {
+        center: Point::new(0.0, 0.0),
+        radius: 1.0,
+    };
+    assert!(c.transformed(&Transform::scale(2.0, 1.0)).is_none());
+    assert!(c.transformed(&Transform::scale(2.0, 2.0)).is_some());
 }
