@@ -57,7 +57,11 @@ Anything not on this list waits until v1 works end to end.
 
 ## Stack
 - Tauri desktop app: Rust core with a web-based (HTML/CSS/TypeScript) interface.
-- Front-end framework: TBD. Propose options in Plan mode and ask before choosing.
+- Front-end framework: React + TypeScript (decided 2026-11-15).
+- Drawing area: WebGL via three.js (MIT), with a 2D top view and a 3D view. Used directly
+  from one React component; it only draws what the engine sends.
+- Units: mm only in v1. Inches come later, with CAM styles and workspaces.
+- Lead-ins/lead-outs: not in v1 (straight plunge at the plunge feed rate).
 - Requirements: runs on Windows and Linux desktop, works fully offline, fast enough to regenerate toolpaths interactively.
 
 ## Architecture: keep the CAM engine separate from the interface
@@ -87,5 +91,8 @@ TBD. Add exact commands to run, test and build once the stack is chosen.
 - At the end of a session, update the Status section below and any decisions above.
 
 ## Status
-New project. Nothing built yet.
-Next: choose the stack, write `docs/spec.md`, get a minimal app running.
+- Stack chosen (see Stack). Draft spec written: `docs/spec.md`, which needs user review. Its open
+  questions (section 9) cover G64, drilling on the WorkBee, tool change and profile overlap.
+- The reference program reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`.
+  They are git-ignored, so they live on this machine only.
+- Next: agree the spec, then build the skeleton app (engine crate + Tauri/React shell + CI).
