@@ -96,15 +96,40 @@ Based on the the reference program layout, with a toolbar added:
 ## 5. v1 Features
 
 ### 5.1 Import
-- **DXF**: LINE, ARC, CIRCLE, LWPOLYLINE (with bulges), POLYLINE, POINT. Others are skipped
-  with a message listing what was ignored. **(?)** Also SPLINE/ELLIPSE (converted to polylines)?
+- **DXF** (ASCII), read by the engine's own reader:
+
+  | DXF entity | Becomes |
+  |---|---|
+  | LINE | Line |
+  | ARC | Arc |
+  | CIRCLE | Circle |
+  | LWPOLYLINE, 2D POLYLINE | Polyline (bulge arcs kept as true arcs) |
+  | POINT | One point list per layer (for drilling) |
+  | SPLINE | Spline, kept exact |
+  | ELLIPSE | Ellipse, kept exact |
+  | INSERT (blocks) | Block contents placed with position, rotation, scale and arrays |
+
+  Everything else (TEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and the
+  import message lists what was skipped. Binary DXF and broken files give a clear error.
+- **Splines and ellipses stay exact** in the drawing. They are converted to arcs and lines only
+  when a toolpath is made (conversion tolerance is a toolpath setting). A "Convert to polyline"
+  command will allow editing them like the reference program.
+- **Units**: if a DXF says it is in inches (or other non-mm units), import asks whether to
+  convert to mm or treat the numbers as mm.
+- Import adds to the current drawing as one undo step.
 - **SVG**: path, line, polyline, polygon, rect, circle, ellipse. Curves are converted to arcs/lines.
 - Imported objects go onto layers (DXF layer names are kept).
 
 ### 5.2 Drawing
 - Line, arc, circle, rectangle, polyline (with arcs), point/point list.
-- Snap to grid, and to end points, mid points and centres.
+- Points are set by clicking (with snapping to grid, end points, mid points and centres) or by
+  typing coordinates while drawing; exact values can also be edited in the properties panel afterwards.
 - Grid spacing setting.
+
+### 5.2a Selection
+- Click selects a shape; Shift/Ctrl-click adds or removes. Esc clears.
+- Box select: drag left-to-right selects shapes fully inside; right-to-left selects anything touched.
+- Delete removes the selection. Undo/redo (Ctrl+Z, Ctrl+Y) cover every change.
 
 ### 5.3 Edit
 - Transform: move, rotate, scale, mirror, with typed values.
@@ -233,7 +258,6 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 1. **Profile overlap** without lead-ins: how far past the start point should a closed profile cut?
 2. **Fast plunge height.** Between depth levels the reference program rapids down to 1 mm above the last cut level.
    Should this be a setting, and is 1 mm the right default?
-3. **DXF splines and ellipses.** Import them (converted to lines/arcs) in v1, or skip them with a message?
 
 ## 10. Out of scope for v1
 

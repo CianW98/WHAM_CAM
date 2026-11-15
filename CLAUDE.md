@@ -97,7 +97,8 @@ interface file that talks to the engine.
   and an app check on Ubuntu and Windows.
 
 ## Workflow
-- After initial build, never commit straight to `main`. Use a branch per feature and merge when it works.
+- Core v1 features are committed straight to `main` (user's decision, 2026-11-15). Use a branch
+  for experimental or post-v1 work, and ask if unsure.
 - Commit small and often, with clear messages.
 - Never commit secrets. Keys and credentials go in `.env`, which is git-ignored.
 - Tasks are tracked in GitHub Issues. Use the `gh` CLI to read and update them.
@@ -111,6 +112,8 @@ interface file that talks to the engine.
 - Skeleton app built (2026-11-15): engine crate with a demo document, Tauri + React window with
   toolbar, tree, properties, three.js drawing area (2D pan/zoom, 3D orbit) and pop-up notifications. CI added.
   Toolbar buttons are placeholders. No toolpaths or G-code yet.
-- From now on, use a branch per feature (see Workflow).
-- Next: choose and test the offsetting library (candidate: cavalier_contours) against the the reference program
-  Profile/Pocket references, then drawing tools / DXF import.
+- DXF import done (2026-11-15): engine DXF reader (lines, arcs, circles, polylines, points,
+  exact splines/ellipses, blocks), inch prompt, selection in the drawing (click/box), delete,
+  undo/redo. Demo drawing removed. File dialog via tauri-plugin-dialog.
+- Next: drawing tools (Part 2: click + snap, typed coordinates, editable properties), then
+  the offsetting library (candidate: cavalier_contours) and toolpaths.
