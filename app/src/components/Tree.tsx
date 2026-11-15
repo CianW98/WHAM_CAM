@@ -123,6 +123,10 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
       return next;
     });
 
+  // Layers row: close every layer if any is open, otherwise open them all.
+  const anyOpen = doc.layers.some((l) => !closed.has(l.name));
+  const toggleAll = () => setClosed(anyOpen ? new Set(doc.layers.map((l) => l.name)) : new Set());
+
   const rename = async (oldName: string, newName: string) => {
     const ok = await onRenameLayer(oldName, newName);
     // Keep a renamed layer open/closed as it was.
@@ -140,7 +144,15 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
   return (
     <ul className="tree">
       <Item label={doc.name} selected={is({ kind: "project" })} onClick={() => onSelect({ kind: "project" })}>
-        <Item label="Layers">
+        <Item
+          label={
+            <span title={anyOpen ? "Close all layers" : "Open all layers"}>
+              <span className="chevron">{anyOpen ? "▾" : "▸"}</span>
+              Layers
+            </span>
+          }
+          onClick={toggleAll}
+        >
           {doc.layers.map((layer, li) => (
             <LayerItem
               key={layer.name}
