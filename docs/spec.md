@@ -56,10 +56,14 @@ Rules:
 
 ## 4. Screen layout
 
-Matches the the reference program layout the user already knows:
+Based on the the reference program layout, with a toolbar added:
 
 ```
-┌─────────────────────┬────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
+│ Menus                                                        │
+│ Toolbar: [New Open Save Import] [Line Arc Circle Rect Pline  │
+│          Point] [Profile Pocket Drill] [Generate] [G-code]   │
+├─────────────────────┬────────────────────────────────────────┤
 │ Tree                │                                        │
 │  Project            │                                        │
 │   Layers            │          Drawing area                  │
@@ -67,22 +71,26 @@ Matches the the reference program layout the user already knows:
 │     Polyline (4)    │                                        │
 │   Machining         │          2D top view  /  3D view       │
 │    Part1            │                                        │
-│     Profile1        │                                        │
-├─────────────────────┤                                        │
-│ Properties          │                                        │
+│     Profile1        │                      ┌──────────────┐  │
+├─────────────────────┤                      │ notification │  │
+│ Properties          │                      └──────────────┘  │
 │  (settings of the   │                                        │
-│   selected item)    ├────────────────────────────────────────┤
-│                     │ Messages / status · cursor X,Y         │
+│   selected item)    │  X 12.000  Y -4.500                    │
 └─────────────────────┴────────────────────────────────────────┘
 ```
 
+- **Toolbar**: file actions (new, open, save, import), drawing tools (line, arc, circle,
+  rectangle, polyline, point), operations (Profile, Pocket, Drill), Generate toolpaths and
+  Produce G-code. Everything on the toolbar is also in the menus.
 - **Tree**: Layers → drawing objects; Machining → Parts → operations. Click to select,
   right-click for actions (rename, delete, enable/disable, generate toolpath).
 - **Properties panel**: every setting of whatever is selected, editable in place.
-- **Drawing area**: dark background, grid, X/Y axes, cursor coordinates in the status bar.
-  Pan, zoom, select (click and box-select). A toggle switches between the 2D top view and a 3D orbit
-  view of the toolpaths.
-- **Workflow**: select shapes → Machining menu / toolbar → Profile, Pocket or Drill → the new
+- **Drawing area**: dark background, grid, X/Y axes. Pan, zoom, select (click and box-select).
+  A toggle switches between the 2D top view and a 3D orbit view of the toolpaths. The cursor
+  X/Y position is shown in a small readout in a corner of the drawing area.
+- **Notifications**: no status bar. Important messages (items skipped on import, toolpath errors,
+  file saved) pop up over the drawing area. Errors stay until dismissed; info messages fade out.
+- **Workflow**: select shapes → toolbar or Machining menu → Profile, Pocket or Drill → the new
   operation appears in the tree and its properties are shown → Generate toolpaths → Produce G-code.
 
 ## 5. v1 Features
@@ -118,7 +126,8 @@ from the library (which fills in its defaults) or have values typed in directly.
 - Per-operation show/hide.
 
 ### 5.7 G-code output
-Through a post-processor. v1 has one: **WorkBee / RepRapFirmware** (section 7).
+Standard, widely compatible G-code through one generic post-processor (section 7).
+Machine-specific post-processors, each with its own settings panel per machine type, come later.
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file (`.wcam` (?)) with a format version number.
@@ -154,7 +163,7 @@ Names follow the reference program's where sensible. "v1" = editable in v1; "lat
 | Setting | Meaning | Default | v1 |
 |---|---|---|---|
 | Inside/Outside | Inside, Outside, or On line (no offset) | Outside | v1 |
-| Milling direction | Conventional / Climb | Conventional **(?)** | v1 |
+| Milling direction | Conventional / Climb | Conventional | v1 |
 | Cut ordering | Depth first / Level first (across multiple shapes) | Depth first | v1 |
 | Cut width | Total wall width; extra passes stepped by Stepover | 0 (= one tool width) | later |
 | Corner overcut | Dog-bone style corner relief | false | later |
@@ -184,74 +193,53 @@ Islands: closed shapes inside the selected boundary are left uncut. **(?)** Conf
 | Peck distance | 0 = single plunge | 0 | v1 |
 | Retract height | Z between pecks / holes | 3 | v1 |
 | Dwell | Seconds at bottom | 0 | v1 |
-| Drilling method | How the G-code is written | **(?)** see section 9 | v1 |
+| Drilling method | Each hole written out in full: rapid to retract height, feed down (pecking if set), back up | Full moves | v1 |
 
-## 7. G-code output: WorkBee / RepRapFirmware
+The exact G-code format for drilling is decided with the machine-specific post-processors.
 
-Based on the user's the reference program reference files (`tests/reference/local/`). Structure:
+## 7. G-code output
 
-```
-( Made using WHAM_CAM )
-( <project name> <date/time> )
-( Post processor: WorkBee RRF )
-( T<n> : <diameter> )
-G21 G90 G40          ← mm, absolute, no cutter comp   (G64: see section 9)
-G0 Z<clearance>
-( T<n> : <diameter> )
-T<n> M6              (?) see section 9
-M3 S<rpm>
-M291 P"Spindle" R"Check running?" S3   ← operator confirms spindle is running
-( <operation name> )
-G17
-S<rpm>
-...toolpath...
-G0 Z<clearance>
-M5
-M30
-```
+v1 writes standard G-code through one generic post-processor. It aims to run on most
+hobby and small-shop controllers. The exact format is refined later, when machine-specific
+post-processors are added (each with its own settings panel per machine type).
 
-Format rules:
-- Coordinates and feeds to 4 decimal places, trailing zeros trimmed, at least one decimal (`Z3.0`, `X-3.3431`).
-- Modal: only changed axes and feeds are written.
-- Arcs as G2/G3 with incremental I/J centres.
-- Comments on each operation: name, tool, depths.
+Principles:
+- Plain and readable: one move per line, no unnecessary codes.
+- Commented: program name and date, and for each operation its name, tool and depths.
+- Millimetres, absolute coordinates.
+- Arcs are output as arcs, not broken into many short lines.
 
-Safety rules (from CLAUDE.md; tests must check these on every output):
-- Every rapid (G0) happens at or above the clearance plane, **except** the final approach:
-  a rapid straight down to just above the material or previous cut level, then feed (G1) down.
-  (the reference program's pocket does this: rapid to Z-4.0 when the previous level was Z-5.0, then G1 to Z-10.0.)
+Safety rules (from CLAUDE.md; tests check these on every output):
+- Every rapid move happens at or above the clearance plane, **except** the final approach:
+  a rapid straight down to just above the material or the previous cut level, then a feed move down.
 - No horizontal rapid below the clearance plane.
 - The program starts and ends at the clearance plane.
 
 ## 8. Testing
 
 - The engine has its own unit tests (`cargo test`) that run without the UI.
-- **Reference comparison tests**: WHAM_CAM's output for a given project is compared against
-  known-good G-code. The the reference program examples in `tests/reference/local/` are git-ignored (they stay
-  on this machine), so tests that use them only run locally. Once WHAM_CAM's own output has been
-  checked in a simulator and air-cut, those files become the committed reference set.
+- **The reference program toolpath comparison**: the the reference program examples in `tests/reference/local/` (git-ignored,
+  kept on this machine only) are used to check toolpath **shape**: offsets, stepovers, depth levels
+  and cut order. They are not compared as exact text, because WHAM_CAM's G-code format differs from the reference program's.
+- **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
+  with an air cut, it is committed to `tests/reference/` and later output is compared to it exactly.
 - **Safety checker**: a test helper that reads any G-code output and fails if it breaks the section 7 safety rules.
 - The engine is also built for `wasm32-unknown-unknown` in CI.
-- Whenever toolpath or post-processor logic changes, the user re-checks output in CAMotics/NC Viewer and with an air cut.
+- Whenever toolpath or post-processor logic changes, the user re-checks output in a simulator
+  (CAMotics or NC Viewer) and with an air cut.
 
-## 9. Open questions (for the G-code discussion)
+## 9. Open questions
 
-1. **G64.** The reference files contain `G21 G90 G64 G40`, and the user says they run as-is. CLAUDE.md
-   says never emit G64. Which is right? (In the reference program it comes from *Velocity Mode = Constant Velocity*.)
-2. **Which post made the reference files?** Their headers say "Post processor: Default" although
-   "Workbee" is selected, and the the reference program screenshots show the error *"Unexpected token at line 13"*.
-   Possibly the Workbee post failed to load and the reference program fell back to Default.
-3. **Drilling.** the reference program's G81 canned cycle doesn't work on the WorkBee; the user has a custom script.
-   v1 needs that script, or the G-code it produces, to copy.
-4. **Tool change.** Is `T0 M6` wanted on the WorkBee, or should a tool change pause with an M291 prompt?
-5. **Default milling direction.** The examples use conventional milling. Should that stay the default?
-6. **Profile overlap** without lead-ins: how far past the start point should a closed profile cut?
-7. **Fast plunge height.** the reference program's pocket rapids down to 1 mm above the last cut level. Should this be a setting, and is 1 mm the right default?
+1. **Profile overlap** without lead-ins: how far past the start point should a closed profile cut?
+2. **Fast plunge height.** Between depth levels the reference program rapids down to 1 mm above the last cut level.
+   Should this be a setting, and is 1 mm the right default?
+3. **DXF splines and ellipses.** Import them (converted to lines/arcs) in v1, or skip them with a message?
 
 ## 10. Out of scope for v1
 
-Inches, lead-ins/lead-outs, holding tabs, CAM styles/templates, other post-processors
-(Grbl, LinuxCNC, Mach3), browser/WebAssembly app, importing other CAM programs' project files, 3D operations, machine control.
+Inches, lead-ins/lead-outs, holding tabs, CAM styles/templates, machine-specific post-processors
+(e.g. RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3) and the per-machine post-processor settings panel,
+browser/WebAssembly app, importing other CAM programs' project files, 3D operations, machine control.
 
 ## 11. Setup (for the build step)
 

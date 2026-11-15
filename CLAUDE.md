@@ -29,10 +29,11 @@ The reference program is still worth using because it is not overcomplicated. Th
 - Open-source CAM projects (FreeCAD CAM, Kiri:Moto, FabexCNC, OpenCAMLib) may be studied
   and used,respecting their licences. Check a licence before copying or linking code. Ask before commiting anything from other opensource projects to verify the license matches our requirements.
 
-## Initial target machine (first post-processor)
-- WorkBee CNC router running a Duet 2 with RepRapFirmware (RRF).
-- G-code must suit RRF. Known issue: G64 is not supported on this setup, so do not emit it.
-- Other controllers (Grbl, LinuxCNC, Mach3) are later post-processors, not v1.
+## G-code output and machines
+- WHAM_CAM is not tied to one machine or controller.
+- v1 outputs standard, widely compatible G-code through one generic post-processor.
+- Machine-specific post-processors (e.g. RepRapFirmware, Grbl, LinuxCNC, Mach3), each with its
+  own settings panel per machine type, come after v1. Don't add machine-specific G-code before then.
 
 ## Safety: G-code is safety-critical
 N.B. This program drives a real machine. A bug can crash the spindle, break tools or ruin parts.
@@ -91,8 +92,8 @@ TBD. Add exact commands to run, test and build once the stack is chosen.
 - At the end of a session, update the Status section below and any decisions above.
 
 ## Status
-- Stack chosen (see Stack). Draft spec written: `docs/spec.md`, which needs user review. Its open
-  questions (section 9) cover G64, drilling on the WorkBee, tool change and profile overlap.
+- Stack chosen (see Stack). Draft spec written: `docs/spec.md`, revised to be machine-neutral
+  (generic G-code; toolbar and pop-up notifications in the layout). Open questions in section 9.
 - The reference program reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`.
   They are git-ignored, so they live on this machine only.
 - Next: agree the spec, then build the skeleton app (engine crate + Tauri/React shell + CI).
