@@ -314,58 +314,6 @@ fn tool_too_big_for_inside_is_refused() {
 }
 
 #[test]
-fn overlap_carries_on_past_the_start_on_every_level() {
-    // Outside a square: start at the corner arc next to (0,0); a 5 mm overlap ends part-way
-    // along the first side after the start.
-    let p = ProfileSettings {
-        side: ProfileSide::OnLine,
-        overlap: 5.0,
-        ..ProfileSettings::default()
-    };
-    let tp = profile(
-        &[(1, square(0.0, 0.0, 20.0))],
-        &settings(6.0, -2.0, 1.0),
-        &p,
-    );
-    for z in [-1.0, -2.0] {
-        let cuts = cuts_at(&tp, z);
-        assert_eq!(cuts.len(), 5, "{cuts:?}");
-        assert!(same_point(cuts[3].to(), Point3::new(0.0, 0.0, z)));
-        assert!(same_point(cuts[4].to(), Point3::new(5.0, 0.0, z)));
-    }
-
-    // Part-way along an arc: a circle of radius 10 (two half arcs), overlap a quarter turn.
-    let circle = Polyline {
-        vertices: vec![
-            Vertex {
-                x: 10.0,
-                y: 0.0,
-                bulge: 1.0,
-            },
-            Vertex {
-                x: -10.0,
-                y: 0.0,
-                bulge: 1.0,
-            },
-        ],
-        closed: true,
-    };
-    let p = ProfileSettings {
-        side: ProfileSide::OnLine,
-        overlap: 10.0 * std::f64::consts::FRAC_PI_2,
-        ..ProfileSettings::default()
-    };
-    let tp = profile(&[(1, circle)], &settings(6.0, -1.0, 1.0), &p);
-    let cuts = cuts_at(&tp, -1.0);
-    let last = cuts.last().unwrap();
-    assert!(
-        same_point(last.to(), Point3::new(0.0, 10.0, -1.0)),
-        "{last:?}"
-    );
-    assert!(matches!(last, Move::Arc { ccw: true, .. }));
-}
-
-#[test]
 fn shapes_are_cut_nearest_next() {
     // Listed: far right, far left, middle. Cut: the first listed, then the nearest (middle),
     // then the left one.

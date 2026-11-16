@@ -235,7 +235,6 @@ fn profile_generates_and_is_saved() {
     let mut o = proj.operation(op).unwrap().clone();
     o.common.target_depth = Some(-3.0);
     if let OperationKind::Profile(p) = &mut o.kind {
-        p.overlap = 2.0;
         p.side = ProfileSide::Inside;
     }
     proj.set_operation(o.clone()).unwrap();

@@ -302,7 +302,6 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 | Milling direction | Conventional / Climb | Conventional | v1 |
 | Cut ordering | Depth first / Level first (across multiple shapes) | Depth first | v1 |
 | Cut width | Total wall width; extra passes stepped by Stepover | 0 (= one tool width) | later |
-| Overlap | How far a closed profile cuts past its start point, on every level | 0 | v1 |
 | Corner overcut | Dog-bone style corner relief | false | later |
 | Holding tabs | | none | later |
 
@@ -310,7 +309,6 @@ Behaviour (observed in the reference output): outside corners get an arc of tool
 Decided for when Profile is built (2026-11-16):
 - **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
   walls clockwise; Climb is the reverse (matches the reference output).
-- **Overlap**: a setting, how far a closed profile cuts past its start point; default 0.
 - **Start point**: the shape's first point. No start point setting.
 
 Decided when Profile was built (2026-11-16):
@@ -405,8 +403,8 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 9. Open questions
 
-None at the moment. Answered 2026-11-16: profile overlap is a setting, default 0 (6.2); fast
-plunge height is a setting, default 1 mm (6.1).
+None at the moment. Answered 2026-11-16: fast plunge height is a setting, default 1 mm (6.1).
+Profile has no overlap setting (user's decision, 2026-11-16).
 
 ## 10. Out of scope for v1
 

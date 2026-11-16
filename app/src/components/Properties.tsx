@@ -480,7 +480,6 @@ function KindRows({
           </Row>
           {direction}
           {ordering}
-          <Row label="Overlap">{num(k.overlap, (overlap) => kind({ overlap }))}</Row>
         </>
       );
     }

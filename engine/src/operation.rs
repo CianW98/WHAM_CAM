@@ -115,8 +115,6 @@ pub struct ProfileSettings {
     pub side: ProfileSide,
     pub milling_direction: MillingDirection,
     pub cut_ordering: CutOrdering,
-    /// How far a closed profile carries on past its start point (mm).
-    pub overlap: f64,
 }
 
 impl Default for ProfileSettings {
@@ -125,7 +123,6 @@ impl Default for ProfileSettings {
             side: ProfileSide::Outside,
             milling_direction: MillingDirection::Conventional,
             cut_ordering: CutOrdering::DepthFirst,
-            overlap: 0.0,
         }
     }
 }
@@ -220,10 +217,7 @@ impl Operation {
             "The roughing clearance can't overcut by the tool radius or more.",
         )?;
         match &self.kind {
-            OperationKind::Profile(p) => ok(
-                p.overlap.is_finite() && p.overlap >= 0.0,
-                "The overlap can't be negative.",
-            ),
+            OperationKind::Profile(_) => Ok(()),
             OperationKind::Pocket(p) => ok(
                 p.stepover.is_finite() && p.stepover > 0.0 && p.stepover <= 1.0,
                 "The stepover must be more than 0 and at most 1 (a fraction of the tool diameter).",

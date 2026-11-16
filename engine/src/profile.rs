@@ -25,7 +25,7 @@ impl Cut {
         }
     }
 
-    /// Where the tool is when the cut is done (ignoring any overlap).
+    /// Where the tool is when the cut is done.
     fn end(&self) -> Point {
         match self {
             Cut::Loop(pl) => pl.vertices[0].point(),
@@ -166,12 +166,7 @@ pub fn profile_toolpath(
         for cut in &shapes[si] {
             b.approach(cut.start(), above, z);
             match cut {
-                Cut::Loop(pl) => {
-                    b.cut_loop(pl, z);
-                    if p.overlap > 0.0 {
-                        b.cut_overlap(pl, z, p.overlap);
-                    }
-                }
+                Cut::Loop(pl) => b.cut_loop(pl, z),
                 Cut::Open(pl) => b.cut_open(pl, z),
             }
         }

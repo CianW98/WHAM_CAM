@@ -218,30 +218,6 @@ impl Builder<'_> {
         }
     }
 
-    /// Carries on round a closed loop from its first vertex for `distance` mm (at most one
-    /// lap), ending part-way along a segment if needed. Used for a profile's overlap.
-    pub(crate) fn cut_overlap(&mut self, pl: &Polyline, z: f64, distance: f64) {
-        let v = &pl.vertices;
-        let n = v.len();
-        let mut left = distance.min(loop_length(pl));
-        for i in 0..n {
-            if left <= 1e-9 {
-                break;
-            }
-            let (a, b) = (v[i], v[(i + 1) % n]);
-            let len = segment_length(a, b);
-            if len <= left + 1e-9 {
-                self.cut_segment(a.point(), b.point(), a.bulge, z);
-                left -= len;
-            } else {
-                let t = left / len;
-                let end = point_along(a, b, t);
-                self.cut_segment(a.point(), end, part_bulge(a, b, 0.0, t), z);
-                left = 0.0;
-            }
-        }
-    }
-
     /// One straight or arc move from `a` to `b` at height `z` (nothing if it has no length).
     fn cut_segment(&mut self, a: Point, b: Point, bulge: f64, z: f64) {
         let to = Point3::new(b.x, b.y, z);
@@ -260,30 +236,6 @@ impl Builder<'_> {
                 }
             }
         }
-    }
-}
-
-/// Length of a polyline segment (true arc length for arcs).
-pub(crate) fn segment_length(a: Vertex, b: Vertex) -> f64 {
-    match bulge_arc(a.point(), b.point(), a.bulge) {
-        Some(arc) => arc.radius * arc.sweep.abs(),
-        None => a.point().distance_to(b.point()),
-    }
-}
-
-/// Length all the way round a closed polyline.
-pub(crate) fn loop_length(pl: &Polyline) -> f64 {
-    let v = &pl.vertices;
-    (0..v.len())
-        .map(|i| segment_length(v[i], v[(i + 1) % v.len()]))
-        .sum()
-}
-
-/// The point a fraction `t` (0..1) of the way along a segment, by length.
-pub(crate) fn point_along(a: Vertex, b: Vertex, t: f64) -> Point {
-    match bulge_arc(a.point(), b.point(), a.bulge) {
-        Some(arc) => on_circle(arc.center, arc.radius, arc.start + arc.sweep * t),
-        None => Point::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t),
     }
 }
 

@@ -102,8 +102,6 @@ export interface ProfileSettings {
   side: ProfileSide;
   milling_direction: MillingDirection;
   cut_ordering: CutOrdering;
-  /** How far a closed profile carries on past its start point (mm). */
-  overlap: number;
 }
 
 export type OperationKind = ({ type: "Profile" } & ProfileSettings) | ({ type: "Pocket" } & PocketSettings);
