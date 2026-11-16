@@ -203,8 +203,10 @@ export default function App() {
     async (d: Draft) => {
       setDraft(emptyDraft(d.tool));
       try {
-        await engine.addDraft(drawLayerRef.current, d);
+        const id = await engine.addDraft(drawLayerRef.current, d);
         await refresh();
+        // The finished shape becomes the selection, so its values show in Properties.
+        setSelection({ kind: "objects", ids: [id] });
       } catch (err) {
         notify("error", String(err));
       }

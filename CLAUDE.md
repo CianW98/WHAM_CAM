@@ -151,7 +151,8 @@ Done:
 - Roadmap for post-v1 ideas: `docs/roadmap.md`. Build setup moved from the spec to the README.
 - Drawing tools (spec 5.2): line, arc (start, end, centre; CCW), circle, rectangle, polyline with
   tangent arcs (A/L), point list; snapping (grid, end, mid, centre) in the engine (`draw.rs`);
-  typed absolute `x,y`; current layer; editable shape values and per-project grid spacing.
+  current layer; finished shape is selected; editable shape values and per-project grid spacing.
+  (Typed-coordinate box removed at the user's request: unintuitive.)
 
 Next:
 - User check of the drawing tools in the app.

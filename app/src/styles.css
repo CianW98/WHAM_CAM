@@ -422,33 +422,6 @@ button.primary {
   font-size: 11px;
   color: var(--accent);
 }
-.typed-point {
-  position: absolute;
-  left: 8px;
-  bottom: 26px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #c8c8d0;
-  font-size: 12px;
-}
-.typed-point input {
-  width: 140px;
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 12px;
-  padding: 2px 4px;
-  background: #3a3a44;
-  color: #eee;
-  border: 1px solid #50505c;
-  border-radius: 2px;
-}
-.typed-point input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.typed-point input.bad {
-  border-color: #e05050;
-}
 .point-table {
   width: 100%;
   border-collapse: collapse;

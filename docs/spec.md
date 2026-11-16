@@ -135,12 +135,12 @@ A classic CAD/CAM layout, with a toolbar:
   - **Point**: each click adds a point; Enter or double-click makes them one point list.
   - Esc cancels the shape in progress; a second Esc stops drawing.
 - New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
-- Points are set by clicking or by typing coordinates while drawing. Clicks snap to end points,
-  mid points and centres of shapes (within a few pixels) or else to the grid; **Grid** and
-  **Objects** snap toggles sit in the drawing area, and a marker shows what was snapped to.
-  Typing a number while drawing opens a box for an exact absolute point (`x,y`, then Enter).
-- Exact values (points, radius/diameter, angles, polyline corners, closed) can be edited in the
-  properties panel afterwards. Splines and ellipses are read-only.
+- Points are set by clicking. Clicks snap to end points, mid points and centres of shapes
+  (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the
+  drawing area, and a marker shows what was snapped to. A finished shape becomes the selection.
+- Exact values are edited in the properties panel afterwards: line ends, arc centre/radius/angles,
+  circle centre/radius, polyline closed, point-list points. Splines and ellipses are read-only.
+  (A typed-coordinate box while drawing was tried and removed as unintuitive.)
 - Grid spacing: a project setting (default 10 mm), in the project's properties.
 
 ### 5.2a Selection

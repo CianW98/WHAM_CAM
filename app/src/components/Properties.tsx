@@ -72,7 +72,7 @@ function PointRows({ label, p, set }: { label: string; p: Point; set: (p: Point)
   );
 }
 
-/** A table of X/Y boxes, one row per point (polyline corners, point lists). */
+/** A table of X/Y boxes, one row per point of a point list. */
 function PointTable({ points, set }: { points: Point[]; set: (i: number, p: Point) => Promise<boolean> }) {
   return (
     <tr>
@@ -136,9 +136,6 @@ function ShapeRows({ shape, edit }: { shape: Shape; edit: EditShape }) {
           <Row label="Radius">
             <NumberField value={shape.radius} onSave={(radius) => edit({ ...shape, radius })} />
           </Row>
-          <Row label="Diameter">
-            <NumberField value={shape.radius * 2} onSave={(d) => edit({ ...shape, radius: d / 2 })} />
-          </Row>
         </>
       );
     case "Polyline": {
@@ -153,12 +150,6 @@ function ShapeRows({ shape, edit }: { shape: Shape; edit: EditShape }) {
             />
           </Row>
           <Row label="Number of segments">{segments}</Row>
-          <PointTable
-            points={shape.vertices}
-            set={(i, p) =>
-              edit({ ...shape, vertices: shape.vertices.map((v, j) => (j === i ? { ...v, x: p.x, y: p.y } : v)) })
-            }
-          />
         </>
       );
     }
