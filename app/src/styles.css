@@ -626,21 +626,54 @@ button.primary {
   flex: 1 1 120px;
   min-width: 80px;
 }
-.playback-bar select {
-  background: #3a3a44;
-  color: #ddd;
+.speed-picker {
+  position: relative;
+  flex: none;
+}
+.speed-picker button {
+  min-width: 52px;
+}
+/* Opens upwards, above the bar. */
+.speed-list {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  background: rgba(30, 30, 38, 0.97);
   border: 1px solid #50505c;
+  border-radius: 4px;
+  padding: 2px 0;
+  z-index: 20;
+}
+.speed-list div {
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.speed-list div:hover {
+  background: #3a3a44;
+}
+.speed-list div.selected {
+  color: #fff;
+  background: var(--accent);
 }
 .playback-time,
 .playback-readout {
   font-family: ui-monospace, Consolas, monospace;
-  white-space: nowrap;
-}
-.playback-readout {
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Fixed widths, so changing numbers never move the slider or speed box. */
+.playback-time {
+  flex: none;
+  width: 20ch;
+}
+.playback-readout {
+  flex: 0 1 68ch;
   min-width: 0;
-  flex: 0 1 auto;
+  width: 68ch;
 }
 .viewport.with-bar .cursor-readout {
   bottom: 46px;

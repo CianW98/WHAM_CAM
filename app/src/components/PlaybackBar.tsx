@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Playback } from "../engine";
 import { formatTime, stepAt, toolAt } from "../playback";
 
@@ -69,14 +69,15 @@ export default function PlaybackBar({ playback, time, onTime, playing, onPlaying
     onTime(Math.min(total, end));
   };
 
-  const fmt = (n: number) => n.toFixed(3);
+  // Fixed-width numbers, so the controls don't shift as the values change.
+  const fmt = (n: number) => n.toFixed(3).padStart(9);
   return (
     <div className="playback-bar" onPointerDown={(e) => e.stopPropagation()}>
       <button title="Back to start" onClick={() => (onPlaying(false), onTime(0))}>
         ⏮
       </button>
       <button title="One move back" onClick={back}>
-        ◀
+        |◀
       </button>
       <button className="play" title={playing ? "Pause" : "Play"} onClick={play}>
         {playing ? "⏸" : "▶"}
@@ -95,23 +96,59 @@ export default function PlaybackBar({ playback, time, onTime, playing, onPlaying
           onTime(Number(e.target.value));
         }}
       />
-      <select value={speed} title="Playback speed (× real time)" onChange={(e) => onSpeed(Number(e.target.value))}>
-        {SPEEDS.map((s) => (
-          <option key={s} value={s}>
-            {s}×
-          </option>
-        ))}
-      </select>
+      <SpeedPicker speed={speed} onSpeed={onSpeed} />
       <span className="playback-time" title="Estimated: rapids assumed at 5000 mm/min">
         {formatTime(time)} / {formatTime(total)} (est.)
       </span>
       {step && at && (
         <span className="playback-readout">
-          {names.get(step.operation_id) ?? `Operation ${step.operation_id}`} · Move {step.move_number} ·{" "}
-          {step.kind}
-          {step.feed !== null ? ` F${step.feed}` : ""} · X {fmt(at.point[0])} Y {fmt(at.point[1])} Z{" "}
+          {names.get(step.operation_id) ?? `Operation ${step.operation_id}`} · Move{" "}
+          {String(step.move_number).padEnd(5)} {step.kind.padEnd(6)}{" "}
+          {(step.feed !== null ? `F${step.feed}` : "").padEnd(6)} X{fmt(at.point[0])} Y{fmt(at.point[1])} Z
           {fmt(at.point[2])}
         </span>
+      )}
+    </div>
+  );
+}
+
+/** Speed choice that always opens upwards (the bar sits at the bottom of the screen). */
+function SpeedPicker({ speed, onSpeed }: { speed: number; onSpeed: (s: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close when clicking anywhere else.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", away, true);
+    return () => window.removeEventListener("pointerdown", away, true);
+  }, [open]);
+
+  return (
+    <div className="speed-picker" ref={ref}>
+      <button title="Playback speed (× real time)" onClick={() => setOpen(!open)}>
+        {speed}×
+      </button>
+      {open && (
+        <div className="speed-list" role="listbox">
+          {[...SPEEDS].reverse().map((s) => (
+            <div
+              key={s}
+              role="option"
+              aria-selected={s === speed}
+              className={s === speed ? "selected" : ""}
+              onClick={() => {
+                onSpeed(s);
+                setOpen(false);
+              }}
+            >
+              {s}×
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
