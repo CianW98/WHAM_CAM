@@ -248,6 +248,48 @@ export function transform(ids: number[], op: TransformOp): Promise<void> {
   return invoke<void>("transform", { ids, op });
 }
 
+/** Result of a join. */
+export interface JoinReport {
+  /** The new polylines' ids. */
+  ids: number[];
+  /** How many shapes went into them. */
+  joined: number;
+  /** How many of the new polylines are closed. */
+  closed: number;
+  /** Selected shapes left as they were. */
+  skipped: number;
+}
+
+/** Result of breaking at intersections. */
+export interface BreakReport {
+  /** The pieces' ids. */
+  ids: number[];
+  /** How many shapes were broken. */
+  broken: number;
+  /** How many distinct crossing points were found. */
+  crossings: number;
+}
+
+/** Joins lines, arcs and open polylines whose ends are within `tolerance` mm into polylines. */
+export function join(ids: number[], tolerance: number): Promise<JoinReport> {
+  return invoke<JoinReport>("join", { ids, tolerance });
+}
+
+/** Breaks polylines and rectangles into lines and arcs. Returns the pieces' ids. */
+export function explode(ids: number[]): Promise<number[]> {
+  return invoke<number[]>("explode", { ids });
+}
+
+/** Closes open polylines. Returns how many were closed. */
+export function closePolylines(ids: number[]): Promise<number> {
+  return invoke<number>("close_polylines", { ids });
+}
+
+/** Breaks shapes where they cross or touch each other. */
+export function breakAtIntersections(ids: number[]): Promise<BreakReport> {
+  return invoke<BreakReport>("break_at_intersections", { ids });
+}
+
 /** What `transform` would give, for a preview. Changes nothing. */
 export function transformPreview(ids: number[], op: TransformOp): Promise<DisplayShape[]> {
   return invoke<DisplayShape[]>("transform_preview", { ids, op });

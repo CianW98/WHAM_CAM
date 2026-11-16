@@ -108,7 +108,7 @@ export default function App() {
   );
   const [hasClipboard, setHasClipboard] = useState(false);
   // Last values typed into the transform dialogs, offered again next time.
-  const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1 });
+  const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1, tolerance: 0.01 });
 
   // Moving by clicking / pasting (null = neither). A ref as well, like the draft below.
   const [special, setSpecialState] = useState<Special | null>(null);
@@ -386,6 +386,75 @@ export default function App() {
     notify("info", `Cut ${plural(n, "object")}.`);
   }, [ids, notify, refresh]);
 
+  // --- Edit tools -----------------------------------------------------------------------------
+
+  /** Join…: ask for the tolerance, then join the selected lines, arcs and open polylines. */
+  const joinSelected = useCallback(async () => {
+    const targets = ids;
+    if (targets.length === 0) return;
+    const last = lastValues.current;
+    const v = await askNumbers({
+      title: `Join ${plural(targets.length, "object")}`,
+      fields: [{ label: "Join ends closer than (mm)", value: last.tolerance }],
+    });
+    if (!v) return;
+    last.tolerance = v[0];
+    const r = await engine.join(targets, v[0]);
+    await refresh();
+    if (r.ids.length === 0) {
+      notify("info", "Nothing to join: no line, arc or open polyline ends meet within that distance.");
+      return;
+    }
+    setSelection({ kind: "objects", ids: r.ids });
+    const open = r.ids.length - r.closed;
+    const made = [r.closed > 0 ? plural(r.closed, "closed polyline") : "", open > 0 ? plural(open, "open polyline") : ""]
+      .filter(Boolean)
+      .join(" and ");
+    const left = r.skipped > 0 ? ` ${plural(r.skipped, "shape")} couldn't be joined.` : "";
+    notify("info", `Joined ${plural(r.joined, "shape")} into ${made}.${left}`);
+  }, [ids, askNumbers, refresh, notify]);
+
+  const explodeSelected = useCallback(async () => {
+    if (ids.length === 0) return;
+    const pieces = await engine.explode(ids);
+    if (pieces.length === 0) {
+      notify("info", "Nothing to explode: only polylines and rectangles can be exploded.");
+      return;
+    }
+    await refresh();
+    setSelection({ kind: "objects", ids: pieces });
+    notify("info", `Exploded into ${plural(pieces.length, "piece")}.`);
+  }, [ids, refresh, notify]);
+
+  const closeSelected = useCallback(async () => {
+    if (ids.length === 0) return;
+    const n = await engine.closePolylines(ids);
+    if (n === 0) {
+      notify("info", "Nothing to close: select open polylines with at least 3 points.");
+      return;
+    }
+    await refresh();
+    notify("info", `Closed ${plural(n, "polyline")}.`);
+  }, [ids, refresh, notify]);
+
+  const breakSelected = useCallback(async () => {
+    if (ids.length < 2) {
+      notify("info", "Select at least 2 shapes that cross to break them.");
+      return;
+    }
+    const r = await engine.breakAtIntersections(ids);
+    if (r.ids.length === 0) {
+      notify("info", "Nothing to break: the selected shapes don't cross or touch.");
+      return;
+    }
+    await refresh();
+    setSelection({ kind: "objects", ids: r.ids });
+    notify(
+      "info",
+      `Broke ${plural(r.broken, "shape")} into ${plural(r.ids.length, "piece")} at ${plural(r.crossings, "crossing")}.`,
+    );
+  }, [ids, refresh, notify]);
+
   const startPaste = useCallback(() => {
     if (!hasClipboard) return;
     setDraft(null);
@@ -572,7 +641,13 @@ export default function App() {
         disabled: disabled.has("Delete"),
         action: () => run(deleteSelected),
       } as MenuItem,
-      editLater: [sep(later("Join")), later("Split / Explode"), later("Close polyline"), later("Dimension")],
+      editTools: [
+        sep({ label: "Join…", disabled: none, action: () => run(joinSelected) }),
+        { label: "Explode", disabled: none, action: () => run(explodeSelected) },
+        { label: "Break at intersections", disabled: ids.length < 2, action: () => run(breakSelected) },
+        { label: "Close polyline", disabled: none, action: () => run(closeSelected) },
+        later("Dimension"),
+      ] as MenuItem[],
       select: [
         { label: "Select All", shortcut: "Ctrl+A", action: () => run(selectAll) },
         {
@@ -603,7 +678,7 @@ export default function App() {
       { label: "View", items: c.view },
       { label: "Draw", items: c.draw },
       c.transform,
-      { label: "Edit", items: [c.del, ...c.editLater] },
+      { label: "Edit", items: [c.del, ...c.editTools] },
       c.sep(first),
       ...restSelect,
       c.sep(cut),
@@ -640,7 +715,7 @@ export default function App() {
           c.sep(first),
           ...restSelect,
           c.sep(c.transform),
-          ...c.editLater,
+          ...c.editTools,
         ],
       },
       { label: "Draw", items: c.draw },

@@ -7,8 +7,8 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::State;
 use wham_engine::{
-    BoxMode, DisplayData, DisplayShape, Document, Draft, DxfInfo, ImportReport, Point, Project,
-    Shape, Snap, SnapOptions, TransformOp,
+    BoxMode, BreakReport, DisplayData, DisplayShape, Document, Draft, DxfInfo, ImportReport,
+    JoinReport, Point, Project, Shape, Snap, SnapOptions, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -148,6 +148,26 @@ fn transform(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Result<(
 }
 
 #[tauri::command]
+fn join(ids: Vec<u32>, tolerance: f64, state: State<AppState>) -> Result<JoinReport, String> {
+    state.0.lock().unwrap().join(&ids, tolerance)
+}
+
+#[tauri::command]
+fn explode(ids: Vec<u32>, state: State<AppState>) -> Vec<u32> {
+    state.0.lock().unwrap().explode(&ids)
+}
+
+#[tauri::command]
+fn close_polylines(ids: Vec<u32>, state: State<AppState>) -> usize {
+    state.0.lock().unwrap().close_polylines(&ids)
+}
+
+#[tauri::command]
+fn break_at_intersections(ids: Vec<u32>, state: State<AppState>) -> BreakReport {
+    state.0.lock().unwrap().break_at_intersections(&ids)
+}
+
+#[tauri::command]
 fn transform_preview(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Vec<DisplayShape> {
     state.0.lock().unwrap().transform_preview(&ids, op)
 }
@@ -223,7 +243,11 @@ pub fn run() {
             paste_preview,
             paste,
             all_ids,
-            ids_on_layer
+            ids_on_layer,
+            join,
+            explode,
+            close_polylines,
+            break_at_intersections
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHAM_CAM");

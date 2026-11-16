@@ -82,8 +82,8 @@ A classic CAD/CAM layout, with a toolbar:
 ```
 
 - **Menu bar** across the top: File (New, Open, Save, Save As, Import DXF), View, Edit (Undo/Redo,
-  Cut/Copy/Paste, Delete, Select All / On Layer, Transform, Join, Split, Close polyline,
-  Dimension), Draw (the drawing tools), Machining (Profile, Pocket, Drill, Tool library, Generate
+  Cut/Copy/Paste, Delete, Select All / On Layer, Transform, Join, Explode, Break at
+  intersections, Close polyline, Dimension), Draw (the drawing tools), Machining (Profile, Pocket, Drill, Tool library, Generate
   toolpaths, Produce G-code). Click a heading to open it; while one is open, hovering another
   switches to it. Items not built yet are greyed.
 - **Toolbar**: file actions (new, open, save, import), drawing tools (line, arc, circle,
@@ -189,8 +189,18 @@ A classic CAD/CAM layout, with a toolbar:
   cursor (by the centre of the copied shapes) and a click drops it; pasted shapes go back onto
   the layers they came from and are selected. Select All (Ctrl+A), Select All On Layer
   (Ctrl+Shift+A, current layer).
-- Join (lines/arcs into polylines, with a tolerance), split/explode, close polyline.
-- Basic dimensions: linear and radius/diameter annotations (display only, no effect on G-code).
+- **Join…** asks for a tolerance (default 0.01 mm, remembered). Lines, arcs and open polylines
+  whose ends are within it are chained into polylines (pieces turned round as needed; where
+  several ends meet, the closest wins). A chain whose ends meet is closed. Each new polyline takes
+  the layer of its first piece. Shapes that touch nothing, and other shape types, are left alone.
+- **Explode**: polylines become separate lines and arcs; PolyRectangles become 4 lines.
+- **Break at intersections**: wherever two or more selected shapes cross or touch, each shape
+  running through that point is cut there. Lines, arcs, circles, polylines and PolyRectangles
+  (which become polylines). A circle needs 2 cuts to become arcs; a closed polyline cut once
+  opens at the cut. A shape is not cut where it crosses itself.
+- **Close polyline**: closes open polylines; a last point on top of the first is dropped.
+- Each of these is one undo step, and the results become the selection.
+- **Dimensions** are put off until later in v1, together with more DXF features (to be listed).
 - Undo/redo.
 
 ### 5.4 Operations

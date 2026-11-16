@@ -162,8 +162,11 @@ Done:
   points pop-up for polylines/point lists, direction (CW/CCW). The user wants our own look,
   not a copy of the reference program's (2026-11-16).
 
+- Menu bar (File, View, Edit, Draw, Machining) sharing its commands with the right-click menu.
+- Edit tools (spec 5.3) in the engine (`edit.rs`): Join (tolerance dialog), Explode, Break at
+  intersections, Close polyline.
+
 Next:
-- User check of the drawing tools, right-click menu, transforms and Properties in the app.
-- Rest of the edit tools (spec 5.3): join, split/explode, close polyline, dimensions
-  (already greyed in the Edit menu).
+- User check of the drawing tools, menus, transforms, edit tools and Properties in the app.
+- Dimensions and more DXF features: later in v1 (user to list the DXF features).
 - Then the offsetting library (candidate: cavalier_contours) and toolpaths.
