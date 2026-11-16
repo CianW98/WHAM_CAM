@@ -84,9 +84,8 @@ A classic CAD/CAM layout, with a toolbar:
   Produce G-code. Everything on the toolbar is also in the menus.
 - **Tree**: Layers → drawing objects; Machining → Parts → operations. Click to select,
   right-click for actions (rename, delete, enable/disable, generate toolpath).
-- **Properties panel**: every setting of whatever is selected, editable in place, as a property
-  grid with collapsible sections ("(General)", then the shape's own section). Read-only values
-  are greyed. A point is one `x,y` box. Polyline and point-list points open in a pop-up table
+- **Properties panel**: every setting of whatever is selected, editable in place. A point is one
+  `x,y` box. Polyline and point-list points open in a pop-up table
   ("Points (Collection) …": X, Y and, for polylines, bulge; add/remove points, OK saves) instead
   of filling the panel. Closed polylines and rectangles show their direction (CW/CCW).
 - **Right-click menu** in the drawing area (right-click without dragging; right-drag pans):

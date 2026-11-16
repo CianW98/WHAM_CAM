@@ -1,7 +1,7 @@
-// The properties panel: a property grid with collapsible sections, in the style of classic
-// simple CAM programs. Greyed rows are read-only. Values only change through the engine.
+// The properties panel: the settings of whatever is selected, editable in place.
+// Values only change through the engine.
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DisplayData, Document, Layer, Point, Shape } from "../engine";
 import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
@@ -25,41 +25,17 @@ type EditShape = (shape: Shape) => Promise<boolean>;
 
 // --- Grid building blocks ---------------------------------------------------------------------
 
-/** Names of the collapsed sections, shared so a section stays closed as the selection changes. */
-const Collapsed = createContext<{ closed: Set<string>; toggle: (title: string) => void }>({
-  closed: new Set(),
-  toggle: () => {},
-});
-
 function Grid({ children }: { children: ReactNode }) {
   return (
     <table className="props">
-      {children}
+      <tbody>{children}</tbody>
     </table>
   );
 }
 
-/** A collapsible group of rows with a header bar. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const { closed, toggle } = useContext(Collapsed);
-  const open = !closed.has(title);
+function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <tbody>
-      <tr className="prop-section" onClick={() => toggle(title)}>
-        <td colSpan={2}>
-          <span className="prop-toggle">{open ? "⊟" : "⊞"}</span>
-          {title}
-        </td>
-      </tr>
-      {open && children}
-    </tbody>
-  );
-}
-
-/** One property. Read-only rows are greyed. */
-function Row({ label, readOnly, children }: { label: string; readOnly?: boolean; children: ReactNode }) {
-  return (
-    <tr className={readOnly ? "read-only" : ""}>
+    <tr>
       <th>{label}</th>
       <td>{children}</td>
     </tr>
@@ -129,12 +105,7 @@ function PointField({ value, onSave }: { value: Point; onSave: (p: Point) => Pro
 }
 
 function BoolField({ value, onSave }: { value: boolean; onSave: (v: boolean) => void }) {
-  return (
-    <select className="prop-input" value={value ? "True" : "False"} onChange={(e) => onSave(e.target.value === "True")}>
-      <option>True</option>
-      <option>False</option>
-    </select>
-  );
+  return <input type="checkbox" checked={value} onChange={(e) => onSave(e.target.checked)} />;
 }
 
 /** "(Collection)" with a … button that opens the points pop-up. */
@@ -151,8 +122,8 @@ function CollectionField({ onOpen }: { onOpen: () => void }) {
 
 // --- Shapes ---------------------------------------------------------------------------------
 
-/** The sections for a shape's own values; editable except for splines and ellipses. */
-function ShapeSections({
+/** The rows for a shape's own values; editable except for splines and ellipses. */
+function ShapeRows({
   shape,
   direction,
   edit,
@@ -166,54 +137,54 @@ function ShapeSections({
   switch (shape.type) {
     case "Line":
       return (
-        <Section title="Line">
-          <Row label="Start Point">
+        <>
+          <Row label="Start">
             <PointField value={shape.start} onSave={(start) => edit({ ...shape, start })} />
           </Row>
-          <Row label="End Point">
+          <Row label="End">
             <PointField value={shape.end} onSave={(end) => edit({ ...shape, end })} />
           </Row>
-        </Section>
+        </>
       );
     case "Arc":
       return (
-        <Section title="Arc">
-          <Row label="Centre">
+        <>
+          <Row label="Center">
             <PointField value={shape.center} onSave={(center) => edit({ ...shape, center })} />
           </Row>
           <Row label="Radius">
             <NumberField value={shape.radius} onSave={(radius) => edit({ ...shape, radius })} />
           </Row>
-          <Row label="Start Angle">
+          <Row label="Start angle">
             <NumberField value={shape.start_angle} onSave={(start_angle) => edit({ ...shape, start_angle })} />
           </Row>
-          <Row label="End Angle">
+          <Row label="End angle">
             <NumberField value={shape.end_angle} onSave={(end_angle) => edit({ ...shape, end_angle })} />
           </Row>
-        </Section>
+        </>
       );
     case "Circle":
       return (
-        <Section title="Circle">
-          <Row label="Centre">
+        <>
+          <Row label="Center">
             <PointField value={shape.center} onSave={(center) => edit({ ...shape, center })} />
           </Row>
           <Row label="Radius">
             <NumberField value={shape.radius} onSave={(radius) => edit({ ...shape, radius })} />
           </Row>
-        </Section>
+        </>
       );
     case "Polyline": {
       const segments = shape.closed ? shape.vertices.length : shape.vertices.length - 1;
       return (
-        <Section title="Polyline">
+        <>
           <Row label="Closed">
             <BoolField value={shape.closed} onSave={(closed) => void edit({ ...shape, closed })} />
           </Row>
-          <Row label="Direction" readOnly>
+          <Row label="Direction">
             {direction ?? ""}
           </Row>
-          <Row label="Number of Segments" readOnly>
+          <Row label="Number of segments">
             {segments}
           </Row>
           <Row label="Points">
@@ -225,22 +196,22 @@ function ShapeSections({
               }
             />
           </Row>
-        </Section>
+        </>
       );
     }
     case "Rectangle":
       return (
         <>
-          <Section title="Polyline">
-            <Row label="Direction" readOnly>
+          <>
+            <Row label="Direction">
               {direction ?? ""}
             </Row>
-            <Row label="Number of Segments" readOnly>
+            <Row label="Number of segments">
               4
             </Row>
-          </Section>
-          <Section title="Rectangle">
-            <Row label="Lower Left">
+          </>
+          <>
+            <Row label="Lower left">
               <PointField value={shape.lower_left} onSave={(lower_left) => edit({ ...shape, lower_left })} />
             </Row>
             <Row label="Width">
@@ -252,13 +223,13 @@ function ShapeSections({
             <Row label="Rotation">
               <NumberField value={shape.rotation} onSave={(rotation) => edit({ ...shape, rotation })} />
             </Row>
-          </Section>
+          </>
         </>
       );
     case "Points":
       return (
-        <Section title="Point List">
-          <Row label="Number of Points" readOnly>
+        <>
+          <Row label="Number of points">
             {shape.points.length}
           </Row>
           <Row label="Points">
@@ -270,44 +241,44 @@ function ShapeSections({
               }
             />
           </Row>
-        </Section>
+        </>
       );
     case "Spline":
       return (
-        <Section title="Spline">
-          <Row label="Degree" readOnly>
+        <>
+          <Row label="Degree">
             {shape.degree}
           </Row>
-          <Row label="Control Points" readOnly>
+          <Row label="Control points">
             {shape.control_points.length}
           </Row>
-          <Row label="Rational" readOnly>
+          <Row label="Rational">
             {shape.weights.length > 0 ? "True" : "False"}
           </Row>
-          <Row label="Closed" readOnly>
+          <Row label="Closed">
             {shape.closed ? "True" : "False"}
           </Row>
-        </Section>
+        </>
       );
     case "Ellipse":
       return (
-        <Section title="Ellipse">
-          <Row label="Centre" readOnly>
+        <>
+          <Row label="Center">
             {pointText(shape.center)}
           </Row>
-          <Row label="Major Axis" readOnly>
+          <Row label="Major axis">
             {pointText(shape.major_axis)}
           </Row>
-          <Row label="Ratio" readOnly>
+          <Row label="Ratio">
             {num(shape.ratio)}
           </Row>
-          <Row label="Start Parameter" readOnly>
+          <Row label="Start parameter">
             {num(shape.start_param)}
           </Row>
-          <Row label="End Parameter" readOnly>
+          <Row label="End parameter">
             {num(shape.end_param)}
           </Row>
-        </Section>
+        </>
       );
   }
 }
@@ -323,9 +294,9 @@ interface Edits {
   onSetGridSpacing: (mm: number) => Promise<boolean>;
 }
 
-function LayerSections({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer } & Edits) {
+function LayerRows({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer } & Edits) {
   return (
-    <Section title="(General)">
+    <>
       <Row label="Name">
         <TextField
           shown={layer.name}
@@ -337,10 +308,10 @@ function LayerSections({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer
         <ColorSwatch color={layer.color} onPick={(c) => onSetLayerColor(layer.name, c)} size="large" />{" "}
         <span className="muted">{layer.color}</span>
       </Row>
-      <Row label="Objects" readOnly>
+      <Row label="Objects">
         {layer.objects.length}
       </Row>
-    </Section>
+    </>
   );
 }
 
@@ -363,7 +334,7 @@ function Content({
       const layer = doc.layers[selection.layer];
       return layer ? (
         <Grid>
-          <LayerSections layer={layer} {...edits} />
+          <LayerRows layer={layer} {...edits} />
         </Grid>
       ) : (
         nothing
@@ -372,27 +343,27 @@ function Content({
     case "project":
       return (
         <Grid>
-          <Section title="(General)">
-            <Row label="Name" readOnly>
+          <>
+            <Row label="Name">
               {doc.name}
             </Row>
-          </Section>
-          <Section title="Drawing">
-            <Row label="Grid Spacing (mm)">
+          </>
+          <>
+            <Row label="Grid spacing (mm)">
               <NumberField value={doc.grid_spacing} onSave={edits.onSetGridSpacing} />
             </Row>
-          </Section>
+          </>
         </Grid>
       );
     case "part": {
       const part = doc.parts[selection.part];
       return part ? (
         <Grid>
-          <Section title="(General)">
-            <Row label="Name" readOnly>
+          <>
+            <Row label="Name">
               {part.name}
             </Row>
-          </Section>
+          </>
         </Grid>
       ) : (
         nothing
@@ -406,18 +377,18 @@ function Content({
         const direction = display?.shapes.find((s) => s.id === obj.id)?.direction ?? null;
         return (
           <Grid>
-            <Section title="(General)">
-              <Row label="ID" readOnly>
+            <>
+              <Row label="ID">
                 {obj.id}
               </Row>
-              <Row label="Layer" readOnly>
+              <Row label="Layer">
                 {layer.name}
               </Row>
-              <Row label="Primitive Type" readOnly>
+              <Row label="Type">
                 {shapeLabel(obj.shape)}
               </Row>
-            </Section>
-            <ShapeSections
+            </>
+            <ShapeRows
               key={obj.id}
               shape={obj.shape}
               direction={direction}
@@ -438,14 +409,6 @@ export default function Properties({
   selection,
   ...edits
 }: { doc: Document | null; display: DisplayData | null; selection: Selection } & Edits) {
-  const [closed, setClosed] = useState<Set<string>>(new Set());
-  const toggle = (title: string) =>
-    setClosed((c) => {
-      const next = new Set(c);
-      if (next.has(title)) next.delete(title);
-      else next.add(title);
-      return next;
-    });
   const [points, setPoints] = useState<{
     edit: PointsEdit;
     save: (pts: { x: number; y: number; bulge: number }[]) => Promise<boolean>;
@@ -453,7 +416,7 @@ export default function Properties({
 
   if (!doc) return <div className="empty">Select an item to see its properties.</div>;
   return (
-    <Collapsed.Provider value={{ closed, toggle }}>
+    <>
       <Content
         doc={doc}
         display={display}
@@ -462,6 +425,6 @@ export default function Properties({
         openPoints={(edit, save) => setPoints({ edit, save })}
       />
       {points && <PointsDialog edit={points.edit} onSave={points.save} onClose={() => setPoints(null)} />}
-    </Collapsed.Provider>
+    </>
   );
 }

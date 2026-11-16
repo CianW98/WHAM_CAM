@@ -123,55 +123,21 @@ button:hover {
 .props {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
-  background: #fff;
-  border: 1px solid #d6dbe3;
 }
 .props th,
 .props td {
   text-align: left;
-  padding: 2px 6px;
-  border-bottom: 1px solid #e6e9ee;
-  vertical-align: middle;
+  padding: 3px 4px;
+  border-bottom: 1px solid #e2e2e8;
+  vertical-align: top;
   font-weight: normal;
-  height: 24px;
 }
 .props th {
   width: 45%;
-  color: var(--text);
-  border-right: 1px solid #e6e9ee;
-  padding-left: 18px;
+  color: var(--muted);
 }
 .props td {
   word-break: break-word;
-}
-.props tr.read-only th,
-.props tr.read-only td {
-  color: #8a8f99;
-}
-.props .prop-section td {
-  background: #dce6f2;
-  color: #3a4252;
-  padding-left: 4px;
-  cursor: default;
-  user-select: none;
-}
-.prop-toggle {
-  display: inline-block;
-  width: 14px;
-  margin-right: 4px;
-  color: #5a6578;
-}
-.props .prop-input {
-  border-color: transparent;
-  background: transparent;
-  padding: 1px 2px;
-}
-.props .prop-input:hover {
-  border-color: var(--panel-border);
-}
-.props .prop-input:focus {
-  background: #fff;
 }
 .collection {
   display: flex;
@@ -204,7 +170,6 @@ button:hover {
   max-height: 50vh;
   overflow: auto;
   margin: 6px 0 12px;
-  border: 1px solid #d6dbe3;
 }
 .points-table {
   width: 100%;
@@ -213,17 +178,14 @@ button:hover {
 .points-table th {
   position: sticky;
   top: 0;
-  background: #eef1f5;
+  background: var(--panel-bg);
+  color: var(--muted);
   font-weight: normal;
   text-align: left;
   padding: 3px 6px;
 }
 .points-table td {
-  border-top: 1px solid #e6e9ee;
   padding: 1px 4px;
-}
-.points-table tbody tr:nth-child(even) {
-  background: #f7f7ec;
 }
 .points-table td:first-child {
   width: 2.5em;
@@ -232,8 +194,8 @@ button:hover {
 .points-table .cell {
   width: 100%;
   font: inherit;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
   padding: 2px 4px;
 }
 .points-table .cell:focus {
