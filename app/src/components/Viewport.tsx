@@ -1,10 +1,12 @@
 // The drawing area. It only DRAWS what the engine sends (display point lists) and reports
-// where the user clicked or dragged, in mm. Deciding which shape was clicked is done by the engine.
+// where the user clicked or dragged, in mm. Deciding which shape was clicked, where a point
+// snaps to and what a shape being drawn looks like is all done by the engine.
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { BoxMode, DisplayData } from "../engine";
+import * as engine from "../engine";
+import type { BoxMode, DisplayData, DisplayShape, Draft, Point, SnapKind, SnapOptions } from "../engine";
 
 const COLORS = {
   background: 0x2b2b33,
@@ -13,14 +15,18 @@ const COLORS = {
   axisX: 0xd03030,
   axisY: 0x30b030,
   selected: 0xffd24a,
+  draft: 0xe8e8f0,
 };
-const GRID_EXTENT = 1000; // mm either side of the origin
-const GRID_MINOR = 10; // mm
-const GRID_MAJOR = 50; // mm
+const GRID_EXTENT = 1000; // mm either side of the origin (less for very fine grids)
+const GRID_MAX_LINES = 500; // most grid lines either side of the origin
+const GRID_MAJOR_EVERY = 5; // every 5th grid line is drawn brighter
 const ZOOM_STEP = 1.15;
 const PICK_RADIUS_PX = 6; // how close (in screen pixels) a click must be to a shape
 const DRAG_THRESHOLD_PX = 4; // movement before a click becomes a box drag
 const MARKER_SIZE_PX = 7;
+const SNAP_RADIUS_PX = 10; // how close (in screen pixels) the cursor must be to snap to a shape
+const DASH_PX = 6; // dash and gap length of the shape being drawn
+const GAP_PX = 4;
 
 /** 2D view: centre of the screen in mm, and mm per screen pixel. */
 interface View2D {
@@ -36,6 +42,11 @@ interface Scene3 {
   persp: THREE.PerspectiveCamera;
   orbit: OrbitControls;
   shapes: THREE.Group;
+  grid: THREE.Group;
+  /** The rubber-band preview of the shape being drawn. */
+  draft: THREE.Group;
+  /** Re-checks the snap and preview at the last cursor position. */
+  hover: () => void;
   /** Drawn objects by engine id, so selection can recolour them without rebuilding. */
   byId: Map<number, THREE.Object3D[]>;
   materials: {
@@ -59,13 +70,32 @@ interface BoxDrag {
   y1: number;
 }
 
+interface SnapMark {
+  point: Point;
+  kind: SnapKind;
+  /** Where to draw the marker, in screen pixels. */
+  sx: number;
+  sy: number;
+}
+
 interface Props {
   display: DisplayData | null;
   selectedIds: Set<number>;
   /** Changes whenever the view should zoom to fit the drawing. */
   fitRequest: number;
+  gridSpacing: number;
+  /** The shape being drawn, or null when selecting (no drawing tool active). */
+  draft: Draft | null;
+  /** What to tell the user while drawing, e.g. "Click the start point". */
+  hint: string | null;
+  snapOptions: SnapOptions;
+  onSnapOptions: (o: SnapOptions) => void;
   onPick: (x: number, y: number, tolerance: number, add: boolean) => void;
   onBox: (x0: number, y0: number, x1: number, y1: number, mode: BoxMode, add: boolean) => void;
+  /** A point was clicked (already snapped) while drawing. */
+  onDrawPoint: (p: Point) => void;
+  /** Double-click while drawing: finish a polyline or point list. */
+  onFinishDraft: () => void;
 }
 
 function lineSegments(positions: number[], color: number, order: number): THREE.LineSegments {
@@ -77,21 +107,66 @@ function lineSegments(positions: number[], color: number, order: number): THREE.
   return lines;
 }
 
-function buildGrid(): THREE.Group {
+/** Grid lines every `spacing` mm. Fine grids cover a smaller area so the line count stays sane. */
+function buildGrid(spacing: number): THREE.Group {
+  const n = Math.max(1, Math.min(GRID_MAX_LINES, Math.floor(GRID_EXTENT / spacing)));
+  const extent = n * spacing;
   const minor: number[] = [];
   const major: number[] = [];
-  for (let v = -GRID_EXTENT; v <= GRID_EXTENT; v += GRID_MINOR) {
-    if (v === 0) continue; // the axes are drawn there
-    const target = v % GRID_MAJOR === 0 ? major : minor;
-    target.push(v, -GRID_EXTENT, 0, v, GRID_EXTENT, 0);
-    target.push(-GRID_EXTENT, v, 0, GRID_EXTENT, v, 0);
+  for (let i = -n; i <= n; i++) {
+    if (i === 0) continue; // the axes are drawn there
+    const v = i * spacing;
+    const target = i % GRID_MAJOR_EVERY === 0 ? major : minor;
+    target.push(v, -extent, 0, v, extent, 0);
+    target.push(-extent, v, 0, extent, v, 0);
   }
   const group = new THREE.Group();
   group.add(lineSegments(minor, COLORS.gridMinor, 0));
   group.add(lineSegments(major, COLORS.gridMajor, 1));
-  group.add(lineSegments([-GRID_EXTENT, 0, 0, GRID_EXTENT, 0, 0], COLORS.axisX, 2));
-  group.add(lineSegments([0, -GRID_EXTENT, 0, 0, GRID_EXTENT, 0], COLORS.axisY, 2));
+  group.add(lineSegments([-extent, 0, 0, extent, 0, 0], COLORS.axisX, 2));
+  group.add(lineSegments([0, -extent, 0, 0, extent, 0], COLORS.axisY, 2));
   return group;
+}
+
+/** Removes and frees everything in a group. */
+function clearGroup(group: THREE.Group) {
+  for (const child of [...group.children]) {
+    const o = child as THREE.Line;
+    o.geometry?.dispose();
+    for (const m of [o.material].flat()) m?.dispose();
+    group.remove(child);
+  }
+}
+
+/** Draws the preview of the shape being drawn: dashed lines, or markers for a point list. */
+function showDraft(s: Scene3, shape: DisplayShape | null) {
+  clearGroup(s.draft);
+  if (shape && shape.points.length > 0) {
+    const positions: number[] = [];
+    for (const [x, y] of shape.points) positions.push(x, y, 0);
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    let obj: THREE.Object3D;
+    if (shape.markers) {
+      obj = new THREE.Points(
+        geom,
+        new THREE.PointsMaterial({ color: COLORS.draft, size: MARKER_SIZE_PX, sizeAttenuation: false, depthTest: false }),
+      );
+    } else {
+      const mat = new THREE.LineDashedMaterial({
+        color: COLORS.draft,
+        dashSize: DASH_PX * s.view.scale,
+        gapSize: GAP_PX * s.view.scale,
+        depthTest: false,
+      });
+      const line = shape.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat);
+      line.computeLineDistances();
+      obj = line;
+    }
+    obj.renderOrder = 12;
+    s.draft.add(obj);
+  }
+  s.render();
 }
 
 function applyOrtho(s: Scene3) {
@@ -113,6 +188,13 @@ function screenToWorld(s: Scene3, px: number, py: number) {
   };
 }
 
+function worldToScreen(s: Scene3, p: Point) {
+  return {
+    x: (p.x - s.view.cx) / s.view.scale + s.width / 2,
+    y: s.height / 2 - (p.y - s.view.cy) / s.view.scale,
+  };
+}
+
 function fitTo(s: Scene3, bounds: [number, number, number, number]) {
   const [minX, minY, maxX, maxY] = bounds;
   const w = Math.max(maxX - minX, 1);
@@ -125,16 +207,30 @@ function fitTo(s: Scene3, bounds: [number, number, number, number]) {
   applyOrtho(s);
 }
 
-export default function Viewport({ display, selectedIds, fitRequest, onPick, onBox }: Props) {
+export default function Viewport({
+  display,
+  selectedIds,
+  fitRequest,
+  gridSpacing,
+  draft,
+  hint,
+  snapOptions,
+  onSnapOptions,
+  onPick,
+  onBox,
+  onDrawPoint,
+  onFinishDraft,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene3 | null>(null);
   const [mode, setMode] = useState<"2D" | "3D">("2D");
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [box, setBox] = useState<BoxDrag | null>(null);
+  const [snapMark, setSnapMark] = useState<SnapMark | null>(null);
 
-  // Latest callbacks, so the once-only event listeners below always call the current ones.
-  const callbacks = useRef({ onPick, onBox });
-  callbacks.current = { onPick, onBox };
+  // Latest props, so the once-only event listeners below always use the current ones.
+  const live = useRef({ onPick, onBox, onDrawPoint, onFinishDraft, draft, snapOptions });
+  live.current = { onPick, onBox, onDrawPoint, onFinishDraft, draft, snapOptions };
 
   // Create the WebGL scene once.
   useEffect(() => {
@@ -145,9 +241,12 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.add(buildGrid());
+    const grid = buildGrid(10);
+    scene.add(grid);
     const shapes = new THREE.Group();
     scene.add(shapes);
+    const draftGroup = new THREE.Group();
+    scene.add(draftGroup);
 
     const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
     const persp = new THREE.PerspectiveCamera(45, 1, 0.1, 20000);
@@ -174,6 +273,9 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       persp,
       orbit,
       shapes,
+      grid,
+      draft: draftGroup,
+      hover: () => {},
       byId: new Map(),
       materials: {
         line: cached(lineCache, (color) => new THREE.LineBasicMaterial({ color, depthTest: false })),
@@ -203,14 +305,61 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
     observer.observe(container);
     resize();
 
-    // 2D mouse: left click = pick, left drag = box select, middle/right drag = pan, wheel = zoom.
-    // In 3D the orbit controls take over.
+    // 2D mouse: left click = pick (or place a point while drawing), left drag = box select,
+    // middle/right drag = pan, wheel = zoom. In 3D the orbit controls take over.
     const canvas = renderer.domElement;
     let panFrom: { x: number; y: number } | null = null;
     let leftDown: { x: number; y: number; dragging: boolean } | null = null;
+    let mouse: { x: number; y: number } | null = null;
     const local = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    const snapAt = (m: { x: number; y: number }) => {
+      const w = screenToWorld(s, m.x, m.y);
+      const { draft, snapOptions } = live.current;
+      return engine.snap(w.x, w.y, SNAP_RADIUS_PX * s.view.scale, snapOptions, draft?.points ?? []);
+    };
+
+    // While drawing: ask the engine where the cursor snaps to and what the shape looks like
+    // with that as its next point. Only one request at a time; if the mouse moved meanwhile,
+    // go again with the latest position.
+    let hoverBusy = false;
+    let hoverAgain = false;
+    s.hover = async () => {
+      if (hoverBusy) {
+        hoverAgain = true;
+        return;
+      }
+      hoverBusy = true;
+      try {
+        do {
+          hoverAgain = false;
+          const draft = live.current.draft;
+          if (!draft || !mouse || s.mode !== "2D") {
+            showDraft(s, null);
+            setSnapMark(null);
+            break;
+          }
+          const snap = await snapAt(mouse);
+          const shape = await engine.previewShape(draft, snap.point);
+          if (hoverAgain) continue;
+          showDraft(s, live.current.draft ? shape : null);
+          const sp = worldToScreen(s, snap.point);
+          setSnapMark({ ...snap, sx: sp.x, sy: sp.y });
+        } while (hoverAgain);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        hoverBusy = false;
+      }
+    };
+
+    // Clicks and double-clicks while drawing are handled strictly in order, so a double-click
+    // never finishes a shape before its last point has been added.
+    let drawQueue: Promise<void> = Promise.resolve();
+    const enqueue = (step: () => Promise<void> | void) => {
+      drawQueue = drawQueue.then(step).catch((err) => console.error(err));
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -226,6 +375,7 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       };
       applyOrtho(s);
       s.render();
+      s.hover();
     };
     const onPointerDown = (e: PointerEvent) => {
       if (s.mode !== "2D") return;
@@ -252,35 +402,51 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
         if (!leftDown.dragging && Math.hypot(m.x - leftDown.x, m.y - leftDown.y) > DRAG_THRESHOLD_PX) {
           leftDown.dragging = true;
         }
-        if (leftDown.dragging) setBox({ x0: leftDown.x, y0: leftDown.y, x1: m.x, y1: m.y });
+        if (leftDown.dragging && !live.current.draft) setBox({ x0: leftDown.x, y0: leftDown.y, x1: m.x, y1: m.y });
       }
+      mouse = m;
       setCursor(screenToWorld(s, m.x, m.y));
+      if (live.current.draft || panFrom) s.hover();
     };
     const onPointerUp = (e: PointerEvent) => {
       panFrom = null;
       if (!leftDown || e.button !== 0) return;
       const m = local(e);
       const add = e.shiftKey || e.ctrlKey;
-      if (leftDown.dragging) {
+      if (live.current.draft) {
+        // Drawing: a click (or a short drag) places the snapped point.
+        enqueue(async () => {
+          const snap = await snapAt(m);
+          live.current.onDrawPoint(snap.point);
+        });
+      } else if (leftDown.dragging) {
         const a = screenToWorld(s, leftDown.x, leftDown.y);
         const b = screenToWorld(s, m.x, m.y);
         // CAD convention: drag left-to-right = fully inside; right-to-left = touching.
         const mode: BoxMode = m.x >= leftDown.x ? "Window" : "Crossing";
-        callbacks.current.onBox(a.x, a.y, b.x, b.y, mode, add);
+        live.current.onBox(a.x, a.y, b.x, b.y, mode, add);
       } else {
         const p = screenToWorld(s, m.x, m.y);
-        callbacks.current.onPick(p.x, p.y, PICK_RADIUS_PX * s.view.scale, add);
+        live.current.onPick(p.x, p.y, PICK_RADIUS_PX * s.view.scale, add);
       }
       leftDown = null;
       setBox(null);
     };
+    const onDoubleClick = () => {
+      if (s.mode === "2D" && live.current.draft) enqueue(() => live.current.onFinishDraft());
+    };
     const onContextMenu = (e: Event) => e.preventDefault();
-    const onLeave = () => setCursor(null);
+    const onLeave = () => {
+      mouse = null;
+      setCursor(null);
+      s.hover();
+    };
 
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("dblclick", onDoubleClick);
     canvas.addEventListener("contextmenu", onContextMenu);
     canvas.addEventListener("pointerleave", onLeave);
 
@@ -292,6 +458,23 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       sceneRef.current = null;
     };
   }, []);
+
+  // Rebuild the grid when its spacing changes.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s || !(gridSpacing > 0)) return;
+    s.scene.remove(s.grid);
+    clearGroup(s.grid);
+    s.grid = buildGrid(gridSpacing);
+    s.scene.add(s.grid);
+    s.render();
+  }, [gridSpacing]);
+
+  // Update the preview and snap marker when the shape being drawn or the snap settings change
+  // (also clears them when drawing stops).
+  useEffect(() => {
+    sceneRef.current?.hover();
+  }, [draft, snapOptions, display]);
 
   // Rebuild the drawn shapes when the engine's display data changes.
   useEffect(() => {
@@ -371,6 +554,7 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
       s.orbit.update();
       setCursor(null);
     }
+    s.hover();
     s.render();
   }, [mode]);
 
@@ -394,8 +578,42 @@ export default function Viewport({ display, selectedIds, fitRequest, onPick, onB
           </button>
         ))}
       </div>
+      {mode === "2D" && (
+        <div className="snap-toggle" title="Snapping while drawing">
+          <span>Snap</span>
+          <button
+            className={snapOptions.grid ? "active" : ""}
+            onClick={() => onSnapOptions({ ...snapOptions, grid: !snapOptions.grid })}
+          >
+            Grid
+          </button>
+          <button
+            className={snapOptions.objects ? "active" : ""}
+            onClick={() => onSnapOptions({ ...snapOptions, objects: !snapOptions.objects })}
+          >
+            Objects
+          </button>
+        </div>
+      )}
+      {draft && snapMark && snapMark.kind !== "None" && (
+        <svg className="snap-marker" style={{ left: snapMark.sx, top: snapMark.sy }} viewBox="-8 -8 16 16">
+          <title>{snapMark.kind}</title>
+          {snapMark.kind === "End" && <rect x={-5} y={-5} width={10} height={10} />}
+          {snapMark.kind === "Mid" && <polygon points="0,-6 6,5 -6,5" />}
+          {snapMark.kind === "Centre" && <circle r={5.5} />}
+          {snapMark.kind === "Grid" && <path d="M-5 0H5M0 -5V5" />}
+        </svg>
+      )}
       <div className="cursor-readout">
-        {cursor ? `X ${cursor.x.toFixed(3)}   Y ${cursor.y.toFixed(3)}` : mode === "3D" ? "3D view" : ""}
+        {draft && snapMark && cursor
+          ? `X ${snapMark.point.x.toFixed(3)}   Y ${snapMark.point.y.toFixed(3)}` +
+            (snapMark.kind === "None" ? "" : `   ${snapMark.kind}`)
+          : cursor
+            ? `X ${cursor.x.toFixed(3)}   Y ${cursor.y.toFixed(3)}`
+            : mode === "3D"
+              ? "3D view"
+              : ""}
+        {hint && mode === "2D" && <span className="draw-hint">{hint}</span>}
       </div>
     </main>
   );

@@ -371,3 +371,54 @@ button.primary {
   border-radius: 2px;
   color: var(--text);
 }
+
+/* Drawing */
+.snap-toggle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: #c8c8d0;
+  font-size: 12px;
+}
+.snap-toggle span {
+  margin-right: 4px;
+}
+.snap-toggle button {
+  background: #3a3a44;
+  color: #ddd;
+  border-color: #50505c;
+}
+.snap-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.snap-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  overflow: visible;
+  fill: none;
+  stroke: #ff9cf0;
+  stroke-width: 1.6;
+}
+.draw-hint {
+  margin-left: 16px;
+  color: #e8e8f0;
+  font-family: system-ui, sans-serif;
+}
+.toolbar button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.tree-item .current-layer {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--accent);
+}

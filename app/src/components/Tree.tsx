@@ -15,6 +15,8 @@ interface Props {
   /** Resolves false if the rename was rejected. */
   onRenameLayer: (oldName: string, newName: string) => Promise<boolean>;
   onSetLayerColor: (name: string, color: string) => void;
+  /** Name of the layer new drawings go onto. */
+  currentLayer: string | null;
 }
 
 function Item({
@@ -46,6 +48,7 @@ function LayerItem({
   layer,
   open,
   selected,
+  current,
   onClick,
   onRename,
   onColor,
@@ -54,6 +57,7 @@ function LayerItem({
   layer: Layer;
   open: boolean;
   selected: boolean;
+  current: boolean;
   onClick: () => void;
   onRename: (newName: string) => Promise<boolean>;
   onColor: (color: string) => void;
@@ -85,7 +89,14 @@ function LayerItem({
         <span className="chevron">{open ? "▾" : "▸"}</span>
         <ColorSwatch color={layer.color} onPick={onColor} title={`Colour of layer ${layer.name}`} />
         {editing === null ? (
-          `${layer.name} (${layer.objects.length})`
+          <>
+            {`${layer.name} (${layer.objects.length})`}
+            {current && (
+              <span className="current-layer" title="Current layer: new drawings go here">
+                ✎
+              </span>
+            )}
+          </>
         ) : (
           <input
             className="tree-rename"
@@ -108,7 +119,7 @@ function LayerItem({
   );
 }
 
-export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLayerColor }: Props) {
+export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLayerColor, currentLayer }: Props) {
   // Which layers are closed (by name). Display-only state; all layers start open.
   const [closed, setClosed] = useState<Set<string>>(new Set());
   if (!doc) return <div className="empty">No project loaded.</div>;
@@ -159,6 +170,7 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
               layer={layer}
               open={!closed.has(layer.name)}
               selected={is({ kind: "layer", layer: li })}
+              current={layer.name === currentLayer}
               onClick={() => {
                 onSelect({ kind: "layer", layer: li });
                 toggle(layer.name);
