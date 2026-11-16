@@ -1,6 +1,6 @@
 //! Operations in a project: adding, editing, undo, generating, out-of-date tracking, saving.
 
-use wham_engine::operation::OperationKind;
+use wham_engine::operation::{OperationKind, ProfileSide};
 use wham_engine::*;
 
 fn square(x0: f64, y0: f64, size: f64) -> Shape {
@@ -179,4 +179,91 @@ fn operation_shapes_can_be_changed_and_bad_ones_are_refused() {
     assert!(proj.set_operation_shapes(op, &[line]).is_err());
     assert!(proj.set_operation_shapes(op, &[]).is_err());
     assert_eq!(proj.operation(op).unwrap().shape_ids, vec![shape]);
+}
+
+#[test]
+fn add_profile_defaults_to_outside_or_on_line_for_open_shapes() {
+    let mut proj = Project::new();
+    let closed = proj.add_shape("Default", square(0.0, 0.0, 50.0)).unwrap();
+    let line = proj
+        .add_shape(
+            "Default",
+            Shape::Line {
+                start: Point::new(0.0, 0.0),
+                end: Point::new(10.0, 0.0),
+            },
+        )
+        .unwrap();
+    let a = proj.add_profile(&[closed]).unwrap();
+    let b = proj.add_profile(&[closed, line]).unwrap();
+    let side = |proj: &Project, id: u32| match &proj.operation(id).unwrap().kind {
+        OperationKind::Profile(p) => p.side,
+        _ => panic!("not a profile"),
+    };
+    assert_eq!(side(&proj, a), ProfileSide::Outside);
+    assert_eq!(side(&proj, b), ProfileSide::OnLine);
+    assert_eq!(proj.operation(a).unwrap().name, "Profile1");
+    assert_eq!(proj.operation(b).unwrap().name, "Profile2");
+    let open = |proj: &Project, id: u32| {
+        proj.operation_states()
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .has_open_shapes
+    };
+    assert!(!open(&proj, a));
+    assert!(open(&proj, b));
+
+    // A line can be profiled but not pocketed; a pocket's shapes can't become open ones.
+    let pocket = proj.add_pocket(&[closed]).unwrap();
+    assert!(proj.set_operation_shapes(pocket, &[line]).is_err());
+    assert!(proj.set_operation_shapes(a, &[line]).is_ok());
+
+    // Undo removes the operations again, one step each.
+    proj.undo();
+    proj.undo();
+    assert!(proj.operation(pocket).is_none());
+    proj.undo();
+    assert!(proj.operation(b).is_none());
+}
+
+#[test]
+fn profile_generates_and_is_saved() {
+    let mut proj = Project::new();
+    let shape = proj.add_shape("Default", square(0.0, 0.0, 50.0)).unwrap();
+    let op = proj.add_profile(&[shape]).unwrap();
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.target_depth = Some(-3.0);
+    if let OperationKind::Profile(p) = &mut o.kind {
+        p.overlap = 2.0;
+        p.side = ProfileSide::Inside;
+    }
+    proj.set_operation(o.clone()).unwrap();
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 1, "{:?}", report.errors);
+    assert_eq!(status(&proj, op), "ok");
+
+    let text = proj.save_text("t");
+    let mut other = Project::new();
+    other.open(&text, "t").unwrap();
+    assert_eq!(other.operation(op), Some(&o));
+
+    // An open shape with Outside is an error on generating, shown on the operation.
+    let line = proj
+        .add_shape(
+            "Default",
+            Shape::Line {
+                start: Point::new(0.0, 0.0),
+                end: Point::new(10.0, 0.0),
+            },
+        )
+        .unwrap();
+    proj.set_operation_shapes(op, &[line]).unwrap();
+    let report = proj.generate(&[]);
+    assert!(
+        report.errors[0].1.contains("On line"),
+        "{:?}",
+        report.errors
+    );
+    assert_eq!(status(&proj, op), "error");
 }

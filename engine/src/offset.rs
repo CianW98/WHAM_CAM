@@ -107,6 +107,27 @@ pub fn offset_area(
     Ok(outer.chain(holes).collect())
 }
 
+/// Offsets one closed shape by `distance` (mm): more than 0 grows it (outside), less than 0
+/// shrinks it (inside). Growing rounds the corners with arcs of `distance`. Returns the resulting
+/// loops: `Outer` loops (anticlockwise) and, where growing closes off a hollow, `Island` loops
+/// (clockwise) inside it. Empty if nothing is left.
+pub fn offset_closed(pl: &Polyline, distance: f64) -> Result<Vec<OffsetLoop>, String> {
+    let shape = vec![to_cc(pl, true)];
+    let result = guarded("offsetting a profile", || {
+        // The library offsets anticlockwise shapes inward for a positive distance.
+        CcShape::from_plines(shape).parallel_offset(-distance, &ShapeOffsetOptions::new())
+    })?;
+    let outer = result.ccw_plines.iter().map(|p| OffsetLoop {
+        polyline: from_cc(&p.polyline),
+        side: LoopSide::Outer,
+    });
+    let holes = result.cw_plines.iter().map(|p| OffsetLoop {
+        polyline: from_cc(&p.polyline),
+        side: LoopSide::Island,
+    });
+    Ok(outer.chain(holes).collect())
+}
+
 /// True if `p` is inside the closed `outline` (on the line counts as outside or inside, so
 /// test with a point that isn't on another outline).
 pub fn contains(outline: &Polyline, p: Point) -> Result<bool, String> {

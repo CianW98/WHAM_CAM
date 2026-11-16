@@ -14,6 +14,7 @@ pub mod offset;
 pub mod operation;
 pub mod path;
 pub mod pocket;
+pub mod profile;
 pub mod project;
 pub mod project_file;
 pub mod safety;

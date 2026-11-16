@@ -13,8 +13,10 @@ use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::edit;
 use crate::geometry::{Point, Shape, Transform};
-use crate::operation::{Operation, OperationKind, PocketSettings};
+use crate::operation::{Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide};
+use crate::path;
 use crate::pocket;
+use crate::profile;
 use crate::project_file;
 use crate::safety;
 use crate::toolpath::Toolpath;
@@ -74,6 +76,9 @@ pub struct OperationState {
     pub status: String,
     /// The error, for "error" (and an out-of-date error).
     pub message: Option<String>,
+    /// True if it machines any open shapes (lines, arcs, open polylines): a Profile then only
+    /// offers On line.
+    pub has_open_shapes: bool,
 }
 
 /// Result of Generate toolpaths, for the pop-up message.
@@ -686,13 +691,64 @@ impl Project {
             .collect()
     }
 
+    /// The shapes as paths to profile (closed or open), with their ids.
+    fn profile_paths(&self, ids: &[u32]) -> Result<Vec<(u32, crate::geometry::Polyline)>, String> {
+        ids.iter()
+            .map(|&id| {
+                let shape = self
+                    .doc
+                    .objects()
+                    .find(|o| o.id == id)
+                    .map(|o| &o.shape)
+                    .ok_or_else(|| format!("Shape {id} no longer exists."))?;
+                Ok((id, path::profile_path(id, shape)?))
+            })
+            .collect()
+    }
+
+    /// Checks the shapes suit an operation of this kind.
+    fn check_shapes(&self, kind: &OperationKind, ids: &[u32]) -> Result<(), String> {
+        match kind {
+            OperationKind::Profile(_) => self.profile_paths(ids).map(|_| ()),
+            OperationKind::Pocket(_) => self.outlines(ids).map(|_| ()),
+        }
+    }
+
     /// Adds a Pocket of the given shapes to the first part, as one undo step. Returns its id.
     /// Refuses shapes that can't be pocketed (open, splines, ...).
     pub fn add_pocket(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
         if shape_ids.is_empty() {
             return Err("Select the closed shapes to pocket first.".into());
         }
-        self.outlines(shape_ids)?;
+        self.add_operation(
+            shape_ids,
+            "Pocket",
+            OperationKind::Pocket(PocketSettings::default()),
+        )
+    }
+
+    /// Adds a Profile of the given shapes to the first part, as one undo step. Returns its id.
+    /// It cuts Outside, or On line if any of the shapes are open. Refuses shapes that can't be
+    /// profiled (points, splines, ...).
+    pub fn add_profile(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
+        if shape_ids.is_empty() {
+            return Err("Select the shapes to profile first.".into());
+        }
+        let paths = self.profile_paths(shape_ids)?;
+        let mut settings = ProfileSettings::default();
+        if paths.iter().any(|(_, pl)| !pl.closed) {
+            settings.side = ProfileSide::OnLine;
+        }
+        self.add_operation(shape_ids, "Profile", OperationKind::Profile(settings))
+    }
+
+    fn add_operation(
+        &mut self,
+        shape_ids: &[u32],
+        base_name: &str,
+        kind: OperationKind,
+    ) -> Result<u32, String> {
+        self.check_shapes(&kind, shape_ids)?;
         let id = self
             .doc
             .parts
@@ -703,7 +759,7 @@ impl Project {
             .unwrap_or(0)
             + 1;
         let name = (1..)
-            .map(|n| format!("Pocket{n}"))
+            .map(|n| format!("{base_name}{n}"))
             .find(|n| {
                 !self
                     .doc
@@ -720,7 +776,7 @@ impl Project {
             show_toolpath: true,
             shape_ids: shape_ids.to_vec(),
             common: Default::default(),
-            kind: OperationKind::Pocket(PocketSettings::default()),
+            kind,
         };
         self.edit(|doc| {
             if doc.parts.is_empty() {
@@ -760,7 +816,8 @@ impl Project {
         if shape_ids.is_empty() {
             return Err("Select the shapes for the operation first.".into());
         }
-        self.outlines(shape_ids)?;
+        let kind = self.doc.parts[pi].operations[oi].kind.clone();
+        self.check_shapes(&kind, shape_ids)?;
         self.edit(|doc| doc.parts[pi].operations[oi].shape_ids = shape_ids.to_vec());
         Ok(())
     }
@@ -791,9 +848,15 @@ impl Project {
 
     fn make_toolpath(&self, op: &Operation) -> Result<Toolpath, String> {
         op.validate()?;
-        let outlines = self.outlines(&op.shape_ids)?;
         let tp = match &op.kind {
-            OperationKind::Pocket(p) => pocket::pocket_toolpath(op.id, &outlines, &op.common, p)?,
+            OperationKind::Profile(p) => {
+                let paths = self.profile_paths(&op.shape_ids)?;
+                profile::profile_toolpath(op.id, &paths, &op.common, p)?
+            }
+            OperationKind::Pocket(p) => {
+                let outlines = self.outlines(&op.shape_ids)?;
+                pocket::pocket_toolpath(op.id, &outlines, &op.common, p)?
+            }
         };
         let problems = safety::check(&tp.moves, &tp.limits);
         if !problems.is_empty() {
@@ -863,10 +926,15 @@ impl Project {
                         }
                     }
                 };
+                let has_open_shapes = self.current_shapes(op).iter().flatten().any(|shape| {
+                    matches!(shape, Shape::Line { .. } | Shape::Arc { .. })
+                        || matches!(shape, Shape::Polyline(pl) if !pl.closed)
+                });
                 OperationState {
                     id: op.id,
                     status: status.into(),
                     message,
+                    has_open_shapes,
                 }
             })
             .collect()

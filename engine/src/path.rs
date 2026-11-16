@@ -4,8 +4,8 @@
 use std::f64::consts::TAU;
 
 use crate::geometry::{
-    Point, Polyline, Shape, Vertex, bulge_arc, bulge_from_sweep, dot, on_circle, rectangle_corners,
-    sub,
+    Point, Polyline, Shape, Vertex, arc_sweep_deg, bulge_arc, bulge_from_sweep, dot, on_circle,
+    rectangle_corners, sub,
 };
 use crate::operation::CommonSettings;
 use crate::toolpath::{Move, Point3};
@@ -207,22 +207,131 @@ impl Builder<'_> {
         let n = v.len();
         for i in 0..n {
             let (a, b) = (v[i], v[(i + 1) % n]);
-            let to = Point3::new(b.x, b.y, z);
-            let feed = self.c.cut_feedrate;
-            match bulge_arc(a.point(), b.point(), a.bulge) {
-                Some(arc) => self.push(Move::Arc {
-                    to,
-                    center_x: arc.center.x,
-                    center_y: arc.center.y,
-                    ccw: arc.sweep > 0.0,
-                    feed,
-                }),
-                None => {
-                    if a.point().distance_to(b.point()) > 1e-9 {
-                        self.push(Move::Feed { to, feed });
-                    }
+            self.cut_segment(a.point(), b.point(), a.bulge, z);
+        }
+    }
+
+    /// Cuts along an open path at height `z`, from its first vertex to its last.
+    pub(crate) fn cut_open(&mut self, pl: &Polyline, z: f64) {
+        for w in pl.vertices.windows(2) {
+            self.cut_segment(w[0].point(), w[1].point(), w[0].bulge, z);
+        }
+    }
+
+    /// Carries on round a closed loop from its first vertex for `distance` mm (at most one
+    /// lap), ending part-way along a segment if needed. Used for a profile's overlap.
+    pub(crate) fn cut_overlap(&mut self, pl: &Polyline, z: f64, distance: f64) {
+        let v = &pl.vertices;
+        let n = v.len();
+        let mut left = distance.min(loop_length(pl));
+        for i in 0..n {
+            if left <= 1e-9 {
+                break;
+            }
+            let (a, b) = (v[i], v[(i + 1) % n]);
+            let len = segment_length(a, b);
+            if len <= left + 1e-9 {
+                self.cut_segment(a.point(), b.point(), a.bulge, z);
+                left -= len;
+            } else {
+                let t = left / len;
+                let end = point_along(a, b, t);
+                self.cut_segment(a.point(), end, part_bulge(a, b, 0.0, t), z);
+                left = 0.0;
+            }
+        }
+    }
+
+    /// One straight or arc move from `a` to `b` at height `z` (nothing if it has no length).
+    fn cut_segment(&mut self, a: Point, b: Point, bulge: f64, z: f64) {
+        let to = Point3::new(b.x, b.y, z);
+        let feed = self.c.cut_feedrate;
+        match bulge_arc(a, b, bulge) {
+            Some(arc) => self.push(Move::Arc {
+                to,
+                center_x: arc.center.x,
+                center_y: arc.center.y,
+                ccw: arc.sweep > 0.0,
+                feed,
+            }),
+            None => {
+                if a.distance_to(b) > 1e-9 {
+                    self.push(Move::Feed { to, feed });
                 }
             }
         }
+    }
+}
+
+/// Length of a polyline segment (true arc length for arcs).
+pub(crate) fn segment_length(a: Vertex, b: Vertex) -> f64 {
+    match bulge_arc(a.point(), b.point(), a.bulge) {
+        Some(arc) => arc.radius * arc.sweep.abs(),
+        None => a.point().distance_to(b.point()),
+    }
+}
+
+/// Length all the way round a closed polyline.
+pub(crate) fn loop_length(pl: &Polyline) -> f64 {
+    let v = &pl.vertices;
+    (0..v.len())
+        .map(|i| segment_length(v[i], v[(i + 1) % v.len()]))
+        .sum()
+}
+
+/// The point a fraction `t` (0..1) of the way along a segment, by length.
+pub(crate) fn point_along(a: Vertex, b: Vertex, t: f64) -> Point {
+    match bulge_arc(a.point(), b.point(), a.bulge) {
+        Some(arc) => on_circle(arc.center, arc.radius, arc.start + arc.sweep * t),
+        None => Point::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t),
+    }
+}
+
+/// A selected shape as a path to profile: closed shapes as closed outlines, lines, arcs and open
+/// polylines as open paths. Errors say why a shape can't be profiled.
+pub fn profile_path(id: u32, shape: &Shape) -> Result<Polyline, String> {
+    match shape {
+        Shape::Line { start, end } => Ok(Polyline {
+            vertices: vec![Vertex::line(start.x, start.y), Vertex::line(end.x, end.y)],
+            closed: false,
+        }),
+        Shape::Arc {
+            center,
+            radius,
+            start_angle,
+            end_angle,
+        } => {
+            let sweep = arc_sweep_deg(*start_angle, *end_angle).to_radians();
+            let a0 = start_angle.to_radians();
+            // Arcs over half a circle go in two halves, so no bulge is huge (or infinite).
+            let parts = if sweep > std::f64::consts::PI { 2 } else { 1 };
+            let part = sweep / parts as f64;
+            let mut vertices: Vec<Vertex> = (0..parts)
+                .map(|k| {
+                    let q = on_circle(*center, *radius, a0 + part * k as f64);
+                    Vertex {
+                        x: q.x,
+                        y: q.y,
+                        bulge: bulge_from_sweep(part),
+                    }
+                })
+                .collect();
+            let b = on_circle(*center, *radius, a0 + sweep);
+            vertices.push(Vertex::line(b.x, b.y));
+            Ok(Polyline {
+                vertices,
+                closed: false,
+            })
+        }
+        Shape::Polyline(pl) if !pl.closed && pl.vertices.len() >= 2 => Ok(pl.clone()),
+        Shape::Polyline(pl) if !pl.closed => {
+            Err(format!("Shape {id} is a polyline with no length."))
+        }
+        Shape::Spline(_) | Shape::Ellipse { .. } => Err(format!(
+            "Shape {id} is a {}: it can't be profiled yet (it needs converting to arcs first).",
+            shape.type_name()
+        )),
+        Shape::Points { .. } => Err(format!("Shape {id} is a point list: it can't be profiled.")),
+        _ => closed_outline(id, shape),
     }
 }

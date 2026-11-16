@@ -6,7 +6,7 @@ use cavalier_contours::polyline::{PlineSource, PlineSourceMut, Polyline as CcPol
 use cavalier_contours::shape_algorithms::{Shape as CcShape, ShapeOffsetOptions};
 use wham_engine::display::polyline_signed_area;
 use wham_engine::geometry::{Point, Polyline, Vertex};
-use wham_engine::offset::{LoopSide, contains, offset_area, outlines_cross};
+use wham_engine::offset::{LoopSide, contains, offset_area, offset_closed, outlines_cross};
 
 fn square(x0: f64, y0: f64, x1: f64, y1: f64) -> Polyline {
     Polyline {
@@ -139,4 +139,25 @@ fn circle_as_two_half_arcs_offsets_to_a_smaller_circle() {
     assert_eq!(loops.len(), 1);
     let a = polyline_signed_area(&loops[0].polyline);
     assert!((a - std::f64::consts::PI * 49.0).abs() < 1e-6, "{a}");
+}
+
+#[test]
+fn offset_closed_grows_with_corner_arcs_and_shrinks_with_sharp_corners() {
+    let sq = square(0.0, 0.0, 20.0, 20.0);
+    let grown = offset_closed(&sq, 3.0).unwrap();
+    assert_eq!(grown.len(), 1);
+    assert_eq!(grown[0].side, LoopSide::Outer);
+    let g = &grown[0].polyline;
+    assert_eq!(g.vertices.iter().filter(|v| v.bulge != 0.0).count(), 4);
+    // 26 x 26 square with its corners rounded off by radius 3: 26² − (4 − π)·9.
+    let want = 26.0 * 26.0 - (4.0 - std::f64::consts::PI) * 9.0;
+    assert!((polyline_signed_area(g) - want).abs() < 1e-6);
+
+    let shrunk = offset_closed(&sq, -3.0).unwrap();
+    assert_eq!(shrunk.len(), 1);
+    let s = &shrunk[0].polyline;
+    assert!(s.vertices.iter().all(|v| v.bulge == 0.0));
+    assert!((polyline_signed_area(s) - 14.0 * 14.0).abs() < 1e-6);
+
+    assert!(offset_closed(&sq, -10.5).unwrap().is_empty());
 }
