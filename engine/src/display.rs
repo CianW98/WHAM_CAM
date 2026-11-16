@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{
-    BulgeArc, Point, Polyline, Shape, Spline, arc_sweep_deg, bulge_arc, rectangle_corners,
+    BulgeArc, Point, Polyline, Shape, Spline, angle_deg, arc_sweep_deg, bulge_arc,
+    rectangle_corners,
 };
 use crate::toolpath::{Move, Point3, Toolpath};
 
@@ -255,41 +256,7 @@ pub fn toolpath_display(tp: &Toolpath) -> ToolpathDisplay {
             at = Some(to);
             continue;
         };
-        let (kind, mut pts) = match *m {
-            Move::Rapid { .. } => (MoveKind::Rapid, vec![[to.x, to.y, to.z]]),
-            Move::Feed { .. } => {
-                let sideways = (to.x - from.x).hypot(to.y - from.y) > 1e-9;
-                let kind = if sideways {
-                    MoveKind::Cut
-                } else {
-                    MoveKind::Plunge
-                };
-                (kind, vec![[to.x, to.y, to.z]])
-            }
-            Move::Arc {
-                center_x,
-                center_y,
-                ccw,
-                ..
-            } => {
-                let c = Point::new(center_x, center_y);
-                let radius = c.distance_to(Point::new(from.x, from.y));
-                let a0 = (from.y - c.y).atan2(from.x - c.x);
-                let a1 = (to.y - c.y).atan2(to.x - c.x);
-                let ccw_sweep = match (a1 - a0).rem_euclid(TAU) {
-                    s if s < 1e-12 => TAU,
-                    s => s,
-                };
-                let sweep = if ccw { ccw_sweep } else { ccw_sweep - TAU };
-                let mut flat = Vec::new();
-                push_arc(&mut flat, c, radius, a0, sweep);
-                flat.pop(); // replaced by the exact end point
-                let mut pts: Vec<[f64; 3]> =
-                    flat.iter().skip(1).map(|p| [p[0], p[1], to.z]).collect();
-                pts.push([to.x, to.y, to.z]);
-                (MoveKind::Cut, pts)
-            }
-        };
+        let (kind, mut pts) = move_points(from, m);
         match runs.last_mut() {
             Some(run) if run.kind == kind => run.points.append(&mut pts),
             _ => {
@@ -304,6 +271,141 @@ pub fn toolpath_display(tp: &Toolpath) -> ToolpathDisplay {
         operation_id: tp.operation_id,
         runs,
     }
+}
+
+/// The kind of a move from `from`, and the points it passes through after `from` (arcs as short
+/// steps within the display tolerance, ending exactly at the move's end). Shared by the drawn
+/// toolpath and the playback, so the two always agree.
+fn move_points(from: Point3, m: &Move) -> (MoveKind, Vec<[f64; 3]>) {
+    let to = m.to();
+    match *m {
+        Move::Rapid { .. } => (MoveKind::Rapid, vec![[to.x, to.y, to.z]]),
+        Move::Feed { .. } => {
+            let sideways = (to.x - from.x).hypot(to.y - from.y) > 1e-9;
+            let kind = if sideways {
+                MoveKind::Cut
+            } else {
+                MoveKind::Plunge
+            };
+            (kind, vec![[to.x, to.y, to.z]])
+        }
+        Move::Arc {
+            center_x,
+            center_y,
+            ccw,
+            ..
+        } => {
+            let c = Point::new(center_x, center_y);
+            let (radius, a0, sweep) = arc_of(from, to, c, ccw);
+            let mut flat = Vec::new();
+            push_arc(&mut flat, c, radius, a0, sweep);
+            flat.pop(); // replaced by the exact end point
+            let mut pts: Vec<[f64; 3]> = flat.iter().skip(1).map(|p| [p[0], p[1], to.z]).collect();
+            pts.push([to.x, to.y, to.z]);
+            (MoveKind::Cut, pts)
+        }
+    }
+}
+
+/// Radius, start angle (radians) and signed sweep (radians, negative = clockwise) of an arc move.
+/// Equal start and end points mean a full circle.
+fn arc_of(from: Point3, to: Point3, c: Point, ccw: bool) -> (f64, f64, f64) {
+    let p0 = Point::new(from.x, from.y);
+    let p1 = Point::new(to.x, to.y);
+    let radius = c.distance_to(p0);
+    let ccw_sweep = arc_sweep_deg(angle_deg(c, p0), angle_deg(c, p1)).to_radians();
+    let sweep = if ccw { ccw_sweep } else { ccw_sweep - TAU };
+    (radius, angle_deg(c, p0).to_radians(), sweep)
+}
+
+// --- Toolpath playback -------------------------------------------------------------------------
+
+/// Rapid rate used to estimate playback time until machine settings exist (mm/min).
+pub const ASSUMED_RAPID_RATE: f64 = 5000.0;
+
+/// One move of the playback: where the tool goes and how long it takes at its feed rate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaybackStep {
+    pub operation_id: u32,
+    /// The move's number within its operation's toolpath (1 = first), as in safety messages.
+    pub move_number: usize,
+    pub kind: MoveKind,
+    /// Feed rate in mm/min; `None` for rapids.
+    pub feed: Option<f64>,
+    pub tool_diameter: f64,
+    /// From the start of the move to its end (arcs as short steps, as drawn).
+    pub points: Vec<[f64; 3]>,
+    /// Seconds from the start of the playback to the start of this move.
+    pub start_s: f64,
+    pub duration_s: f64,
+}
+
+/// Every shown toolpath one after another, for the tool playback.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Playback {
+    pub steps: Vec<PlaybackStep>,
+    pub total_s: f64,
+}
+
+/// Builds the playback of `toolpaths` (each with its tool diameter), in order. Each operation's
+/// first move starts where the previous one ended; the very first move is placed directly (0 s).
+/// Times use the true move lengths (arc length for arcs) at their feed rates, and
+/// `ASSUMED_RAPID_RATE` for rapids.
+pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
+    let mut steps = Vec::new();
+    let mut t = 0.0;
+    let mut at: Option<Point3> = None;
+    for (tp, tool_diameter) in toolpaths {
+        for (i, m) in tp.moves.iter().enumerate() {
+            let to = m.to();
+            let from = at.unwrap_or(to);
+            let (kind, mut pts) = move_points(from, m);
+            let (length, feed) = match *m {
+                Move::Rapid { .. } => (dist3(from, to), None),
+                Move::Feed { feed, .. } => (dist3(from, to), Some(feed)),
+                Move::Arc {
+                    center_x,
+                    center_y,
+                    ccw,
+                    feed,
+                    ..
+                } => {
+                    let (radius, _, sweep) = arc_of(from, to, Point::new(center_x, center_y), ccw);
+                    let length = if at.is_some() {
+                        radius * sweep.abs()
+                    } else {
+                        0.0
+                    };
+                    (length, Some(feed))
+                }
+            };
+            let rate = feed.unwrap_or(ASSUMED_RAPID_RATE);
+            let duration_s = if rate > 0.0 {
+                length / rate * 60.0
+            } else {
+                0.0
+            };
+            let mut points = vec![[from.x, from.y, from.z]];
+            points.append(&mut pts);
+            steps.push(PlaybackStep {
+                operation_id: tp.operation_id,
+                move_number: i + 1,
+                kind,
+                feed,
+                tool_diameter: *tool_diameter,
+                points,
+                start_s: t,
+                duration_s,
+            });
+            t += duration_s;
+            at = Some(to);
+        }
+    }
+    Playback { steps, total_s: t }
+}
+
+fn dist3(a: Point3, b: Point3) -> f64 {
+    ((b.x - a.x).powi(2) + (b.y - a.y).powi(2) + (b.z - a.z).powi(2)).sqrt()
 }
 
 pub(crate) fn ellipse_point(center: Point, major: Point, ratio: f64, t: f64) -> [f64; 2] {

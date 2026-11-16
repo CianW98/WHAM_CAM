@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
-use crate::display::{ToolpathDisplay, toolpath_display};
+use crate::display::{Playback, ToolpathDisplay, playback, toolpath_display};
 use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
@@ -886,6 +886,25 @@ impl Project {
             .filter(|op| op.enabled && op.show_toolpath)
             .filter_map(|op| self.toolpath(op.id).map(toolpath_display))
             .collect()
+    }
+
+    /// The tool playback of the drawn toolpaths: the same operations as `toolpaths_display`, in
+    /// tree order.
+    pub fn playback(&self) -> Playback {
+        let shown: Vec<(&Toolpath, f64)> = self
+            .doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .filter(|op| op.enabled && op.show_toolpath)
+            .filter_map(|op| {
+                // The diameter the toolpath was made with (the setting may have changed since).
+                let g = self.toolpaths.get(&op.id)?;
+                let tp = g.result.as_ref().ok()?;
+                Some((tp, g.operation.common.tool_diameter))
+            })
+            .collect();
+        playback(&shown)
     }
 
     /// Ids of every object in the drawing.
