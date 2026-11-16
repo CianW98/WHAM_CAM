@@ -85,6 +85,36 @@ user's device (no server-side processing). To keep this possible:
 - Before adding a Rust library to the engine, check it compiles for wasm32-unknown-unknown. Ask before adding one that doesn't.
 - CI builds the engine for WebAssembly on every push, so a break is caught straight away.
 
+## Libraries that shape toolpaths (e.g. cavalier_contours for offsetting)
+Agreed 2026-11-16 for any engine library whose output affects toolpaths. cavalier_contours is the
+candidate for offsetting, on trial on the `offsetting` branch (not yet adopted).
+- **Pin the exact version** in `engine/Cargo.toml` (e.g. `"=0.9.0"`), not just via the lock file.
+  New releases are never picked up automatically, not even bug-fix releases.
+- **One adapter file.** Only one engine file (e.g. `engine/src/offset.rs`) calls the library. The
+  rest of the engine asks it for results in our own types. An update or a library swap touches
+  only that file.
+- **Every workaround lives in the adapter**, with a comment naming the library issue (e.g. arcs
+  over 180° split in two: cavalier_contours issue #15).
+- **Each workaround has two tests:**
+  - A **canary** that checks the library directly and passes while its problem still exists,
+    named after the issue.
+  - **Our own test** that checks the right answer through the adapter.
+  - When an update fixes the problem, the canary fails: the workaround can then be removed (or kept
+    if harmless).
+- **Updating** (only when the user asks):
+  1. Read the library's changelog.
+  2. Work on a branch.
+  3. Bump the pin and run everything: engine tests, canaries, the reference toolpath comparisons
+     and the safety checker.
+  4. Remove workarounds whose canaries now fail.
+  5. If any toolpath output changed, it counts as a toolpath logic change: the release notes get a
+     "G-code output changed" section, and the user re-checks in a simulator and with an air cut.
+  6. Merge when the user is happy.
+- **If the library stops being maintained:** its licence lets us keep our own patched copy and
+  point the engine at it (a Cargo `[patch]`). Ask before doing this.
+- **Library errors and crashes never crash WHAM_CAM.** The adapter turns a library panic into an
+  error message, and every resulting toolpath still goes through the safety checker.
+
 ## Commands
 Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeScript interface),
 `app/src-tauri/` (Tauri app layer, crate `wham_cam_app`). `app/src/engine/index.ts` is the only
