@@ -2,7 +2,7 @@
 //! The app layer holds one `Project` and calls these methods; the interface never edits
 //! the document directly.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,7 @@ use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
+use crate::edit;
 use crate::geometry::{Point, Shape, Transform};
 use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
 
@@ -33,6 +34,30 @@ pub struct ImportReport {
     pub skipped: BTreeMap<String, usize>,
     /// Scale factor applied (25.4 when converting inches to mm).
     pub scale: f64,
+}
+
+/// Result of a join, for the pop-up message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JoinReport {
+    /// The new polylines' ids.
+    pub ids: Vec<u32>,
+    /// How many shapes went into them.
+    pub joined: usize,
+    /// How many of the new polylines are closed.
+    pub closed: usize,
+    /// Selected shapes left as they were (nothing to join to, or not a line, arc or open polyline).
+    pub skipped: usize,
+}
+
+/// Result of breaking at intersections, for the pop-up message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BreakReport {
+    /// The pieces' ids.
+    pub ids: Vec<u32>,
+    /// How many shapes were broken.
+    pub broken: usize,
+    /// How many distinct crossing points were found.
+    pub crossings: usize,
 }
 
 /// Box selection rule.
@@ -396,6 +421,132 @@ impl Project {
             }
         });
         ids
+    }
+
+    /// Replaces objects with new shapes (in their place, on their layer) as one undo step.
+    /// An empty list removes the object. Returns the new objects' ids in order.
+    fn replace_objects(&mut self, with: HashMap<u32, Vec<Shape>>) -> Vec<u32> {
+        let mut ids = Vec::new();
+        self.edit(|doc| {
+            let mut next = doc.max_id() + 1;
+            for layer in &mut doc.layers {
+                let old = std::mem::take(&mut layer.objects);
+                for obj in old {
+                    match with.get(&obj.id) {
+                        None => layer.objects.push(obj),
+                        Some(shapes) => {
+                            for shape in shapes {
+                                layer.objects.push(DrawingObject {
+                                    id: next,
+                                    shape: shape.clone(),
+                                });
+                                ids.push(next);
+                                next += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        ids
+    }
+
+    /// Joins lines, arcs and open polylines whose ends are within `tolerance` mm into
+    /// polylines, as one undo step. Each new polyline takes the place (and layer) of its first
+    /// piece.
+    pub fn join(&mut self, ids: &[u32], tolerance: f64) -> Result<JoinReport, String> {
+        if !(tolerance.is_finite() && tolerance > 0.0) {
+            return Err("The tolerance must be more than 0.".into());
+        }
+        let found = self.located(ids);
+        let shapes: Vec<Shape> = found.iter().map(|f| f.2.clone()).collect();
+        let joined = edit::join(&shapes, tolerance);
+        let id_of = |i: usize| self.doc.layers[found[i].0].objects[found[i].1].id;
+        let mut with = HashMap::new();
+        for j in &joined {
+            with.insert(
+                id_of(j.sources[0]),
+                vec![Shape::Polyline(j.polyline.clone())],
+            );
+            for &i in &j.sources[1..] {
+                with.insert(id_of(i), Vec::new());
+            }
+        }
+        let used: usize = joined.iter().map(|j| j.sources.len()).sum();
+        let report = JoinReport {
+            ids: Vec::new(),
+            joined: used,
+            closed: joined.iter().filter(|j| j.polyline.closed).count(),
+            skipped: found.len() - used,
+        };
+        let ids = if with.is_empty() {
+            Vec::new()
+        } else {
+            self.replace_objects(with)
+        };
+        Ok(JoinReport { ids, ..report })
+    }
+
+    /// Breaks polylines and rectangles into lines and arcs, as one undo step. Returns the
+    /// pieces' ids (empty if nothing could be exploded).
+    pub fn explode(&mut self, ids: &[u32]) -> Vec<u32> {
+        let with: HashMap<u32, Vec<Shape>> = self
+            .located(ids)
+            .into_iter()
+            .filter_map(|(li, oi, shape)| {
+                let pieces = edit::explode(&shape)?;
+                Some((self.doc.layers[li].objects[oi].id, pieces))
+            })
+            .collect();
+        if with.is_empty() {
+            return Vec::new();
+        }
+        self.replace_objects(with)
+    }
+
+    /// Closes open polylines, as one undo step. Returns how many were closed.
+    pub fn close_polylines(&mut self, ids: &[u32]) -> usize {
+        let closed: Vec<(usize, usize, Shape)> = self
+            .located(ids)
+            .into_iter()
+            .filter_map(|(li, oi, shape)| match shape {
+                Shape::Polyline(pl) => Some((li, oi, Shape::Polyline(edit::close_polyline(&pl)?))),
+                _ => None,
+            })
+            .collect();
+        let count = closed.len();
+        self.edit(|doc| {
+            for (li, oi, shape) in closed {
+                doc.layers[li].objects[oi].shape = shape;
+            }
+        });
+        count
+    }
+
+    /// Breaks the shapes where they cross or touch each other, as one undo step. The pieces
+    /// take the place (and layer) of the shape they came from.
+    pub fn break_at_intersections(&mut self, ids: &[u32]) -> BreakReport {
+        let found = self.located(ids);
+        let shapes: Vec<Shape> = found.iter().map(|f| f.2.clone()).collect();
+        let (broken, crossings) = edit::break_at_intersections(&shapes);
+        let with: HashMap<u32, Vec<Shape>> = broken
+            .into_iter()
+            .map(|b| {
+                let (li, oi, _) = found[b.source];
+                (self.doc.layers[li].objects[oi].id, b.pieces)
+            })
+            .collect();
+        let broken = with.len();
+        let ids = if with.is_empty() {
+            Vec::new()
+        } else {
+            self.replace_objects(with)
+        };
+        BreakReport {
+            ids,
+            broken,
+            crossings,
+        }
     }
 
     /// Ids of every object in the drawing.

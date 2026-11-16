@@ -8,6 +8,7 @@ pub mod display;
 pub mod document;
 pub mod draw;
 pub mod dxf;
+pub mod edit;
 pub mod geometry;
 pub mod project;
 pub mod transform;
@@ -17,5 +18,5 @@ pub use document::{DEFAULT_GRID_SPACING, Document, DrawingObject, LAYER_PALETTE,
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};
-pub use project::{BoxMode, DxfInfo, ImportReport, Project};
+pub use project::{BoxMode, BreakReport, DxfInfo, ImportReport, JoinReport, Project};
 pub use transform::{TransformOp, shape_bounds};
