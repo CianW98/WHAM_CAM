@@ -529,6 +529,28 @@ export default function App() {
     }
   };
 
+  /**
+   * Up/Down arrows: select the previous/next shape in tree order (layer by layer), stopping at
+   * the ends. With nothing selected Down starts at the first shape and Up at the last; with a
+   * layer selected, at that layer's first or last shape.
+   */
+  const stepSelection = (dir: 1 | -1) => {
+    const order = layers.flatMap((l) => l.objects.map((o) => o.id));
+    if (order.length === 0) return;
+    const at = ids.map((id) => order.indexOf(id)).filter((i) => i >= 0);
+    let next: number;
+    if (at.length > 0) {
+      next = dir > 0 ? Math.max(...at) + 1 : Math.min(...at) - 1;
+    } else if (selection.kind === "layer" && layers[selection.layer]?.objects.length) {
+      const objs = layers[selection.layer].objects;
+      next = order.indexOf(objs[dir > 0 ? 0 : objs.length - 1].id);
+    } else {
+      next = dir > 0 ? 0 : order.length - 1;
+    }
+    next = Math.min(Math.max(next, 0), order.length - 1);
+    setSelection({ kind: "objects", ids: [order[next]] });
+  };
+
   // Keyboard shortcuts (ignored while typing in a text box or while a dialog is open).
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
@@ -565,7 +587,8 @@ export default function App() {
       setDraft({ ...d, points, arcs: d.arcs.slice(0, Math.max(0, points.length - 1)) });
     } else if (d?.tool === "Polyline" && !ctrl && (key === "a" || key === "l")) {
       setDraft({ ...d, arc_next: key === "a" });
-    } else if (key === "delete") run(deleteSelected);
+    } else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
+    else if (key === "delete") run(deleteSelected);
     else if (ctrl && key === "z" && !e.shiftKey) run(() => undoRedo("undo"));
     else if (ctrl && (key === "y" || (key === "z" && e.shiftKey))) run(() => undoRedo("redo"));
     else return;

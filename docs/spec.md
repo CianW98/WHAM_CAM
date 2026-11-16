@@ -163,6 +163,8 @@ A classic CAD/CAM layout, with a toolbar:
 ### 5.2a Selection
 - Click selects a shape; Shift/Ctrl-click adds or removes. Esc clears.
 - Box select: drag left-to-right selects shapes fully inside; right-to-left selects anything touched.
+- Up/Down arrow keys select the previous/next shape in tree order (stopping at the ends); the
+  tree scrolls to keep it in view.
 - Delete removes the selection. Undo/redo (Ctrl+Z, Ctrl+Y) cover every change.
 
 ### 5.2b Layers

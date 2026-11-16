@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Document, Layer, Shape } from "../engine";
 import { selectedIds, selectObjects, type Selection } from "../selection";
 import ColorSwatch from "./ColorSwatch";
@@ -124,6 +124,11 @@ function LayerItem({
 export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLayerColor, currentLayer }: Props) {
   // Which layers are closed (by name). Display-only state; all layers start open.
   const [closed, setClosed] = useState<Set<string>>(new Set());
+  // Keep a single selected shape in view (e.g. when stepping with the arrow keys).
+  const single = selection.kind === "objects" && selection.ids.length === 1 ? selection.ids[0] : null;
+  useEffect(() => {
+    if (single !== null) document.querySelector(".tree-panel .tree-item.selected")?.scrollIntoView({ block: "nearest" });
+  }, [single]);
   if (!doc) return <div className="empty">No project loaded.</div>;
   const ids = new Set(selectedIds(selection));
   const is = (s: Selection) => JSON.stringify(s) === JSON.stringify(selection);
