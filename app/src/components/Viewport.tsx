@@ -595,13 +595,14 @@ export default function Viewport({
     s.render();
   }, [display, selectedIds]);
 
-  // Zoom to fit: on request, and the first time there is something to show.
-  const lastFit = useRef<number | null>(null);
+  // Zoom to fit only when asked (Zoom to fit, or after a DXF import). Drawing the first shape
+  // into an empty project leaves the view where it is.
+  const lastFit = useRef(fitRequest);
   useEffect(() => {
     const s = sceneRef.current;
     const bounds = display?.bounds;
     if (!s || !bounds) return;
-    if (lastFit.current !== null && lastFit.current === fitRequest) return;
+    if (lastFit.current === fitRequest) return;
     lastFit.current = fitRequest;
     fitTo(s, bounds);
     s.render();

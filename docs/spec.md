@@ -165,6 +165,7 @@ A classic CAD/CAM layout, with a toolbar:
 - Box select: drag left-to-right selects shapes fully inside; right-to-left selects anything touched.
 - Up/Down arrow keys select the previous/next shape in tree order (stopping at the ends); the
   tree scrolls to keep it in view.
+- The view zooms to fit after a DXF import and on Zoom to fit; drawing never moves the view.
 - Delete removes the selection. Undo/redo (Ctrl+Z, Ctrl+Y) cover every change.
 
 ### 5.2b Layers
