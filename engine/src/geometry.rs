@@ -180,6 +180,11 @@ impl Transform {
         Self::scale(-1.0, 1.0)
     }
 
+    /// Mirror in the X axis (y → -y).
+    pub fn mirror_y() -> Self {
+        Self::scale(1.0, -1.0)
+    }
+
     /// `self.then(other)` applies `self` first, then `other`.
     pub fn then(self, o: Transform) -> Transform {
         Transform {

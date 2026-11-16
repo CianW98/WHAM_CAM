@@ -11,6 +11,7 @@ use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::geometry::{Point, Shape, Transform};
+use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
 
 /// How many undo steps are kept.
 const UNDO_LIMIT: usize = 100;
@@ -49,6 +50,8 @@ pub struct Project {
     undo: Vec<Document>,
     redo: Vec<Document>,
     display: DisplayData,
+    /// Copied shapes with the layer each came from. Not part of the document or of undo.
+    clipboard: Vec<(String, Shape)>,
 }
 
 impl Default for Project {
@@ -66,6 +69,7 @@ impl Project {
             undo: Vec::new(),
             redo: Vec::new(),
             display,
+            clipboard: Vec::new(),
         }
     }
 
@@ -285,6 +289,121 @@ impl Project {
     /// The rubber-band preview of a shape being drawn, with the cursor as its next point.
     pub fn preview(&self, draft: &Draft, cursor: Option<Point>) -> Option<DisplayShape> {
         draw::preview(draft, cursor).map(|shape| display_shape(0, &shape))
+    }
+
+    /// The selected objects' (layer index, object index, shape), in document order.
+    fn located(&self, ids: &[u32]) -> Vec<(usize, usize, Shape)> {
+        let ids: HashSet<u32> = ids.iter().copied().collect();
+        let mut out = Vec::new();
+        for (li, layer) in self.doc.layers.iter().enumerate() {
+            for (oi, obj) in layer.objects.iter().enumerate() {
+                if ids.contains(&obj.id) {
+                    out.push((li, oi, obj.shape.clone()));
+                }
+            }
+        }
+        out
+    }
+
+    /// Moves, rotates, scales or mirrors objects as one undo step. Rotate, scale and mirror
+    /// work around the centre of the objects' bounding box. Nothing changes on an error.
+    pub fn transform(&mut self, ids: &[u32], op: TransformOp) -> Result<(), String> {
+        let found = self.located(ids);
+        let shapes: Vec<Shape> = found.iter().map(|f| f.2.clone()).collect();
+        let moved = transform_shapes(&shapes, op)?;
+        self.edit(|doc| {
+            for ((li, oi, _), shape) in found.iter().zip(moved) {
+                doc.layers[*li].objects[*oi].shape = shape;
+            }
+        });
+        Ok(())
+    }
+
+    /// What `transform` would give, for drawing a preview. Empty on an error.
+    pub fn transform_preview(&self, ids: &[u32], op: TransformOp) -> Vec<DisplayShape> {
+        let shapes: Vec<Shape> = self.located(ids).into_iter().map(|f| f.2).collect();
+        transform_shapes(&shapes, op)
+            .unwrap_or_default()
+            .iter()
+            .map(|s| display_shape(0, s))
+            .collect()
+    }
+
+    /// Copies objects to the clipboard (replacing what was there). Returns how many.
+    pub fn copy(&mut self, ids: &[u32]) -> usize {
+        let found = self.located(ids);
+        if !found.is_empty() {
+            self.clipboard = found
+                .into_iter()
+                .map(|(li, _, shape)| (self.doc.layers[li].name.clone(), shape))
+                .collect();
+        }
+        self.clipboard.len()
+    }
+
+    /// Copies objects to the clipboard, then deletes them (one undo step). Returns how many.
+    pub fn cut(&mut self, ids: &[u32]) -> usize {
+        if self.located(ids).is_empty() {
+            return 0;
+        }
+        self.copy(ids);
+        self.delete(ids)
+    }
+
+    pub fn has_clipboard(&self) -> bool {
+        !self.clipboard.is_empty()
+    }
+
+    /// The clipboard shapes moved so their common centre is at `at`.
+    fn clipboard_at(&self, at: Point) -> Vec<(String, Shape)> {
+        let Some(b) = bounds_of(self.clipboard.iter().map(|c| &c.1)) else {
+            return Vec::new();
+        };
+        let c = centre(b);
+        let t = Transform::translate(at.x - c.x, at.y - c.y);
+        self.clipboard
+            .iter()
+            .filter_map(|(layer, s)| s.transformed(&t).map(|s| (layer.clone(), s)))
+            .collect()
+    }
+
+    /// Preview of pasting with the clipboard's centre at `at`.
+    pub fn paste_preview(&self, at: Point) -> Vec<DisplayShape> {
+        self.clipboard_at(at)
+            .iter()
+            .map(|(_, s)| display_shape(0, s))
+            .collect()
+    }
+
+    /// Pastes the clipboard with its centre at `at`, onto the layers the shapes were copied
+    /// from (created if needed), as one undo step. Returns the new objects' ids.
+    pub fn paste(&mut self, at: Point) -> Vec<u32> {
+        let shapes = self.clipboard_at(at);
+        let mut ids = Vec::new();
+        self.edit(|doc| {
+            let first = doc.max_id() + 1;
+            for (id, (layer, shape)) in (first..).zip(shapes) {
+                let li = doc.layer_index(&layer);
+                doc.layers[li].objects.push(DrawingObject { id, shape });
+                ids.push(id);
+            }
+        });
+        ids
+    }
+
+    /// Ids of every object in the drawing.
+    pub fn all_ids(&self) -> Vec<u32> {
+        self.doc.objects().map(|o| o.id).collect()
+    }
+
+    /// Ids of every object on a layer (empty if there's no such layer).
+    pub fn ids_on_layer(&self, name: &str) -> Vec<u32> {
+        self.doc
+            .layers
+            .iter()
+            .filter(|l| l.name == name)
+            .flat_map(|l| l.objects.iter().map(|o| o.id))
+            .collect()
     }
 
     /// The object nearest to (x, y) within `tolerance` mm, if any.
