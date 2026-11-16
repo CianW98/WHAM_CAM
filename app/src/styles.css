@@ -573,3 +573,23 @@ button.primary {
 .prop-input.bad {
   border-color: #e05050;
 }
+
+/* Operation markers in the tree: out of date (⟳) and error (!). */
+.op-marker {
+  margin-left: 6px;
+  color: var(--muted);
+}
+.op-marker.error {
+  color: #d03030;
+  font-weight: 700;
+}
+.props tr.props-group th {
+  padding-top: 8px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+}
+.prop-error {
+  color: #d03030;
+  white-space: normal;
+}

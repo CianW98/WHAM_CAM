@@ -16,6 +16,11 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   current layer, view position, snap settings and grid settings. Raised 2026-11-16 when saving
   was built; until then those aren't saved (grid spacing already is, as part of the project).
 - **Recent files** list in the File menu (not wanted yet, 2026-11-16).
+- **Smarter moves between depth levels.** v1 retracts to clearance, rapids to the start, rapids
+  down to fast plunge height and feeds down, as in the reference. The user wants to work on this
+  later (2026-11-16), e.g. staying down when the next level starts where the last ended.
+- **Pocketing splines and ellipses**, by converting them to arcs within a tolerance. v1 refuses
+  them with a message.
 
 ## Later
 

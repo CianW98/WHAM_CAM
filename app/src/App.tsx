@@ -6,9 +6,11 @@ import {
   type Draft,
   type DrawTool,
   type ImportReport,
+  type Operation,
   type Point,
   type Shape,
   type SnapOptions,
+  type ToolpathDisplay,
   type TransformOp,
   type View,
 } from "./engine";
@@ -86,6 +88,9 @@ function specialHint(sp: Special): string {
       return `${sp.reference ? "Click to set the new angle" : "Click to set the reference direction"} · Esc cancels`;
   }
 }
+
+/** Stable empty list, so the drawing area doesn't redraw toolpaths for nothing. */
+const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
@@ -267,8 +272,85 @@ export default function App() {
     };
   }, [notify]);
 
+  // --- Operations ----------------------------------------------------------------------------
+
+  /** Pocket: adds a Pocket of the selected shapes and selects it. */
+  const addPocket = useCallback(async () => {
+    const shapes = selectedIds(selection);
+    if (shapes.length === 0) {
+      notify("info", "Select the closed shapes to pocket first (the outline and any islands).");
+      return;
+    }
+    const id = await engine.addPocket(shapes);
+    await refresh();
+    setSelection({ kind: "operation", id });
+    notify("info", "Pocket added. Set its target depth in Properties, then Generate toolpaths.");
+  }, [selection, refresh, notify]);
+
+  /** Generate toolpaths: for the given operations, or all enabled ones. */
+  const generateToolpaths = useCallback(
+    async (ids: number[] = []) => {
+      const report = await engine.generateToolpaths(ids);
+      await refresh();
+      if (report.errors.length > 0) {
+        const list = report.errors.map(([name, err]) => `${name}: ${err}`).join(" ");
+        notify("error", `${plural(report.errors.length, "operation")} failed. ${list}`);
+      } else if (report.generated === 0) {
+        notify("info", "Nothing to generate: add an operation (and make sure it's enabled).");
+      } else {
+        notify("info", `Generated ${plural(report.generated, "toolpath")}.`);
+      }
+    },
+    [refresh, notify],
+  );
+
+  const operationById = useCallback(
+    (id: number) => view?.document.parts.flatMap((p) => p.operations).find((o) => o.id === id),
+    [view],
+  );
+
+  const deleteOperation = useCallback(
+    async (id: number) => {
+      await engine.deleteOperation(id);
+      setSelection((sel) => (sel.kind === "operation" && sel.id === id ? NOTHING : sel));
+      await refresh();
+    },
+    [refresh],
+  );
+
+  /** The right-click menu of an operation in the tree. */
+  const operationMenu = (id: number): MenuItem[] => {
+    const op = operationById(id);
+    if (!op) return [];
+    const shapes = selectedIds(selection);
+    return [
+      {
+        label: "Use selected shapes",
+        disabled: shapes.length === 0,
+        action: () =>
+          run(async () => {
+            await engine.setOperationShapes(id, shapes);
+            await refresh();
+            notify("info", `${op.name} now uses ${plural(shapes.length, "shape")}.`);
+          }),
+      },
+      { label: "Select its shapes", action: () => setSelection({ kind: "objects", ids: op.shape_ids }) },
+      {
+        label: op.enabled ? "Disable" : "Enable",
+        separatorBefore: true,
+        action: () => void setOperation({ ...op, enabled: !op.enabled }),
+      },
+      { label: "Generate toolpath", action: () => run(() => generateToolpaths([id])) },
+      { label: "Delete", separatorBefore: true, action: () => run(() => deleteOperation(id)) },
+    ];
+  };
+
   /** Deletes the selected objects, or the selected layer (with everything on it). */
   const deleteSelected = useCallback(async () => {
+    if (selection.kind === "operation") {
+      await deleteOperation(selection.id);
+      return;
+    }
     if (selection.kind === "layer") {
       const layer = view?.document.layers[selection.layer];
       if (!layer) return;
@@ -281,7 +363,7 @@ export default function App() {
     if (ids.length === 0) return;
     await engine.deleteObjects(ids);
     await refresh();
-  }, [selection, view, refresh]);
+  }, [selection, view, refresh, deleteOperation]);
 
   /** Adds a new empty layer, selects it and makes it the current layer. */
   const addLayer = useCallback(async () => {
@@ -348,6 +430,7 @@ export default function App() {
     [tryEdit],
   );
   const setGridSpacing = useCallback((mm: number) => tryEdit(() => engine.setGridSpacing(mm)), [tryEdit]);
+  const setOperation = useCallback((op: Operation) => tryEdit(() => engine.setOperation(op)), [tryEdit]);
 
   const undoRedo = useCallback(
     async (which: "undo" | "redo") => {
@@ -636,6 +719,10 @@ export default function App() {
         return run(deleteSelected);
       case "Zoom to fit":
         return setFitRequest((n) => n + 1);
+      case "Pocket":
+        return run(addPocket);
+      case "Generate toolpaths":
+        return run(() => generateToolpaths());
       default:
         notify("info", `${name} is not built yet.`);
     }
@@ -738,7 +825,7 @@ export default function App() {
   const disabled = new Set<string>();
   if (!view?.canUndo) disabled.add("Undo");
   if (!view?.canRedo) disabled.add("Redo");
-  if (ids.length === 0 && selection.kind !== "layer") disabled.add("Delete");
+  if (ids.length === 0 && selection.kind !== "layer" && selection.kind !== "operation") disabled.add("Delete");
 
   const placing = useMemo<Placing | null>(
     () => (draft ? { kind: "draw", draft } : special),
@@ -862,10 +949,10 @@ export default function App() {
         label: "Machining",
         items: [
           c.later("Profile"),
-          c.later("Pocket"),
+          { label: "Pocket", action: () => run(addPocket) },
           c.later("Drill"),
           c.sep(c.later("Tool library")),
-          c.sep(c.later("Generate toolpaths")),
+          c.sep({ label: "Generate toolpaths", action: () => run(() => generateToolpaths()) }),
           c.later("Produce G-code"),
         ],
       },
@@ -887,6 +974,8 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             currentLayer={drawLayer}
             onAddLayer={addLayer}
+            operationStates={view?.operations ?? []}
+            operationMenu={operationMenu}
             onDeleteLayer={(name) => run(() => deleteLayer(name))}
           />
         </section>
@@ -900,11 +989,14 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             onSetShape={setShape}
             onSetGridSpacing={setGridSpacing}
+            onSetOperation={setOperation}
+            operationStates={view?.operations ?? []}
           />
         </section>
       </div>
       <Viewport
         display={view?.display ?? null}
+        toolpaths={view?.toolpaths ?? EMPTY_TOOLPATHS}
         selectedIds={selectedSet}
         fitRequest={fitRequest}
         gridSpacing={view?.document.grid_spacing ?? 10}

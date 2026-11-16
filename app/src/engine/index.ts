@@ -59,6 +59,72 @@ export interface Layer {
 
 export interface Part {
   name: string;
+  operations: Operation[];
+}
+
+// --- Operations (spec section 6) ----------------------------------------------------------------
+
+export type SpindleDirection = "CW" | "CCW" | "Off";
+/** Spindle CW: Conventional cuts inside walls clockwise, outside walls anticlockwise; Climb the reverse. */
+export type MillingDirection = "Conventional" | "Climb";
+export type CutOrdering = "DepthFirst" | "LevelFirst";
+export type StepoverFeed = "Plunge" | "Cut";
+
+/** Settings common to all operations. Lengths in mm, feeds in mm/min. */
+export interface CommonSettings {
+  tool_number: number;
+  tool_diameter: number;
+  stock_surface: number;
+  /** Null until set. */
+  target_depth: number | null;
+  depth_increment: number;
+  final_depth_increment: number;
+  clearance_plane: number;
+  fast_plunge_height: number;
+  cut_feedrate: number;
+  plunge_feedrate: number;
+  spindle_speed: number;
+  spindle_direction: SpindleDirection;
+  roughing_clearance: number;
+}
+
+export interface PocketSettings {
+  /** Fraction of the tool diameter. */
+  stepover: number;
+  stepover_feed: StepoverFeed;
+  milling_direction: MillingDirection;
+  cut_ordering: CutOrdering;
+}
+
+export type OperationKind = { type: "Pocket" } & PocketSettings;
+
+export interface Operation {
+  id: number;
+  name: string;
+  enabled: boolean;
+  show_toolpath: boolean;
+  shape_ids: number[];
+  common: CommonSettings;
+  kind: OperationKind;
+}
+
+export interface OperationState {
+  id: number;
+  status: "none" | "ok" | "outdated" | "error";
+  message: string | null;
+}
+
+export type MoveKind = "Cut" | "Plunge" | "Rapid";
+
+export interface ToolpathDisplay {
+  operation_id: number;
+  runs: { kind: MoveKind; points: [number, number, number][] }[];
+}
+
+export interface GenerateReport {
+  generated: number;
+  /** [operation name, error]. */
+  errors: [string, string][];
 }
 
 export interface Document {
@@ -98,6 +164,10 @@ export interface View {
   modified: boolean;
   /** The project file's name (e.g. "bracket.whamcam"), or null if never saved. */
   fileName: string | null;
+  /** Toolpath state of each operation. */
+  operations: OperationState[];
+  /** Toolpaths to draw. */
+  toolpaths: ToolpathDisplay[];
 }
 
 export interface DxfUnits {
@@ -197,6 +267,31 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
   return getCurrentWindow().onCloseRequested(async (event) => {
     if (!(await canClose())) event.preventDefault();
   });
+}
+
+// --- Operations ------------------------------------------------------------------------------
+
+/** Adds a Pocket of the given closed shapes. Returns its id. */
+export function addPocket(shapeIds: number[]): Promise<number> {
+  return invoke<number>("add_pocket", { shapeIds });
+}
+
+/** Replaces an operation's settings (matched by id). */
+export function setOperation(op: Operation): Promise<void> {
+  return invoke<void>("set_operation", { op });
+}
+
+export function setOperationShapes(id: number, shapeIds: number[]): Promise<void> {
+  return invoke<void>("set_operation_shapes", { id, shapeIds });
+}
+
+export function deleteOperation(id: number): Promise<boolean> {
+  return invoke<boolean>("delete_operation", { id });
+}
+
+/** Generates toolpaths for the given operations (all enabled ones if empty). */
+export function generateToolpaths(ids: number[]): Promise<GenerateReport> {
+  return invoke<GenerateReport>("generate_toolpaths", { ids });
 }
 
 /** Starts a new, empty project. */

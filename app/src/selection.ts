@@ -1,12 +1,14 @@
 /**
  * What is selected. Drawing objects can be multi-selected (tree or drawing area);
- * the project, a layer or a part is a single tree selection shown in the properties panel.
+ * the project, a layer, a part or an operation is a single tree selection shown in the properties
+ * panel.
  */
 export type Selection =
   | { kind: "objects"; ids: number[] }
   | { kind: "project" }
   | { kind: "layer"; layer: number }
-  | { kind: "part"; part: number };
+  | { kind: "part"; part: number }
+  | { kind: "operation"; id: number };
 
 export const NOTHING: Selection = { kind: "objects", ids: [] };
 

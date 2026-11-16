@@ -2,8 +2,8 @@
 
 Status: **v1 in progress.** DXF import, layers, drawing, selection, transforms, edit tools
 (sections 5.1–5.3, apart from SVG import and dimensions) and project files (5.8) are built.
-Operations, tool library, toolpath preview and G-code (5.4–5.7) are next; see the Status in
-CLAUDE.md. Items marked **(?)** need a decision from the user.
+Pocket toolpaths with preview are built on the `offsetting` branch (5.4, 5.6, 6.3). Profile,
+Drill, the tool library and G-code are next; see the Status in CLAUDE.md. Items marked **(?)** need a decision from the user.
 
 ## 1. Purpose
 
@@ -221,7 +221,12 @@ from the library (which fills in its defaults) or have values typed in directly.
 ### 5.6 Toolpath preview
 - Cutting moves, plunges and rapids drawn in different colours (rapids dashed).
 - 2D top view and 3D view showing the depth levels.
-- Per-operation show/hide.
+- Per-operation show/hide ("Show toolpath"); disabled operations aren't drawn.
+- Toolpaths are recalculated only on **Generate toolpaths** (toolbar, Machining menu, or an
+  operation's right-click menu). An operation whose settings or shapes changed since is marked
+  `⟳` (out of date) in the tree; one that failed is marked `!` with the message in Properties.
+- Every toolpath is checked by the safety checker (section 7 rules) when it is generated; one that
+  fails is not used.
 
 ### 5.7 G-code output
 Standard, widely compatible G-code through one generic post-processor (section 7).
@@ -264,7 +269,8 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 | Target depth | Final Z (negative = into material) | — (must be set) | v1 |
 | Depth increment | Max depth per pass | from tool | v1 |
 | Final depth increment | Size of the last pass (0 = equal passes) | 0 | v1 |
-| Clearance plane | Z for rapids between cuts | 3 **(?)** | v1 |
+| Clearance plane | Z for rapids between cuts | 3 | v1 |
+| Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down | 1 | v1 |
 | Cut feedrate | mm/min | from tool | v1 |
 | Plunge feedrate | mm/min | from tool | v1 |
 | Spindle speed | RPM | from tool | v1 |
@@ -285,7 +291,11 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 | Holding tabs | | none | later |
 
 Behaviour (observed in the reference output): outside corners get an arc of tool radius (G2/G3).
-For a closed shape, the cut overlaps back over its start point. **(?)** How much overlap does v1 need without lead-ins?
+Decided for when Profile is built (2026-11-16):
+- **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
+  walls clockwise; Climb is the reverse (matches the reference output).
+- **Overlap**: a setting, how far a closed profile cuts past its start point; default 0.
+- **Start point**: the shape's first point. No start point setting.
 
 ### 6.3 Pocket
 
@@ -298,7 +308,22 @@ For a closed shape, the cut overlaps back over its start point. **(?)** How much
 | Cut ordering | Depth first / Level first | Depth first | v1 |
 | Finish stepover | Light final wall pass | 0 | later |
 
-Islands: closed shapes inside the selected boundary are left uncut. **(?)** Confirm this matches what you expect.
+Behaviour (built 2026-11-16, matches the reference Pocket example move for move):
+- Select closed shapes (polylines, PolyRectangles, circles), then Pocket. Nesting decides the
+  roles: a shape inside the boundary is an **island** (left uncut); a shape inside an island is a
+  new boundary, pocketed on its own. Shapes that cross are refused. Open shapes, splines and
+  ellipses are refused with a message.
+- Rings: the first is offset by tool radius + roughing clearance (inward from the boundary,
+  outward round islands, with tool-radius arcs on corners); then every stepover × tool diameter
+  until nothing is left. If a stepover over half the tool would leave a spot uncut in the middle,
+  an extra ring is added.
+- Rings are cut from the **inside out**, each starting at its point nearest to where the last
+  ended. Conventional cuts the rings clockwise (and round islands anticlockwise); Climb reverses.
+- The move to the next ring is fed at the stepover feed rate when it is short (up to 2 ×
+  stepover) and crosses no other ring or island; otherwise the tool retracts and approaches as
+  between depth levels.
+- Between depth levels (and areas): retract to clearance, rapid to the start, rapid down to fast
+  plunge height above the last cut level, feed down at the plunge rate.
 
 ### 6.4 Drill
 
@@ -345,9 +370,8 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 9. Open questions
 
-1. **Profile overlap** without lead-ins: how far past the start point should a closed profile cut?
-2. **Fast plunge height.** Between depth levels the reference output rapids down to 1 mm above the last cut level.
-   Should this be a setting, and is 1 mm the right default?
+None at the moment. Answered 2026-11-16: profile overlap is a setting, default 0 (6.2); fast
+plunge height is a setting, default 1 mm (6.1).
 
 ## 10. Out of scope for v1
 

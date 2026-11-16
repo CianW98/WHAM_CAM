@@ -19,8 +19,11 @@ pub mod safety;
 pub mod toolpath;
 pub mod transform;
 
-pub use display::{DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape, display_data};
+pub use display::{
+    DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape, ToolpathDisplay, display_data,
+};
 pub use document::{DEFAULT_GRID_SPACING, Document, DrawingObject, LAYER_PALETTE, Layer, Part};
+pub use operation::Operation;
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};

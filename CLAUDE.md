@@ -209,9 +209,15 @@ Done:
 - Cleanup before toolpaths: the duplicated point/arc maths gathered into shared helpers in
   `geometry.rs` (no behaviour change; all tests pass).
 
+- On the `offsetting` branch (not merged yet): cavalier_contours =0.9.0 adopted for trial, only
+  in `engine/src/offset.rs` (arcs over 180° split, canary test for issue #15). Operations model
+  (`operation.rs`), toolpath moves (`toolpath.rs`), safety checker (`safety.rs`), Pocket
+  (`pocket.rs`, matches the reference Pocket example move for move), Generate toolpaths on the
+  button with out-of-date markers, toolpath preview in 2D/3D.
+
 Next:
-- Discuss the offsetting library in depth (candidate: cavalier_contours) before doing anything.
-  The trial happens on the `offsetting` branch.
+- User check of Pocket on the `offsetting` branch; merge into `main` when the user is happy.
+- Then Profile and Drill (decisions for Profile are in spec 6.2), the tool library, then G-code.
 - Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
   running on the toolpath moves (same rules later on the G-code). Answer the toolpath open
   questions (spec section 9 and the (?) defaults) at that stage. Then tool library, then G-code.

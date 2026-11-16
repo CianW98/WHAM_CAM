@@ -6,7 +6,17 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import * as engine from "../engine";
-import type { BoxMode, DisplayData, DisplayShape, Draft, Point, SnapKind, SnapOptions } from "../engine";
+import type {
+  BoxMode,
+  DisplayData,
+  DisplayShape,
+  Draft,
+  MoveKind,
+  Point,
+  SnapKind,
+  SnapOptions,
+  ToolpathDisplay,
+} from "../engine";
 
 /**
  * Something being placed by clicking in the drawing area: a shape being drawn, selected shapes
@@ -43,6 +53,14 @@ const COLORS = {
   selected: 0xffd24a,
   draft: 0xe8e8f0,
 };
+/** Toolpath colours (spec 5.6): cuts, plunges and (dashed) rapids. */
+const TOOLPATH_COLORS: Record<MoveKind, number> = {
+  Cut: 0x4da6ff,
+  Plunge: 0xff66cc,
+  Rapid: 0xb0b0b8,
+};
+const RAPID_DASH_MM = 2;
+const RAPID_GAP_MM = 1.5;
 const GRID_EXTENT = 1000; // mm either side of the origin (less for very fine grids)
 const GRID_MAX_LINES = 500; // most grid lines either side of the origin
 const GRID_MAJOR_EVERY = 5; // every 5th grid line is drawn brighter
@@ -68,6 +86,8 @@ interface Scene3 {
   persp: THREE.PerspectiveCamera;
   orbit: OrbitControls;
   shapes: THREE.Group;
+  /** Generated toolpaths. */
+  toolpaths: THREE.Group;
   grid: THREE.Group;
   /** The dashed preview of whatever is being placed. */
   preview: THREE.Group;
@@ -106,6 +126,8 @@ interface SnapMark {
 
 interface Props {
   display: DisplayData | null;
+  /** Toolpaths to draw (cut, plunge and rapid moves, in 3D). */
+  toolpaths: ToolpathDisplay[];
   selectedIds: Set<number>;
   /** Changes whenever the view should zoom to fit the drawing. */
   fitRequest: number;
@@ -240,6 +262,7 @@ function fitTo(s: Scene3, bounds: [number, number, number, number]) {
 
 export default function Viewport({
   display,
+  toolpaths,
   selectedIds,
   fitRequest,
   gridSpacing,
@@ -276,6 +299,8 @@ export default function Viewport({
     const scene = new THREE.Scene();
     const grid = buildGrid(10);
     scene.add(grid);
+    const toolpathGroup = new THREE.Group();
+    scene.add(toolpathGroup);
     const shapes = new THREE.Group();
     scene.add(shapes);
     const previewGroup = new THREE.Group();
@@ -306,6 +331,7 @@ export default function Viewport({
       persp,
       orbit,
       shapes,
+      toolpaths: toolpathGroup,
       grid,
       preview: previewGroup,
       hover: () => {},
@@ -572,6 +598,31 @@ export default function Viewport({
     }
     s.render();
   }, [display]);
+
+  // Rebuild the drawn toolpaths when they change.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    clearGroup(s.toolpaths);
+    for (const tp of toolpaths) {
+      for (const run of tp.runs) {
+        const positions: number[] = [];
+        for (const [x, y, z] of run.points) positions.push(x, y, z);
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        const color = TOOLPATH_COLORS[run.kind];
+        const mat =
+          run.kind === "Rapid"
+            ? new THREE.LineDashedMaterial({ color, dashSize: RAPID_DASH_MM, gapSize: RAPID_GAP_MM, depthTest: false })
+            : new THREE.LineBasicMaterial({ color, depthTest: false });
+        const line = new THREE.Line(geom, mat);
+        if (run.kind === "Rapid") line.computeLineDistances();
+        line.renderOrder = 5; // under the drawing, so shapes stay visible and clickable
+        s.toolpaths.add(line);
+      }
+    }
+    s.render();
+  }, [toolpaths]);
 
   // Recolour selected shapes.
   useEffect(() => {
