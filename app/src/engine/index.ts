@@ -140,6 +140,14 @@ export interface Snap {
   kind: SnapKind;
 }
 
+/** Rotate, scale and mirror work around the centre of the selected shapes. */
+export type TransformOp =
+  | { type: "Move"; dx: number; dy: number }
+  | { type: "Rotate"; degrees: number }
+  | { type: "Scale"; factor: number }
+  | { type: "MirrorLeftRight" }
+  | { type: "MirrorTopBottom" };
+
 export interface SnapOptions {
   grid: boolean;
   objects: boolean;
@@ -227,4 +235,46 @@ export function setShape(id: number, shape: Shape): Promise<void> {
 
 export function setGridSpacing(mm: number): Promise<void> {
   return invoke<void>("set_grid_spacing", { mm });
+}
+
+/** Moves, rotates, scales or mirrors objects. Rejects with a plain-English message. */
+export function transform(ids: number[], op: TransformOp): Promise<void> {
+  return invoke<void>("transform", { ids, op });
+}
+
+/** What `transform` would give, for a preview. Changes nothing. */
+export function transformPreview(ids: number[], op: TransformOp): Promise<DisplayShape[]> {
+  return invoke<DisplayShape[]>("transform_preview", { ids, op });
+}
+
+/** Copies objects to the app's clipboard. Returns how many are on the clipboard. */
+export function copy(ids: number[]): Promise<number> {
+  return invoke<number>("copy", { ids });
+}
+
+/** Copies objects to the clipboard, then deletes them. Returns how many were cut. */
+export function cut(ids: number[]): Promise<number> {
+  return invoke<number>("cut", { ids });
+}
+
+export function hasClipboard(): Promise<boolean> {
+  return invoke<boolean>("has_clipboard");
+}
+
+/** Preview of pasting with the clipboard's centre at `at`. */
+export function pastePreview(at: Point): Promise<DisplayShape[]> {
+  return invoke<DisplayShape[]>("paste_preview", { at });
+}
+
+/** Pastes with the clipboard's centre at `at`. Returns the new objects' ids. */
+export function paste(at: Point): Promise<number[]> {
+  return invoke<number[]>("paste", { at });
+}
+
+export function allIds(): Promise<number[]> {
+  return invoke<number[]>("all_ids");
+}
+
+export function idsOnLayer(name: string): Promise<number[]> {
+  return invoke<number[]>("ids_on_layer", { name });
 }

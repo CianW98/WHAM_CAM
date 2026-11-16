@@ -8,7 +8,7 @@ use serde::Serialize;
 use tauri::State;
 use wham_engine::{
     BoxMode, DisplayData, DisplayShape, Document, Draft, DxfInfo, ImportReport, Point, Project,
-    Shape, Snap, SnapOptions,
+    Shape, Snap, SnapOptions, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -142,6 +142,51 @@ fn set_grid_spacing(mm: f64, state: State<AppState>) -> Result<(), String> {
     state.0.lock().unwrap().set_grid_spacing(mm)
 }
 
+#[tauri::command]
+fn transform(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().transform(&ids, op)
+}
+
+#[tauri::command]
+fn transform_preview(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Vec<DisplayShape> {
+    state.0.lock().unwrap().transform_preview(&ids, op)
+}
+
+#[tauri::command]
+fn copy(ids: Vec<u32>, state: State<AppState>) -> usize {
+    state.0.lock().unwrap().copy(&ids)
+}
+
+#[tauri::command]
+fn cut(ids: Vec<u32>, state: State<AppState>) -> usize {
+    state.0.lock().unwrap().cut(&ids)
+}
+
+#[tauri::command]
+fn has_clipboard(state: State<AppState>) -> bool {
+    state.0.lock().unwrap().has_clipboard()
+}
+
+#[tauri::command]
+fn paste_preview(at: Point, state: State<AppState>) -> Vec<DisplayShape> {
+    state.0.lock().unwrap().paste_preview(at)
+}
+
+#[tauri::command]
+fn paste(at: Point, state: State<AppState>) -> Vec<u32> {
+    state.0.lock().unwrap().paste(at)
+}
+
+#[tauri::command]
+fn all_ids(state: State<AppState>) -> Vec<u32> {
+    state.0.lock().unwrap().all_ids()
+}
+
+#[tauri::command]
+fn ids_on_layer(name: String, state: State<AppState>) -> Vec<u32> {
+    state.0.lock().unwrap().ids_on_layer(&name)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -163,7 +208,16 @@ pub fn run() {
             preview_shape,
             add_draft,
             set_shape,
-            set_grid_spacing
+            set_grid_spacing,
+            transform,
+            transform_preview,
+            copy,
+            cut,
+            has_clipboard,
+            paste_preview,
+            paste,
+            all_ids,
+            ids_on_layer
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHAM_CAM");
