@@ -4,6 +4,9 @@
 # Reference examples: kept on this machine only (contain local paths)
 tests/reference/local/
 
+# Projects saved while testing the app: kept on this machine only
+tests/saves/
+
 # Build output (for when the app exists)
 target/
 node_modules/
