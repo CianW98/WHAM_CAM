@@ -104,6 +104,9 @@ interface file that talks to the engine.
 ## Workflow
 - Core v1 features are committed straight to `main` (user's decision, 2026-11-15). Use a branch
   for experimental or post-v1 work, and ask if unsure.
+- Trials of new libraries go on a branch (user's decision, 2026-11-16), e.g. `offsetting` for the
+  offsetting library: if the library doesn't work out, `main` never carried it. When the user is
+  happy, merge into `main` locally and push (no pull request needed). CI runs on every branch.
 - Commit small and often, with clear messages.
 - Never commit secrets. Keys and credentials go in `.env`, which is git-ignored.
 - Tasks are tracked in GitHub Issues. Use the `gh` CLI to read and update them.
@@ -178,6 +181,7 @@ Done:
 
 Next:
 - Discuss the offsetting library in depth (candidate: cavalier_contours) before doing anything.
+  The trial happens on the `offsetting` branch.
 - Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
   running on the toolpath moves (same rules later on the G-code). Answer the toolpath open
   questions (spec section 9 and the (?) defaults) at that stage. Then tool library, then G-code.
