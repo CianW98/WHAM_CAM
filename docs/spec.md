@@ -354,6 +354,12 @@ Behaviour (built 2026-11-16, matches the reference Pocket example move for move)
   outward round islands, with tool-radius arcs on corners); then every stepover × tool diameter
   until nothing is left. If a stepover over half the tool would leave a spot uncut in the middle,
   an extra ring is added.
+- **Known limitation (stepover over 0.5):** the rings are then further apart than the tool
+  reaches from one ring alone, so where the pocket narrows (lobes, tips, thin branches) and the
+  next ring doesn't fit, a sliver down the middle can be left uncut. The extra-ring check above
+  works on whole rings, so it misses a branch of a larger ring. At 0.5 or less everything is
+  cleared (checked by the user 2026-11-16 on a complex pocket). Left as is for v1 and documented
+  (user's decision); the fix is on the roadmap.
 - Rings are cut from the **inside out**, each starting at its point nearest to where the last
   ended. Conventional cuts the rings clockwise (and round islands anticlockwise); Climb reverses.
 - The move to the next ring is fed at the stepover feed rate when it is short (up to 2 ×

@@ -24,6 +24,12 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   later (2026-11-16), e.g. staying down when the next level starts where the last ended.
 - **Machine settings**, including the real rapid rate, so the tool playback's run time is accurate.
   v1 assumes 5000 mm/min for rapids (decided 2026-11-16).
+- **Pocket: full clearing at stepovers over 0.5.** Above 0.5 × tool diameter, narrow parts of a
+  pocket can keep an uncut sliver down the middle (spec 6.3, found 2026-11-16 at 0.7 on a complex
+  pocket; 0.5 clears it). Fix idea: after each ring, work out what is still uncut area by area
+  (with the offsetting library) and add a ring or a centre-line cut only there, instead of the
+  current whole-ring check. Maybe also a warning in Properties for stepovers over 0.5. Changes
+  toolpath output, so it needs tests and a simulator re-check.
 - **Pocketing splines and ellipses**, by converting them to arcs within a tolerance. v1 refuses
   them with a message.
 
