@@ -149,7 +149,11 @@ Done:
 - Release workflow: pushing a `vX.Y.Z` tag checks versions, runs engine tests (Linux + Windows) and
   builds Windows/Linux installers into a draft release. CI also runs engine tests on Windows.
 - Roadmap for post-v1 ideas: `docs/roadmap.md`. Build setup moved from the spec to the README.
+- Drawing tools (spec 5.2): line, arc (start, end, centre; CCW), circle, rectangle, polyline with
+  tangent arcs (A/L), point list; snapping (grid, end, mid, centre) in the engine (`draw.rs`);
+  typed absolute `x,y`; current layer; editable shape values and per-project grid spacing.
 
 Next:
-- Drawing tools: click + snap, typed coordinates, editable properties.
+- User check of the drawing tools in the app.
+- Edit tools (spec 5.3): transform, join/split, dimensions.
 - Then the offsetting library (candidate: cavalier_contours) and toolpaths.

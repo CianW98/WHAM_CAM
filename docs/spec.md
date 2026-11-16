@@ -122,9 +122,26 @@ A classic CAD/CAM layout, with a toolbar:
 
 ### 5.2 Drawing
 - Line, arc, circle, rectangle, polyline (with arcs), point/point list.
-- Points are set by clicking (with snapping to grid, end points, mid points and centres) or by
-  typing coordinates while drawing; exact values can also be edited in the properties panel afterwards.
-- Grid spacing setting.
+  - **Line**: start, end. Every two clicks make one separate line; the tool stays active.
+  - **Arc**: start, end, then centre. The centre slides along the line halfway between the ends,
+    so it is always the same distance from both. The arc runs counter-clockwise from start to end:
+    putting the centre on the other side switches between the short and the long arc.
+  - **Circle**: centre, then a point on the circle.
+  - **Rectangle**: two opposite corners. Stored as a closed polyline, counter-clockwise from the
+    lower-left corner.
+  - **Polyline**: click points; **A** makes the next segments tangent arcs, **L** straight lines
+    (the first segment is always straight). Enter or double-click finishes; clicking the first
+    point closes it. Backspace removes the last point.
+  - **Point**: each click adds a point; Enter or double-click makes them one point list.
+  - Esc cancels the shape in progress; a second Esc stops drawing.
+- New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
+- Points are set by clicking or by typing coordinates while drawing. Clicks snap to end points,
+  mid points and centres of shapes (within a few pixels) or else to the grid; **Grid** and
+  **Objects** snap toggles sit in the drawing area, and a marker shows what was snapped to.
+  Typing a number while drawing opens a box for an exact absolute point (`x,y`, then Enter).
+- Exact values (points, radius/diameter, angles, polyline corners, closed) can be edited in the
+  properties panel afterwards. Splines and ellipses are read-only.
+- Grid spacing: a project setting (default 10 mm), in the project's properties.
 
 ### 5.2a Selection
 - Click selects a shape; Shift/Ctrl-click adds or removes. Esc clears.
