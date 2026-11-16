@@ -279,7 +279,11 @@ fn set_operation(op: Operation, state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_operation_shapes(id: u32, shape_ids: Vec<u32>, state: State<AppState>) -> Result<(), String> {
+fn set_operation_shapes(
+    id: u32,
+    shape_ids: Vec<u32>,
+    state: State<AppState>,
+) -> Result<(), String> {
     state.0.lock().unwrap().set_operation_shapes(id, &shape_ids)
 }
 
