@@ -12,6 +12,7 @@ pub mod edit;
 pub mod geometry;
 pub mod offset;
 pub mod operation;
+pub mod path;
 pub mod pocket;
 pub mod project;
 pub mod project_file;
