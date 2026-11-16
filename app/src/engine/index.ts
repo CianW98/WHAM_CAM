@@ -96,7 +96,17 @@ export interface PocketSettings {
   cut_ordering: CutOrdering;
 }
 
-export type OperationKind = { type: "Pocket" } & PocketSettings;
+export type ProfileSide = "Inside" | "Outside" | "OnLine";
+
+export interface ProfileSettings {
+  side: ProfileSide;
+  milling_direction: MillingDirection;
+  cut_ordering: CutOrdering;
+  /** How far a closed profile carries on past its start point (mm). */
+  overlap: number;
+}
+
+export type OperationKind = ({ type: "Profile" } & ProfileSettings) | ({ type: "Pocket" } & PocketSettings);
 
 export interface Operation {
   id: number;
@@ -112,6 +122,8 @@ export interface OperationState {
   id: number;
   status: "none" | "ok" | "outdated" | "error";
   message: string | null;
+  /** It machines open shapes: a Profile then only offers On line. */
+  has_open_shapes: boolean;
 }
 
 export type MoveKind = "Cut" | "Plunge" | "Rapid";
@@ -292,6 +304,11 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
 // --- Operations ------------------------------------------------------------------------------
 
 /** Adds a Pocket of the given closed shapes. Returns its id. */
+/** Adds a Profile of the given shapes (Outside, or On line if any are open). Returns its id. */
+export function addProfile(shapeIds: number[]): Promise<number> {
+  return invoke<number>("add_profile", { shapeIds });
+}
+
 export function addPocket(shapeIds: number[]): Promise<number> {
   return invoke<number>("add_pocket", { shapeIds });
 }

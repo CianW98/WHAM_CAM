@@ -274,6 +274,11 @@ fn add_pocket(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String
 }
 
 #[tauri::command]
+fn add_profile(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
+    state.0.lock().unwrap().add_profile(&shape_ids)
+}
+
+#[tauri::command]
 fn set_operation(op: Operation, state: State<AppState>) -> Result<(), String> {
     state.0.lock().unwrap().set_operation(op)
 }
@@ -389,6 +394,7 @@ pub fn run() {
             close_polylines,
             break_at_intersections,
             add_pocket,
+            add_profile,
             set_operation,
             set_operation_shapes,
             delete_operation,

@@ -318,6 +318,19 @@ export default function App() {
     notify("info", "Pocket added. Set its target depth in Properties, then Generate toolpaths.");
   }, [selection, refresh, notify]);
 
+  /** Profile: adds a Profile of the selected shapes and selects it. */
+  const addProfile = useCallback(async () => {
+    const shapes = selectedIds(selection);
+    if (shapes.length === 0) {
+      notify("info", "Select the shapes to profile first.");
+      return;
+    }
+    const id = await engine.addProfile(shapes);
+    await refresh();
+    setSelection({ kind: "operation", id });
+    notify("info", "Profile added. Set its target depth in Properties, then Generate toolpaths.");
+  }, [selection, refresh, notify]);
+
   /** Generate toolpaths: for the given operations, or all enabled ones. */
   const generateToolpaths = useCallback(
     async (ids: number[] = []) => {
@@ -759,6 +772,8 @@ export default function App() {
         return run(deleteSelected);
       case "Zoom to fit":
         return setFitRequest((n) => n + 1);
+      case "Profile":
+        return run(addProfile);
       case "Pocket":
         return run(addPocket);
       case "Generate toolpaths":
@@ -1004,7 +1019,7 @@ export default function App() {
       {
         label: "Machining",
         items: [
-          c.later("Profile"),
+          { label: "Profile", action: () => run(addProfile) },
           { label: "Pocket", action: () => run(addPocket) },
           c.later("Drill"),
           c.sep(c.later("Tool library")),

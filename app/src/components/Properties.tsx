@@ -2,7 +2,21 @@
 // Values only change through the engine.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { DisplayData, Document, Layer, Operation, OperationState, Point, Shape } from "../engine";
+import type {
+  CutOrdering,
+  DisplayData,
+  Document,
+  Layer,
+  MillingDirection,
+  Operation,
+  OperationKind,
+  OperationState,
+  PocketSettings,
+  Point,
+  ProfileSettings,
+  ProfileSide,
+  Shape,
+} from "../engine";
 import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
 import ColorSwatch from "./ColorSwatch";
@@ -337,7 +351,6 @@ function OperationRows({
 }) {
   const c = op.common;
   const common = (patch: Partial<Operation["common"]>) => onSet({ ...op, common: { ...c, ...patch } });
-  const kind = (patch: Partial<Operation["kind"]>) => onSet({ ...op, kind: { ...op.kind, ...patch } });
   const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
   return (
     <>
@@ -405,40 +418,92 @@ function OperationRows({
       <Row label="Roughing clearance">
         {num(c.roughing_clearance, (roughing_clearance) => common({ roughing_clearance }))}
       </Row>
-      <GroupRow label="Pocket" />
-      <Row label="Stepover">{num(op.kind.stepover, (stepover) => kind({ stepover }))}</Row>
-      <Row label="Stepover feed rate">
-        <ChoiceField
-          value={op.kind.stepover_feed}
-          choices={[
-            ["Plunge", "Plunge feed rate"],
-            ["Cut", "Cut feed rate"],
-          ]}
-          onSave={(stepover_feed) => void kind({ stepover_feed })}
-        />
-      </Row>
-      <Row label="Milling direction">
-        <ChoiceField
-          value={op.kind.milling_direction}
-          choices={[
-            ["Conventional", "Conventional"],
-            ["Climb", "Climb"],
-          ]}
-          onSave={(milling_direction) => void kind({ milling_direction })}
-        />
-      </Row>
-      <Row label="Cut ordering">
-        <ChoiceField
-          value={op.kind.cut_ordering}
-          choices={[
-            ["DepthFirst", "Depth first"],
-            ["LevelFirst", "Level first"],
-          ]}
-          onSave={(cut_ordering) => void kind({ cut_ordering })}
-        />
-      </Row>
+      <KindRows op={op} state={state} onSet={onSet} />
     </>
   );
+}
+
+const MILLING_DIRECTIONS: [MillingDirection, string][] = [
+  ["Conventional", "Conventional"],
+  ["Climb", "Climb"],
+];
+const CUT_ORDERINGS: [CutOrdering, string][] = [
+  ["DepthFirst", "Depth first"],
+  ["LevelFirst", "Level first"],
+];
+
+/** The settings of the operation's own type (Profile or Pocket). */
+function KindRows({
+  op,
+  state,
+  onSet,
+}: {
+  op: Operation;
+  state: OperationState | undefined;
+  onSet: (op: Operation) => Promise<boolean>;
+}) {
+  const k = op.kind;
+  const kind = (patch: Partial<ProfileSettings> | Partial<PocketSettings>) =>
+    onSet({ ...op, kind: { ...k, ...patch } as OperationKind });
+  const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
+  const direction = (
+    <Row label="Milling direction">
+      <ChoiceField
+        value={k.milling_direction}
+        choices={MILLING_DIRECTIONS}
+        onSave={(milling_direction) => void kind({ milling_direction })}
+      />
+    </Row>
+  );
+  const ordering = (
+    <Row label="Cut ordering">
+      <ChoiceField value={k.cut_ordering} choices={CUT_ORDERINGS} onSave={(cut_ordering) => void kind({ cut_ordering })} />
+    </Row>
+  );
+  switch (k.type) {
+    case "Profile": {
+      // Open shapes can only be cut On line, so that is all that's offered for them.
+      const open = state?.has_open_shapes ?? false;
+      const sides: [ProfileSide, string][] = open
+        ? [["OnLine", "On line"]]
+        : [
+            ["Outside", "Outside"],
+            ["Inside", "Inside"],
+            ["OnLine", "On line"],
+          ];
+      if (open && k.side !== "OnLine") sides.push([k.side, `${k.side} (open shapes need On line)`]);
+      return (
+        <>
+          <GroupRow label="Profile" />
+          <Row label="Side">
+            <ChoiceField value={k.side} choices={sides} onSave={(side) => void kind({ side })} />
+          </Row>
+          {direction}
+          {ordering}
+          <Row label="Overlap">{num(k.overlap, (overlap) => kind({ overlap }))}</Row>
+        </>
+      );
+    }
+    case "Pocket":
+      return (
+        <>
+          <GroupRow label="Pocket" />
+          <Row label="Stepover">{num(k.stepover, (stepover) => kind({ stepover }))}</Row>
+          <Row label="Stepover feed rate">
+            <ChoiceField
+              value={k.stepover_feed}
+              choices={[
+                ["Plunge", "Plunge feed rate"],
+                ["Cut", "Cut feed rate"],
+              ]}
+              onSave={(stepover_feed) => void kind({ stepover_feed })}
+            />
+          </Row>
+          {direction}
+          {ordering}
+        </>
+      );
+  }
 }
 
 // --- Panel ----------------------------------------------------------------------------------
