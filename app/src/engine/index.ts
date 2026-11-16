@@ -131,6 +131,13 @@ export interface ToolpathDisplay {
   runs: { kind: MoveKind; points: [number, number, number][] }[];
 }
 
+/** The band the cutter sweeps along an operation's cutting moves, as flat triangles. */
+export interface CutWidthDisplay {
+  operation_id: number;
+  /** x, y, z of each triangle corner, three corners per triangle. */
+  triangles: number[];
+}
+
 /** One move of the tool playback (times in seconds, points in mm). */
 export interface PlaybackStep {
   operation_id: number;
@@ -327,6 +334,11 @@ export function deleteOperation(id: number): Promise<boolean> {
 /** Generates toolpaths for the given operations (all enabled ones if empty). */
 export function generateToolpaths(ids: number[]): Promise<GenerateReport> {
   return invoke<GenerateReport>("generate_toolpaths", { ids });
+}
+
+/** The cut widths of the drawn toolpaths. */
+export function getCutWidths(): Promise<CutWidthDisplay[]> {
+  return invoke<CutWidthDisplay[]>("cut_widths");
 }
 
 /** The tool playback of the drawn toolpaths. */

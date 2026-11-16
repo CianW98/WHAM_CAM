@@ -8,9 +8,9 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::State;
 use wham_engine::{
-    BoxMode, BreakReport, DisplayData, DisplayShape, Document, Draft, DxfInfo, GenerateReport,
-    ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project, Shape, Snap,
-    SnapOptions, ToolpathDisplay, TransformOp,
+    BoxMode, BreakReport, CutWidthDisplay, DisplayData, DisplayShape, Document, Draft, DxfInfo,
+    GenerateReport, ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project,
+    Shape, Snap, SnapOptions, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -303,6 +303,11 @@ fn generate_toolpaths(ids: Vec<u32>, state: State<AppState>) -> GenerateReport {
 }
 
 #[tauri::command]
+fn cut_widths(state: State<AppState>) -> Vec<CutWidthDisplay> {
+    state.0.lock().unwrap().cut_widths()
+}
+
+#[tauri::command]
 fn toolpath_playback(state: State<AppState>) -> Playback {
     state.0.lock().unwrap().playback()
 }
@@ -399,7 +404,8 @@ pub fn run() {
             set_operation_shapes,
             delete_operation,
             generate_toolpaths,
-            toolpath_playback
+            toolpath_playback,
+            cut_widths
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHAM_CAM");

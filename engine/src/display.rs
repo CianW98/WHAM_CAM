@@ -318,6 +318,106 @@ fn arc_of(from: Point3, to: Point3, c: Point, ccw: bool) -> (f64, f64, f64) {
     (radius, angle_deg(c, p0).to_radians(), sweep)
 }
 
+// --- Cut width ---------------------------------------------------------------------------------
+
+/// The area a toolpath's cutting moves sweep with the cutter, as flat triangles for the screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CutWidthDisplay {
+    pub operation_id: u32,
+    /// Triangles, three corners each: [x0, y0, z0, x1, y1, z1, x2, y2, z2, ...].
+    pub triangles: Vec<f64>,
+}
+
+/// The band the cutter of `tool_diameter` sweeps along each cutting move (lines and arcs) of
+/// `tp`, at the height of the cut: a strip either side of the path with rounded joins at bends
+/// and rounded ends. Display only; arcs are followed within the display tolerance.
+pub fn cut_width_display(tp: &Toolpath, tool_diameter: f64) -> CutWidthDisplay {
+    let r = tool_diameter / 2.0;
+    let mut tris: Vec<f64> = Vec::new();
+    if r > 0.0 {
+        for run in toolpath_display(tp).runs {
+            if run.kind == MoveKind::Cut {
+                sweep_run(&mut tris, &run.points, r);
+            }
+        }
+    }
+    CutWidthDisplay {
+        operation_id: tp.operation_id,
+        triangles: tris,
+    }
+}
+
+fn push_tri(tris: &mut Vec<f64>, a: [f64; 3], b: [f64; 3], c: [f64; 3]) {
+    tris.extend_from_slice(&a);
+    tris.extend_from_slice(&b);
+    tris.extend_from_slice(&c);
+}
+
+/// A fan of triangles round `c` (radius `r`, at its height) from angle `start` through `sweep`.
+fn push_fan(tris: &mut Vec<f64>, c: [f64; 3], r: f64, start: f64, sweep: f64) {
+    let steps = arc_steps(r, sweep);
+    let at = |a: f64| [c[0] + r * a.cos(), c[1] + r * a.sin(), c[2]];
+    for i in 0..steps {
+        let a0 = start + sweep * i as f64 / steps as f64;
+        let a1 = start + sweep * (i + 1) as f64 / steps as f64;
+        push_tri(tris, c, at(a0), at(a1));
+    }
+}
+
+/// The swept band of one connected run of cut points.
+fn sweep_run(tris: &mut Vec<f64>, pts: &[[f64; 3]], r: f64) {
+    // Drop repeated points (no direction).
+    let mut p: Vec<[f64; 3]> = Vec::with_capacity(pts.len());
+    for q in pts {
+        if p.last()
+            .is_none_or(|l: &[f64; 3]| (q[0] - l[0]).hypot(q[1] - l[1]) > 1e-9)
+        {
+            p.push(*q);
+        }
+    }
+    if p.is_empty() {
+        return;
+    }
+    // Round ends: a full disc at the start and the end.
+    push_fan(tris, p[0], r, 0.0, TAU);
+    if p.len() == 1 {
+        return;
+    }
+    push_fan(tris, p[p.len() - 1], r, 0.0, TAU);
+    let dir = |a: [f64; 3], b: [f64; 3]| (b[1] - a[1]).atan2(b[0] - a[0]);
+    for i in 0..p.len() - 1 {
+        let (a, b) = (p[i], p[i + 1]);
+        let d = dir(a, b);
+        let (nx, ny) = (-d.sin() * r, d.cos() * r); // left of the direction of travel
+        push_tri(
+            tris,
+            [a[0] + nx, a[1] + ny, a[2]],
+            [a[0] - nx, a[1] - ny, a[2]],
+            [b[0] + nx, b[1] + ny, b[2]],
+        );
+        push_tri(
+            tris,
+            [b[0] + nx, b[1] + ny, b[2]],
+            [a[0] - nx, a[1] - ny, a[2]],
+            [b[0] - nx, b[1] - ny, b[2]],
+        );
+        // Rounded join on the outside of the bend at b.
+        if i + 2 < p.len() {
+            let d2 = dir(b, p[i + 2]);
+            let turn = (d2 - d + std::f64::consts::PI).rem_euclid(TAU) - std::f64::consts::PI;
+            if turn.abs() > 1e-9 {
+                // Turning left the outside is on the right, and the other way round.
+                let start = if turn > 0.0 {
+                    d - std::f64::consts::FRAC_PI_2
+                } else {
+                    d + std::f64::consts::FRAC_PI_2
+                };
+                push_fan(tris, b, r, start, turn);
+            }
+        }
+    }
+}
+
 // --- Toolpath playback -------------------------------------------------------------------------
 
 /// Rapid rate used to estimate playback time until machine settings exist (mm/min).

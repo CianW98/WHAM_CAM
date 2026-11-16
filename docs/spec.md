@@ -230,6 +230,9 @@ from the library (which fills in its defaults) or have values typed in directly.
 - **Show toolpaths** (toolbar button next to Generate toolpaths, and the View menu) hides or shows
   all toolpaths at once. View state only: not saved, not an undo step. Each operation's own "Show
   toolpath" still applies.
+- **Show cut width** (toolbar button next to Show toolpaths, and the View menu; off by default)
+  shades the band the cutter sweeps along every cutting move (tool diameter wide, rounded at
+  bends and ends), under the toolpath lines. Rapids and plunges aren't shaded. View state only.
 - **Tool playback** (decided 2026-11-16): a bar along the bottom of the drawing area whenever
   toolpaths are shown (View → Toolpath playback hides it).
   - Back to start, one move back, play/pause, one move forward, a slider across the whole run, and

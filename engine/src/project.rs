@@ -6,8 +6,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::display::{
+    CutWidthDisplay, Playback, ToolpathDisplay, cut_width_display, playback, toolpath_display,
+};
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
-use crate::display::{Playback, ToolpathDisplay, playback, toolpath_display};
 use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
@@ -959,8 +961,22 @@ impl Project {
     /// The tool playback of the drawn toolpaths: the same operations as `toolpaths_display`, in
     /// tree order.
     pub fn playback(&self) -> Playback {
-        let shown: Vec<(&Toolpath, f64)> = self
-            .doc
+        playback(&self.shown_toolpaths())
+    }
+
+    /// The width the cutter sweeps along each drawn toolpath (same operations as
+    /// `toolpaths_display`).
+    pub fn cut_widths(&self) -> Vec<CutWidthDisplay> {
+        self.shown_toolpaths()
+            .into_iter()
+            .map(|(tp, d)| cut_width_display(tp, d))
+            .collect()
+    }
+
+    /// Generated toolpaths of enabled, shown operations in tree order, each with the tool
+    /// diameter it was made with.
+    fn shown_toolpaths(&self) -> Vec<(&Toolpath, f64)> {
+        self.doc
             .parts
             .iter()
             .flat_map(|p| &p.operations)
@@ -971,8 +987,7 @@ impl Project {
                 let tp = g.result.as_ref().ok()?;
                 Some((tp, g.operation.common.tool_diameter))
             })
-            .collect();
-        playback(&shown)
+            .collect()
     }
 
     /// Ids of every object in the drawing.

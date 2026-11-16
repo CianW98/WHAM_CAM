@@ -215,7 +215,7 @@ Done:
   (`pocket.rs`, matches the reference Pocket example move for move), Generate toolpaths on the
   button with out-of-date markers, toolpath preview in 2D/3D. Tool playback (bar along the bottom
   of the drawing area, cutter in 2D/3D, times at the feed rates, rapids assumed 5000 mm/min) and a
-  Show toolpaths toggle in the toolbar. Profile (`profile.rs`, shared move building in `path.rs`):
+  Show toolpaths and Show cut width (shaded cutter band, from the engine) toggles in the toolbar. Profile (`profile.rs`, shared move building in `path.rs`):
   Inside/Outside/On line, open shapes On line only, no overlap, nearest-next shape order, straight
   plunge; matches the reference Profile loop move for move (its spiral lead-in is not in v1).
 

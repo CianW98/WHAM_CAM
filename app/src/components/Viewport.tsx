@@ -9,6 +9,7 @@ import * as engine from "../engine";
 import { toolAt } from "../playback";
 import type {
   BoxMode,
+  CutWidthDisplay,
   DisplayData,
   DisplayShape,
   Draft,
@@ -64,6 +65,8 @@ const TOOLPATH_COLORS: Record<MoveKind, number> = {
 /** Toolpaths still to come while playing back are drawn this faint. */
 const TOOLPATH_FADED_OPACITY = 0.22;
 const TOOL_COLOR = 0xf0f0f4;
+/** The shaded cutter width under the toolpath lines (opaque, so overlaps don't darken). */
+const CUT_WIDTH_COLOR = 0x35506c;
 const RAPID_DASH_MM = 2;
 const RAPID_GAP_MM = 1.5;
 const GRID_EXTENT = 1000; // mm either side of the origin (less for very fine grids)
@@ -93,6 +96,8 @@ interface Scene3 {
   shapes: THREE.Group;
   /** Generated toolpaths. */
   toolpaths: THREE.Group;
+  /** The shaded width the cutter sweeps, under the toolpath lines. */
+  cutWidths: THREE.Group;
   /** Playback: the moves done so far in full colour, drawn over the faded toolpaths. */
   done: THREE.Group;
   /** Playback: segments of each move kind done before each step (for the draw ranges). */
@@ -141,6 +146,8 @@ interface Props {
   display: DisplayData | null;
   /** Toolpaths to draw (cut, plunge and rapid moves, in 3D). */
   toolpaths: ToolpathDisplay[];
+  /** Shaded cutter widths to draw under the toolpaths (empty = off). */
+  cutWidths: CutWidthDisplay[];
   /** Tool playback data, or null when there's nothing to play. */
   playback: Playback | null;
   /** Playback time in seconds (0 = not started: toolpaths look normal). */
@@ -389,6 +396,7 @@ function fitTo(s: Scene3, bounds: [number, number, number, number]) {
 export default function Viewport({
   display,
   toolpaths,
+  cutWidths,
   playback,
   playTime,
   children,
@@ -428,6 +436,8 @@ export default function Viewport({
     const scene = new THREE.Scene();
     const grid = buildGrid(10);
     scene.add(grid);
+    const cutWidthGroup = new THREE.Group();
+    scene.add(cutWidthGroup);
     const toolpathGroup = new THREE.Group();
     scene.add(toolpathGroup);
     const doneGroup = new THREE.Group();
@@ -472,6 +482,7 @@ export default function Viewport({
       orbit,
       shapes,
       toolpaths: toolpathGroup,
+      cutWidths: cutWidthGroup,
       done: doneGroup,
       doneCounts: null,
       current,
@@ -769,6 +780,25 @@ export default function Viewport({
     showPlayback(s, playback, playTime);
     s.render();
   }, [toolpaths]);
+
+  // Rebuild the shaded cut widths when they change.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    clearGroup(s.cutWidths);
+    for (const cw of cutWidths) {
+      if (cw.triangles.length === 0) continue;
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(cw.triangles, 3));
+      const mesh = new THREE.Mesh(
+        geom,
+        new THREE.MeshBasicMaterial({ color: CUT_WIDTH_COLOR, side: THREE.DoubleSide, depthTest: false }),
+      );
+      mesh.renderOrder = 4; // under the toolpath lines and the drawing
+      s.cutWidths.add(mesh);
+    }
+    s.render();
+  }, [cutWidths]);
 
   // Rebuild the "done" overlay when the playback changes.
   useEffect(() => {

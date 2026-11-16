@@ -3,7 +3,7 @@ const GROUPS: string[][] = [
   ["Undo", "Redo", "Delete"],
   ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"],
   ["Profile", "Pocket", "Drill"],
-  ["Generate toolpaths", "Show toolpaths", "Produce G-code"],
+  ["Generate toolpaths", "Show toolpaths", "Show cut width", "Produce G-code"],
   ["Zoom to fit"],
 ];
 

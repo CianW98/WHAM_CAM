@@ -3,6 +3,7 @@ import * as engine from "./engine";
 import {
   CLICKS_NEEDED,
   type BoxMode,
+  type CutWidthDisplay,
   type Draft,
   type DrawTool,
   type ImportReport,
@@ -93,8 +94,7 @@ function specialHint(sp: Special): string {
 
 /** Stable empty list, so the drawing area doesn't redraw toolpaths for nothing. */
 const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
-const SHOW_TOOLPATHS_ON = new Set(["Show toolpaths"]);
-const NONE_ON = new Set<string>();
+const EMPTY_CUT_WIDTHS: CutWidthDisplay[] = [];
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
@@ -128,6 +128,10 @@ export default function App() {
   const [hasClipboard, setHasClipboard] = useState(false);
   // Toolpath display and tool playback (view state only: not saved, not undo steps).
   const [showToolpaths, setShowToolpaths] = useState(true);
+  // Shaded cutter width along the toolpaths (off by default; fetched only while it's on).
+  const [showCutWidth, setShowCutWidth] = useState(false);
+  const showCutWidthRef = useRef(false);
+  const [cutWidths, setCutWidths] = useState<CutWidthDisplay[]>(EMPTY_CUT_WIDTHS);
   const [showPlaybackBar, setShowPlaybackBar] = useState(true);
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [playTime, setPlayTime] = useState(0);
@@ -174,6 +178,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     const v = await engine.getView();
     setView(v);
+    if (showCutWidthRef.current) setCutWidths(await engine.getCutWidths());
     // New or changed toolpaths: playback starts again from the beginning.
     const pb = await engine.getPlayback();
     const sig = playbackSignature(pb);
@@ -742,6 +747,13 @@ export default function App() {
     [addDrawPoint, applyTransform, refresh, run, setSpecial],
   );
 
+  const toggleCutWidth = () => {
+    const on = !showCutWidthRef.current;
+    showCutWidthRef.current = on;
+    setShowCutWidth(on);
+    if (on) engine.getCutWidths().then(setCutWidths, (err) => notify("error", String(err)));
+  };
+
   const toggleToolpaths = () => {
     setPlaying(false);
     setShowToolpaths((v) => !v);
@@ -780,6 +792,8 @@ export default function App() {
         return run(() => generateToolpaths());
       case "Show toolpaths":
         return toggleToolpaths();
+      case "Show cut width":
+        return toggleCutWidth();
       default:
         notify("info", `${name} is not built yet.`);
     }
@@ -885,6 +899,7 @@ export default function App() {
 
   const disabled = new Set<string>();
   if (!view?.canUndo) disabled.add("Undo");
+  if (!showToolpaths) disabled.add("Show cut width");
   if (!view?.canRedo) disabled.add("Redo");
   if (ids.length === 0 && selection.kind !== "layer" && selection.kind !== "operation") disabled.add("Delete");
 
@@ -908,6 +923,7 @@ export default function App() {
         { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
         { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
         { label: "Show toolpaths", checked: showToolpaths, action: toggleToolpaths, separatorBefore: true },
+        { label: "Show cut width", checked: showCutWidth, disabled: !showToolpaths, action: toggleCutWidth },
         {
           label: "Toolpath playback",
           checked: showPlaybackBar,
@@ -1031,6 +1047,13 @@ export default function App() {
   };
 
   // The playback, when toolpaths and the playback bar are shown and there is something to play.
+  const toolbarOn = useMemo(() => {
+    const on = new Set<string>();
+    if (showToolpaths) on.add("Show toolpaths");
+    if (showCutWidth) on.add("Show cut width");
+    return on;
+  }, [showToolpaths, showCutWidth]);
+
   const playbackShown = showToolpaths && showPlaybackBar && playback && playback.steps.length > 0 ? playback : null;
 
   return (
@@ -1040,7 +1063,7 @@ export default function App() {
         onAction={onAction}
         disabled={disabled}
         active={draft ? buttonForTool(draft.tool) : null}
-        on={showToolpaths ? SHOW_TOOLPATHS_ON : NONE_ON}
+        on={toolbarOn}
       />
       <div className="side">
         <section className="panel tree-panel">
@@ -1077,6 +1100,7 @@ export default function App() {
       <Viewport
         display={view?.display ?? null}
         toolpaths={showToolpaths ? (view?.toolpaths ?? EMPTY_TOOLPATHS) : EMPTY_TOOLPATHS}
+        cutWidths={showToolpaths && showCutWidth ? cutWidths : EMPTY_CUT_WIDTHS}
         playback={playbackShown}
         playTime={playTime}
         selectedIds={selectedSet}

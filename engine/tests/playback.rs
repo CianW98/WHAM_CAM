@@ -1,5 +1,5 @@
-//! Tool playback data: timing at the feed rates, move numbers, and agreement with the drawn
-//! toolpath.
+//! Tool playback data (timing at the feed rates, move numbers, agreement with the drawn
+//! toolpath) and the cut width display.
 
 use std::f64::consts::PI;
 
@@ -184,4 +184,91 @@ fn project_plays_shown_toolpaths_with_their_tool() {
     o.show_toolpath = false;
     proj.set_operation(o).unwrap();
     assert!(proj.playback().steps.is_empty());
+}
+
+// --- Cut width (display of the band the cutter sweeps) ---
+
+use wham_engine::display::cut_width_display;
+
+fn in_tri(p: (f64, f64), t: &[f64]) -> bool {
+    let (a, b, c) = ((t[0], t[1]), (t[3], t[4]), (t[6], t[7]));
+    let s = |p: (f64, f64), q: (f64, f64), r: (f64, f64)| {
+        (q.0 - p.0) * (r.1 - p.1) - (q.1 - p.1) * (r.0 - p.0)
+    };
+    let (d1, d2, d3) = (s(p, a, b), s(p, b, c), s(p, c, a));
+    let neg = d1 < -1e-12 || d2 < -1e-12 || d3 < -1e-12;
+    let pos = d1 > 1e-12 || d2 > 1e-12 || d3 > 1e-12;
+    !(neg && pos)
+}
+
+fn dist_to_segment(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let t = (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+    (p.0 - a.0 - dx * t).hypot(p.1 - a.1 - dy * t)
+}
+
+#[test]
+fn cut_width_covers_the_cutter_band_and_nothing_else() {
+    // An L-shaped cut: (0,0) → (20,0) → (20,15), with a 6 mm cutter, after a rapid and plunge.
+    let tp = Toolpath {
+        operation_id: 1,
+        moves: vec![
+            rapid(0.0, 0.0, 3.0),
+            feed(0.0, 0.0, -1.0, 300.0),
+            feed(20.0, 0.0, -1.0, 600.0),
+            feed(20.0, 15.0, -1.0, 600.0),
+            rapid(20.0, 15.0, 3.0),
+        ],
+        limits: limits(),
+    };
+    let cw = cut_width_display(&tp, 6.0);
+    assert_eq!(cw.operation_id, 1);
+    assert_eq!(cw.triangles.len() % 9, 0);
+    // All at the cut height.
+    assert!(cw.triangles.chunks(3).all(|p| close(p[2], -1.0)));
+    let tris: Vec<&[f64]> = cw.triangles.chunks(9).collect();
+    let covered = |p: (f64, f64)| tris.iter().any(|t| in_tri(p, t));
+    let dist = |p: (f64, f64)| {
+        dist_to_segment(p, (0.0, 0.0), (20.0, 0.0)).min(dist_to_segment(
+            p,
+            (20.0, 0.0),
+            (20.0, 15.0),
+        ))
+    };
+    // A grid of points: inside the band (with a little margin for the rounded parts drawn as
+    // straight steps) is covered, outside it isn't.
+    let mut x = -5.0;
+    while x <= 25.0 {
+        let mut y = -5.0;
+        while y <= 20.0 {
+            let d = dist((x, y));
+            if d < 2.95 {
+                assert!(
+                    covered((x, y)),
+                    "({x}, {y}) is {d} from the path but not shaded"
+                );
+            } else if d > 3.01 {
+                assert!(
+                    !covered((x, y)),
+                    "({x}, {y}) is {d} from the path but shaded"
+                );
+            }
+            y += 0.25;
+        }
+        x += 0.25;
+    }
+}
+
+#[test]
+fn rapids_and_plunges_have_no_cut_width() {
+    let tp = Toolpath {
+        operation_id: 1,
+        moves: vec![
+            rapid(0.0, 0.0, 3.0),
+            feed(0.0, 0.0, -1.0, 300.0),
+            rapid(0.0, 0.0, 3.0),
+        ],
+        limits: limits(),
+    };
+    assert!(cut_width_display(&tp, 6.0).triangles.is_empty());
 }
