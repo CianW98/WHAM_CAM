@@ -593,3 +593,59 @@ button.primary {
   color: #d03030;
   white-space: normal;
 }
+
+/* Tool playback bar along the bottom of the drawing area. */
+.playback-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(30, 30, 38, 0.92);
+  border: 1px solid #50505c;
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 12px;
+}
+.playback-bar button {
+  background: #3a3a44;
+  color: #ddd;
+  border-color: #50505c;
+  min-width: 28px;
+  padding: 2px 6px;
+}
+.playback-bar button.play {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.playback-bar input[type="range"] {
+  flex: 1 1 120px;
+  min-width: 80px;
+}
+.playback-bar select {
+  background: #3a3a44;
+  color: #ddd;
+  border: 1px solid #50505c;
+}
+.playback-time,
+.playback-readout {
+  font-family: ui-monospace, Consolas, monospace;
+  white-space: nowrap;
+}
+.playback-readout {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.viewport.with-bar .cursor-readout {
+  bottom: 46px;
+}
+.menu-check {
+  display: inline-block;
+  width: 1.2em;
+}

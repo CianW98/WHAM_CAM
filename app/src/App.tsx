@@ -7,6 +7,7 @@ import {
   type DrawTool,
   type ImportReport,
   type Operation,
+  type Playback,
   type Point,
   type Shape,
   type SnapOptions,
@@ -23,6 +24,7 @@ import ChoiceDialog, { type Choice } from "./components/ChoiceDialog";
 import ContextMenu, { type MenuItem } from "./components/ContextMenu";
 import MenuBar from "./components/MenuBar";
 import NumberDialog, { type NumberQuestion } from "./components/NumberDialog";
+import PlaybackBar from "./components/PlaybackBar";
 import { NOTHING, selectObjects, selectedIds, type Selection } from "./selection";
 
 function importMessage(r: ImportReport, unitsName: string | null): string {
@@ -91,8 +93,20 @@ function specialHint(sp: Special): string {
 
 /** Stable empty list, so the drawing area doesn't redraw toolpaths for nothing. */
 const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
+const SHOW_TOOLPATHS_ON = new Set(["Show toolpaths"]);
+const NONE_ON = new Set<string>();
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+/** Cheap fingerprint of a playback, to tell when the toolpaths have changed. */
+function playbackSignature(pb: Playback): string {
+  let sum = 0;
+  for (const st of pb.steps) {
+    const p = st.points[st.points.length - 1];
+    sum += st.operation_id + p[0] * 1.3 + p[1] * 1.7 + p[2] * 1.9 + st.tool_diameter;
+  }
+  return `${pb.steps.length}|${pb.total_s}|${sum}`;
+}
 
 const samePoint = (a: Point | undefined, b: Point) => a !== undefined && a.x === b.x && a.y === b.y;
 
@@ -112,6 +126,14 @@ export default function App() {
     null,
   );
   const [hasClipboard, setHasClipboard] = useState(false);
+  // Toolpath display and tool playback (view state only: not saved, not undo steps).
+  const [showToolpaths, setShowToolpaths] = useState(true);
+  const [showPlaybackBar, setShowPlaybackBar] = useState(true);
+  const [playback, setPlayback] = useState<Playback | null>(null);
+  const [playTime, setPlayTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(10);
+  const playbackSig = useRef("");
   // Last values typed into the transform dialogs, offered again next time.
   const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1, tolerance: 0.01 });
 
@@ -152,6 +174,15 @@ export default function App() {
   const refresh = useCallback(async () => {
     const v = await engine.getView();
     setView(v);
+    // New or changed toolpaths: playback starts again from the beginning.
+    const pb = await engine.getPlayback();
+    const sig = playbackSignature(pb);
+    if (sig !== playbackSig.current) {
+      playbackSig.current = sig;
+      setPlayback(pb);
+      setPlayTime(0);
+      setPlaying(false);
+    }
     const existing = new Set(v.display.shapes.map((s) => s.id));
     setSelection((sel) =>
       sel.kind === "objects" ? { kind: "objects", ids: sel.ids.filter((id) => existing.has(id)) } : sel,
@@ -698,6 +729,11 @@ export default function App() {
     [addDrawPoint, applyTransform, refresh, run, setSpecial],
   );
 
+  const toggleToolpaths = () => {
+    setPlaying(false);
+    setShowToolpaths((v) => !v);
+  };
+
   const onAction = (name: string) => {
     const tool = TOOL_BUTTONS[name];
     if (tool) {
@@ -727,6 +763,8 @@ export default function App() {
         return run(addPocket);
       case "Generate toolpaths":
         return run(() => generateToolpaths());
+      case "Show toolpaths":
+        return toggleToolpaths();
       default:
         notify("info", `${name} is not built yet.`);
     }
@@ -821,6 +859,10 @@ export default function App() {
     });
 
   const selectedSet = useMemo(() => new Set(ids), [ids]);
+  const operationNames = useMemo(
+    () => new Map((view?.document.parts ?? []).flatMap((p) => p.operations.map((o) => [o.id, o.name] as const))),
+    [view],
+  );
   const onSelect = (sel: Selection) => {
     setSelection(sel);
     if (sel.kind === "layer" && layers[sel.layer]) setCurrentLayer(layers[sel.layer].name);
@@ -850,6 +892,16 @@ export default function App() {
         { label: "Zoom to fit", action: () => setFitRequest((n) => n + 1) },
         { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
         { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
+        { label: "Show toolpaths", checked: showToolpaths, action: toggleToolpaths, separatorBefore: true },
+        {
+          label: "Toolpath playback",
+          checked: showPlaybackBar,
+          disabled: !showToolpaths,
+          action: () => {
+            setPlaying(false);
+            setShowPlaybackBar((v) => !v);
+          },
+        },
       ] as MenuItem[],
       draw: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw),
       transform: {
@@ -963,10 +1015,18 @@ export default function App() {
     ];
   };
 
+  // The playback, when toolpaths and the playback bar are shown and there is something to play.
+  const playbackShown = showToolpaths && showPlaybackBar && playback && playback.steps.length > 0 ? playback : null;
+
   return (
     <div className="app">
       <MenuBar menus={menuBarItems()} open={barMenu} onOpen={setBarMenu} />
-      <Toolbar onAction={onAction} disabled={disabled} active={draft ? buttonForTool(draft.tool) : null} />
+      <Toolbar
+        onAction={onAction}
+        disabled={disabled}
+        active={draft ? buttonForTool(draft.tool) : null}
+        on={showToolpaths ? SHOW_TOOLPATHS_ON : NONE_ON}
+      />
       <div className="side">
         <section className="panel tree-panel">
           <h2>Project</h2>
@@ -1001,7 +1061,9 @@ export default function App() {
       </div>
       <Viewport
         display={view?.display ?? null}
-        toolpaths={view?.toolpaths ?? EMPTY_TOOLPATHS}
+        toolpaths={showToolpaths ? (view?.toolpaths ?? EMPTY_TOOLPATHS) : EMPTY_TOOLPATHS}
+        playback={playbackShown}
+        playTime={playTime}
         selectedIds={selectedSet}
         fitRequest={fitRequest}
         gridSpacing={view?.document.grid_spacing ?? 10}
@@ -1019,7 +1081,20 @@ export default function App() {
           setBarMenu(null);
           setMenu({ x, y });
         }}
-      />
+      >
+        {playbackShown && (
+          <PlaybackBar
+            playback={playbackShown}
+            time={playTime}
+            onTime={setPlayTime}
+            playing={playing}
+            onPlaying={setPlaying}
+            speed={speed}
+            onSpeed={setSpeed}
+            names={operationNames}
+          />
+        )}
+      </Viewport>
       {menu && <ContextMenu items={menuItems()} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {numbers && (
         <NumberDialog

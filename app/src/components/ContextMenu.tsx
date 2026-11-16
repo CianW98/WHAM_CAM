@@ -5,6 +5,8 @@ export interface MenuItem {
   /** Shown on the right, e.g. "Ctrl+C". */
   shortcut?: string;
   disabled?: boolean;
+  /** An on/off item: shows a tick when true. */
+  checked?: boolean;
   action?: () => void;
   /** A submenu, opened by hovering. */
   items?: MenuItem[];
@@ -62,7 +64,10 @@ export function Panel({
               item.action();
             }}
           >
-            <span>{item.label}</span>
+            <span>
+              {item.checked !== undefined && <span className="menu-check">{item.checked ? "✓" : ""}</span>}
+              {item.label}
+            </span>
             <span className="menu-shortcut">{item.items ? "▸" : item.shortcut ?? ""}</span>
           </div>
         </div>

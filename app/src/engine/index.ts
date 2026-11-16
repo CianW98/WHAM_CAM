@@ -121,6 +121,26 @@ export interface ToolpathDisplay {
   runs: { kind: MoveKind; points: [number, number, number][] }[];
 }
 
+/** One move of the tool playback (times in seconds, points in mm). */
+export interface PlaybackStep {
+  operation_id: number;
+  /** The move's number in its operation (1 = first), as in safety messages. */
+  move_number: number;
+  kind: MoveKind;
+  /** mm/min; null for rapids. */
+  feed: number | null;
+  tool_diameter: number;
+  points: [number, number, number][];
+  start_s: number;
+  duration_s: number;
+}
+
+/** Every shown toolpath one after another, for the tool playback. */
+export interface Playback {
+  steps: PlaybackStep[];
+  total_s: number;
+}
+
 export interface GenerateReport {
   generated: number;
   /** [operation name, error]. */
@@ -292,6 +312,11 @@ export function deleteOperation(id: number): Promise<boolean> {
 /** Generates toolpaths for the given operations (all enabled ones if empty). */
 export function generateToolpaths(ids: number[]): Promise<GenerateReport> {
   return invoke<GenerateReport>("generate_toolpaths", { ids });
+}
+
+/** The tool playback of the drawn toolpaths. */
+export function getPlayback(): Promise<Playback> {
+  return invoke<Playback>("toolpath_playback");
 }
 
 /** Starts a new, empty project. */

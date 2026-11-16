@@ -9,8 +9,8 @@ use serde::Serialize;
 use tauri::State;
 use wham_engine::{
     BoxMode, BreakReport, DisplayData, DisplayShape, Document, Draft, DxfInfo, GenerateReport,
-    ImportReport, JoinReport, Operation, OperationState, Point, Project, Shape, Snap, SnapOptions,
-    ToolpathDisplay, TransformOp,
+    ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project, Shape, Snap,
+    SnapOptions, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -298,6 +298,11 @@ fn generate_toolpaths(ids: Vec<u32>, state: State<AppState>) -> GenerateReport {
 }
 
 #[tauri::command]
+fn toolpath_playback(state: State<AppState>) -> Playback {
+    state.0.lock().unwrap().playback()
+}
+
+#[tauri::command]
 fn transform_preview(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Vec<DisplayShape> {
     state.0.lock().unwrap().transform_preview(&ids, op)
 }
@@ -387,7 +392,8 @@ pub fn run() {
             set_operation,
             set_operation_shapes,
             delete_operation,
-            generate_toolpaths
+            generate_toolpaths,
+            toolpath_playback
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHAM_CAM");
