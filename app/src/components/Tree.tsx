@@ -27,6 +27,8 @@ interface Props {
   operationStates: OperationState[];
   /** The right-click menu for an operation. */
   operationMenu: (id: number) => MenuItem[];
+  /** Resolves false if the new name was rejected. */
+  onRenameOperation: (id: number, name: string) => Promise<boolean>;
 }
 
 type ContextEvent = React.MouseEvent<HTMLElement>;
@@ -50,6 +52,85 @@ function Item({
         {label}
       </div>
       {children && <ul>{children}</ul>}
+    </li>
+  );
+}
+
+/**
+ * An operation in the tree. Click: select. Double-click (or Rename in its menu): rename in place
+ * (Enter or clicking away saves, Esc cancels).
+ */
+function OperationItem({
+  name,
+  enabled,
+  marker,
+  selected,
+  onClick,
+  onContextMenu,
+  onRename,
+  renameNow,
+  onRenameStarted,
+}: {
+  name: string;
+  enabled: boolean;
+  marker: ReactNode;
+  selected: boolean;
+  onClick: () => void;
+  onContextMenu: (e: ContextEvent) => void;
+  onRename: (name: string) => Promise<boolean>;
+  renameNow: boolean;
+  onRenameStarted: () => void;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  // Enter/Esc close the box, which can also fire a blur: only the first finish counts.
+  const finished = useRef(true);
+  const start = () => {
+    finished.current = false;
+    setEditing(name);
+  };
+  const finish = async (save: boolean) => {
+    if (finished.current || editing === null) return;
+    finished.current = true;
+    const newName = editing.trim();
+    setEditing(null);
+    if (save && newName !== "" && newName !== name) await onRename(newName);
+  };
+  useEffect(() => {
+    if (!renameNow) return;
+    start();
+    onRenameStarted();
+  }, [renameNow]);
+
+  return (
+    <li>
+      <div
+        className={`tree-item${selected ? " selected" : ""}`}
+        onClick={onClick}
+        onDoubleClick={start}
+        onContextMenu={onContextMenu}
+      >
+        {editing === null ? (
+          <span className={enabled ? "" : "muted"}>
+            {name}
+            {marker}
+          </span>
+        ) : (
+          <input
+            className="tree-rename"
+            value={editing}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setEditing(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onBlur={() => finish(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") finish(true);
+              if (e.key === "Escape") finish(false);
+            }}
+          />
+        )}
+      </div>
     </li>
   );
 }
@@ -158,6 +239,7 @@ export default function Tree({
   onDeleteLayer,
   operationStates,
   operationMenu,
+  onRenameOperation,
 }: Props) {
   // The right-click menu: on a layer (its name) or on the Layers heading (null).
   // The right-click menu: on a layer (its name), the Layers heading (null), or an operation.
@@ -166,6 +248,8 @@ export default function Tree({
   >(null);
   // A layer to start renaming in place.
   const [renaming, setRenaming] = useState<string | null>(null);
+  // An operation to start renaming in place (from its menu).
+  const [renamingOp, setRenamingOp] = useState<number | null>(null);
   // Esc closes the menu (in the capture phase, before the app's own Esc handling).
   useEffect(() => {
     if (!menu) return;
@@ -312,17 +396,17 @@ export default function Tree({
             >
               {part.operations.length > 0 &&
                 part.operations.map((op) => (
-                  <Item
+                  <OperationItem
                     key={op.id}
-                    label={
-                      <span className={op.enabled ? "" : "muted"}>
-                        {op.name}
-                        {opMarker(op.id)}
-                      </span>
-                    }
+                    name={op.name}
+                    enabled={op.enabled}
+                    marker={opMarker(op.id)}
                     selected={is({ kind: "operation", id: op.id })}
                     onClick={() => onSelect({ kind: "operation", id: op.id })}
                     onContextMenu={(e) => openOperationMenu(e, op.id)}
+                    onRename={(name) => onRenameOperation(op.id, name)}
+                    renameNow={renamingOp === op.id}
+                    onRenameStarted={() => setRenamingOp(null)}
                   />
                 ))}
             </Item>
@@ -332,7 +416,14 @@ export default function Tree({
     </ul>
     {menu && (
       <ContextMenu
-        items={"operation" in menu ? operationMenu(menu.operation) : menuItems(menu.layer)}
+        items={
+          "operation" in menu
+            ? [
+                { label: "Rename", action: () => setRenamingOp(menu.operation) },
+                ...operationMenu(menu.operation).map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item)),
+              ]
+            : menuItems(menu.layer)
+        }
         x={menu.x}
         y={menu.y}
         onClose={() => setMenu(null)}

@@ -1080,6 +1080,10 @@ export default function App() {
             onAddLayer={addLayer}
             operationStates={view?.operations ?? []}
             operationMenu={operationMenu}
+            onRenameOperation={async (id, name) => {
+              const op = operationById(id);
+              return op ? setOperation({ ...op, name }) : false;
+            }}
             onDeleteLayer={(name) => run(() => deleteLayer(name))}
           />
         </section>
