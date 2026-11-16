@@ -479,7 +479,8 @@ export default function App() {
       else if (d && d.points.length > 0) setDraft(emptyDraft(d.tool));
       else if (d) setDraft(null);
       else setSelection(NOTHING);
-    } else if (ctrl && key === "a") run(selectAll);
+    } else if (ctrl && e.shiftKey && key === "a") run(() => selectAllOnLayer(drawLayer));
+    else if (ctrl && key === "a") run(selectAll);
     else if (ctrl && key === "c") run(copySelected);
     else if (ctrl && key === "x") run(cutSelected);
     else if (ctrl && key === "v") startPaste();
@@ -573,7 +574,11 @@ export default function App() {
         ],
       },
       { label: "Select All", shortcut: "Ctrl+A", separatorBefore: true, action: () => run(selectAll) },
-      { label: `Select All On Layer "${drawLayer}"`, action: () => run(() => selectAllOnLayer(drawLayer)) },
+      {
+        label: `Select All On Layer "${drawLayer}"`,
+        shortcut: "Ctrl+Shift+A",
+        action: () => run(() => selectAllOnLayer(drawLayer)),
+      },
       { label: "Cut", shortcut: "Ctrl+X", separatorBefore: true, disabled: none, action: () => run(cutSelected) },
       { label: "Copy", shortcut: "Ctrl+C", disabled: none, action: () => run(copySelected) },
       { label: "Paste", shortcut: "Ctrl+V", disabled: !hasClipboard, action: startPaste },

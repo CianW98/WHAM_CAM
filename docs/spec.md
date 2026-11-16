@@ -174,7 +174,8 @@ A classic CAD/CAM layout, with a toolbar:
   - Rotate, scale and mirror work around the centre of the selection's bounding box.
 - Cut, Copy, Paste (Ctrl+X/C/V): the clipboard is inside the app. Paste follows the snapped
   cursor (by the centre of the copied shapes) and a click drops it; pasted shapes go back onto
-  the layers they came from and are selected. Select All (Ctrl+A), Select All On Layer.
+  the layers they came from and are selected. Select All (Ctrl+A), Select All On Layer
+  (Ctrl+Shift+A, current layer).
 - Join (lines/arcs into polylines, with a tolerance), split/explode, close polyline.
 - Basic dimensions: linear and radius/diameter annotations (display only, no effect on G-code).
 - Undo/redo.
