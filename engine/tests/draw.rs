@@ -61,12 +61,36 @@ fn wrong_number_of_clicks_is_refused() {
 }
 
 #[test]
-fn rectangle_starts_lower_left_counter_clockwise() {
+fn rectangle_tool_makes_a_poly_rectangle_from_its_lower_left_corner() {
     let r = finish(&draft(DrawTool::Rectangle, &[(30.0, 20.0), (10.0, 5.0)])).unwrap();
     assert_eq!(
         r,
-        Shape::Polyline(Polyline::rectangle(10.0, 5.0, 20.0, 15.0))
+        Shape::Rectangle {
+            lower_left: p(10.0, 5.0),
+            width: 20.0,
+            height: 15.0,
+            rotation: 0.0
+        }
     );
+    assert_eq!(r.type_name(), "PolyRectangle");
+    // A rectangle with no width is refused.
+    assert!(finish(&draft(DrawTool::Rectangle, &[(1.0, 1.0), (1.0, 9.0)])).is_err());
+}
+
+#[test]
+fn rectangle_snaps_to_corners_side_mids_and_centre() {
+    let mut pr = Project::new();
+    pr.add_draft(
+        "Default",
+        &draft(DrawTool::Rectangle, &[(0.0, 0.0), (20.0, 10.0)]),
+    )
+    .unwrap();
+    let s = pr.snap(19.9, 9.9, 0.5, ALL_SNAPS, &[]);
+    assert_eq!((s.kind, s.point), (SnapKind::End, p(20.0, 10.0)));
+    let s = pr.snap(10.1, 0.1, 0.5, ALL_SNAPS, &[]);
+    assert_eq!((s.kind, s.point), (SnapKind::Mid, p(10.0, 0.0)));
+    let s = pr.snap(10.1, 5.1, 0.5, ALL_SNAPS, &[]);
+    assert_eq!((s.kind, s.point), (SnapKind::Centre, p(10.0, 5.0)));
 }
 
 #[test]

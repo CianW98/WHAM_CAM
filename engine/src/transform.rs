@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::display::display_shape;
-use crate::geometry::{Point, Shape, Transform};
+use crate::geometry::{Point, Shape, Transform, rectangle_corners};
 
 /// One transform of the selected shapes.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -170,6 +170,16 @@ pub fn shape_bounds(shape: &Shape) -> Option<Bounds> {
         Shape::Points { points } => {
             for p in points {
                 grow(&mut b, *p);
+            }
+        }
+        Shape::Rectangle {
+            lower_left,
+            width,
+            height,
+            rotation,
+        } => {
+            for p in rectangle_corners(*lower_left, *width, *height, *rotation) {
+                grow(&mut b, p);
             }
         }
         Shape::Spline(_) | Shape::Ellipse { .. } => {

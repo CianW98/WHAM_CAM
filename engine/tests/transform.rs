@@ -323,3 +323,142 @@ fn select_all_helpers() {
     assert_eq!(pr.ids_on_layer("B"), vec![b]);
     assert!(pr.ids_on_layer("nope").is_empty());
 }
+
+// --- PolyRectangle ---------------------------------------------------------------------------
+
+fn rect(x: f64, y: f64, w: f64, h: f64, rotation: f64) -> Shape {
+    Shape::Rectangle {
+        lower_left: p(x, y),
+        width: w,
+        height: h,
+        rotation,
+    }
+}
+
+fn assert_rect(s: &Shape, x: f64, y: f64, w: f64, h: f64, rotation: f64) {
+    let Shape::Rectangle {
+        lower_left,
+        width,
+        height,
+        rotation: r,
+    } = s
+    else {
+        panic!("not a rectangle: {s:?}");
+    };
+    assert_point(*lower_left, x, y);
+    assert!(
+        close(*width, w) && close(*height, h) && close(*r, rotation),
+        "expected {w} x {h} at {rotation}°, got {s:?}"
+    );
+}
+
+#[test]
+fn rectangle_move_and_scale() {
+    let (mut pr, ids) = project(vec![rect(0.0, 0.0, 20.0, 10.0, 0.0)]);
+    pr.transform(&ids, TransformOp::Move { dx: 5.0, dy: 5.0 })
+        .unwrap();
+    assert_rect(&shape(&pr, ids[0]), 5.0, 5.0, 20.0, 10.0, 0.0);
+    // Centre (15,10); doubling: lower left (-5,0), 40 x 20.
+    pr.transform(&ids, TransformOp::Scale { factor: 2.0 })
+        .unwrap();
+    assert_rect(&shape(&pr, ids[0]), -5.0, 0.0, 40.0, 20.0, 0.0);
+}
+
+#[test]
+fn rectangle_rotated_by_an_odd_angle_keeps_a_rotation() {
+    let (mut pr, ids) = project(vec![rect(0.0, 0.0, 20.0, 10.0, 0.0)]);
+    pr.transform(&ids, TransformOp::Rotate { degrees: 30.0 })
+        .unwrap();
+    let s = shape(&pr, ids[0]);
+    assert_eq!(s.type_name(), "PolyRectangle");
+    let Shape::Rectangle {
+        width,
+        height,
+        rotation,
+        ..
+    } = s
+    else {
+        panic!()
+    };
+    assert!(close(width, 20.0) && close(height, 10.0) && close(rotation, 30.0));
+    // Turning back again gives the original rectangle.
+    pr.transform(&ids, TransformOp::Rotate { degrees: -30.0 })
+        .unwrap();
+    assert_rect(&shape(&pr, ids[0]), 0.0, 0.0, 20.0, 10.0, 0.0);
+}
+
+#[test]
+fn rectangle_rotated_90_is_stored_square_to_the_axes() {
+    // 20 x 10 at (0,0), centre (10,5). Turned 90°: 10 wide, 20 high, lower left (5,-5).
+    let (mut pr, ids) = project(vec![rect(0.0, 0.0, 20.0, 10.0, 0.0)]);
+    pr.transform(&ids, TransformOp::Rotate { degrees: 90.0 })
+        .unwrap();
+    assert_rect(&shape(&pr, ids[0]), 5.0, -5.0, 10.0, 20.0, 0.0);
+}
+
+#[test]
+fn rectangle_mirrors_stay_rectangles() {
+    let (mut pr, ids) = project(vec![rect(0.0, 0.0, 20.0, 10.0, 0.0)]);
+    pr.transform(&ids, TransformOp::MirrorLeftRight).unwrap();
+    assert_rect(&shape(&pr, ids[0]), 0.0, 0.0, 20.0, 10.0, 0.0);
+    // A rotated rectangle mirrored left-right turns the other way.
+    let (mut pr, ids) = project(vec![rect(0.0, 0.0, 20.0, 10.0, 30.0)]);
+    pr.transform(&ids, TransformOp::MirrorLeftRight).unwrap();
+    let Shape::Rectangle {
+        width,
+        height,
+        rotation,
+        ..
+    } = shape(&pr, ids[0])
+    else {
+        panic!()
+    };
+    assert!(close(width, 20.0) && close(height, 10.0) && close(rotation, 330.0));
+    assert_eq!(pr.display().shapes[0].direction, Some(Direction::CCW));
+}
+
+#[test]
+fn rectangle_bounds_follow_rotation() {
+    let b = shape_bounds(&rect(0.0, 0.0, 10.0, 10.0, 45.0));
+    let d = 10.0 / 2f64.sqrt();
+    assert_bounds(b, [-d, 0.0, d, 2.0 * d]);
+}
+
+#[test]
+fn closed_polyline_direction() {
+    let ccw = Shape::Polyline(Polyline::rectangle(0.0, 0.0, 10.0, 10.0));
+    let mut cw = Polyline::rectangle(0.0, 0.0, 10.0, 10.0);
+    cw.vertices.reverse();
+    let open = Shape::Polyline(Polyline {
+        vertices: vec![Vertex::line(0.0, 0.0), Vertex::line(5.0, 0.0)],
+        closed: false,
+    });
+    let (pr, _) = project(vec![ccw, Shape::Polyline(cw), open]);
+    let dirs: Vec<_> = pr.display().shapes.iter().map(|s| s.direction).collect();
+    assert_eq!(dirs, vec![Some(Direction::CCW), Some(Direction::CW), None]);
+}
+
+#[test]
+fn polyline_direction_counts_bulge_arcs() {
+    // Two points joined by two half circles: CW bulges (-1) give a clockwise circle.
+    let circle = |b: f64| {
+        Shape::Polyline(Polyline {
+            vertices: vec![
+                Vertex {
+                    x: 0.0,
+                    y: 0.0,
+                    bulge: b,
+                },
+                Vertex {
+                    x: 10.0,
+                    y: 0.0,
+                    bulge: b,
+                },
+            ],
+            closed: true,
+        })
+    };
+    let (pr, _) = project(vec![circle(-1.0), circle(1.0)]);
+    let dirs: Vec<_> = pr.display().shapes.iter().map(|s| s.direction).collect();
+    assert_eq!(dirs, vec![Some(Direction::CW), Some(Direction::CCW)]);
+}

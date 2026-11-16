@@ -95,6 +95,17 @@ pub enum Shape {
         radius: f64,
     },
     Polyline(Polyline),
+    /// A rectangle ("PolyRectangle"): `width` along the direction `rotation` degrees
+    /// counter-clockwise from +X, `height` at right angles to it, from the `lower_left` corner
+    /// (the lower-left corner before rotating). Always counter-clockwise. Build it with
+    /// [`Shape::rectangle`] so axis-aligned results are stored with rotation 0.
+    Rectangle {
+        lower_left: Point,
+        width: f64,
+        height: f64,
+        #[serde(default)]
+        rotation: f64,
+    },
     /// A list of points (e.g. hole centres for drilling).
     Points {
         points: Vec<Point>,
@@ -120,11 +131,64 @@ impl Shape {
             Shape::Arc { .. } => "Arc",
             Shape::Circle { .. } => "Circle",
             Shape::Polyline(_) => "Polyline",
+            Shape::Rectangle { .. } => "PolyRectangle",
             Shape::Points { .. } => "PointList",
             Shape::Spline(_) => "Spline",
             Shape::Ellipse { .. } => "Ellipse",
         }
     }
+}
+
+impl Shape {
+    /// A rectangle. A rotation that is (to within rounding) a multiple of 90° is stored as an
+    /// unrotated rectangle with its true lower-left corner, so "Lower Left" stays meaningful.
+    pub fn rectangle(lower_left: Point, width: f64, height: f64, rotation: f64) -> Shape {
+        let quarter = (rotation / 90.0).round();
+        if (rotation - quarter * 90.0).abs() < 1e-7 {
+            let c = rectangle_corners(lower_left, width, height, quarter * 90.0);
+            let min_x = c.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+            let min_y = c.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+            let max_x = c.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+            let max_y = c.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+            return Shape::Rectangle {
+                lower_left: Point::new(min_x, min_y),
+                width: max_x - min_x,
+                height: max_y - min_y,
+                rotation: 0.0,
+            };
+        }
+        Shape::Rectangle {
+            lower_left,
+            width,
+            height,
+            rotation: rotation.rem_euclid(360.0),
+        }
+    }
+}
+
+/// The four corners of a rectangle, counter-clockwise from the lower-left corner.
+/// Exact multiples of 90° use exact sines and cosines, so axis-aligned corners have no rounding.
+pub fn rectangle_corners(lower_left: Point, width: f64, height: f64, rotation: f64) -> [Point; 4] {
+    let quarter = rotation / 90.0;
+    let (s, c) = if quarter == quarter.round() {
+        match (quarter as i64).rem_euclid(4) {
+            0 => (0.0, 1.0),
+            1 => (1.0, 0.0),
+            2 => (0.0, -1.0),
+            _ => (-1.0, 0.0),
+        }
+    } else {
+        rotation.to_radians().sin_cos()
+    };
+    let along = Point::new(c * width, s * width);
+    let up = Point::new(-s * height, c * height);
+    let p = lower_left;
+    [
+        p,
+        Point::new(p.x + along.x, p.y + along.y),
+        Point::new(p.x + along.x + up.x, p.y + along.y + up.y),
+        Point::new(p.x + up.x, p.y + up.y),
+    ]
 }
 
 /// A 2D affine transform: x' = a·x + b·y + e, y' = c·x + d·y + f.
@@ -285,6 +349,24 @@ impl Shape {
                     start_angle: start,
                     end_angle: end,
                 }
+            }
+            Shape::Rectangle {
+                lower_left,
+                width,
+                height,
+                rotation,
+            } => {
+                let s = uniform?;
+                let c =
+                    rectangle_corners(*lower_left, *width, *height, *rotation).map(|p| t.apply(p));
+                // A mirror reverses the corner order; start from the old second corner so the
+                // rectangle still runs counter-clockwise.
+                let (origin, along) = if t.mirrors() {
+                    (c[1], c[0])
+                } else {
+                    (c[0], c[1])
+                };
+                Shape::rectangle(origin, width * s, height * s, angle_deg(origin, along))
             }
             Shape::Polyline(pl) => {
                 let has_arcs = pl.vertices.iter().any(|v| v.bulge != 0.0);

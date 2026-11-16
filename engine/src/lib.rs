@@ -12,7 +12,7 @@ pub mod geometry;
 pub mod project;
 pub mod transform;
 
-pub use display::{DISPLAY_TOLERANCE, DisplayData, DisplayShape, display_data};
+pub use display::{DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape, display_data};
 pub use document::{DEFAULT_GRID_SPACING, Document, DrawingObject, LAYER_PALETTE, Layer, Part};
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};

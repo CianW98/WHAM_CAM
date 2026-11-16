@@ -7,7 +7,7 @@ use std::f64::consts::TAU;
 use serde::{Deserialize, Serialize};
 
 use crate::document::{Document, LAYER_PALETTE};
-use crate::geometry::{Point, Polyline, Shape, Spline};
+use crate::geometry::{Point, Polyline, Shape, Spline, rectangle_corners};
 
 /// Maximum distance between a true arc and its on-screen approximation, in mm.
 pub const DISPLAY_TOLERANCE: f64 = 0.01;
@@ -35,6 +35,35 @@ pub struct DisplayShape {
     pub markers: bool,
     /// Colour to draw it in ("#rrggbb"): its layer's colour.
     pub color: String,
+    /// Which way a closed polyline or rectangle runs; `None` for other shapes.
+    pub direction: Option<Direction>,
+}
+
+/// Which way a closed shape runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Direction {
+    /// Clockwise.
+    CW,
+    /// Counter-clockwise.
+    CCW,
+}
+
+/// Signed area of a closed polyline (positive = counter-clockwise), counting bulge arcs exactly.
+pub fn polyline_signed_area(pl: &Polyline) -> f64 {
+    let n = pl.vertices.len();
+    let mut area = 0.0;
+    for i in 0..n {
+        let (a, b) = (pl.vertices[i], pl.vertices[(i + 1) % n]);
+        area += (a.x * b.y - b.x * a.y) / 2.0;
+        if a.bulge != 0.0 {
+            // The segment between the chord and the arc: r²/2 · (θ − sin θ), signed with θ.
+            let theta = 4.0 * a.bulge.atan();
+            let half_chord = a.point().distance_to(b.point()) / 2.0;
+            let r = half_chord / (theta / 2.0).sin().abs();
+            area += r * r / 2.0 * (theta - theta.sin());
+        }
+    }
+    area
 }
 
 pub fn display_data(doc: &Document) -> DisplayData {
@@ -62,6 +91,7 @@ pub fn display_data(doc: &Document) -> DisplayData {
 pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
     let mut closed = false;
     let mut markers = false;
+    let mut direction = None;
     let points = match shape {
         Shape::Line { start, end } => vec![[start.x, start.y], [end.x, end.y]],
         Shape::Arc {
@@ -90,7 +120,27 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
         }
         Shape::Polyline(pl) => {
             closed = pl.closed;
+            if pl.closed && pl.vertices.len() >= 2 {
+                direction = Some(if polyline_signed_area(pl) < 0.0 {
+                    Direction::CW
+                } else {
+                    Direction::CCW
+                });
+            }
             polyline_points(pl)
+        }
+        Shape::Rectangle {
+            lower_left,
+            width,
+            height,
+            rotation,
+        } => {
+            closed = true;
+            direction = Some(Direction::CCW);
+            rectangle_corners(*lower_left, *width, *height, *rotation)
+                .iter()
+                .map(|p| [p.x, p.y])
+                .collect()
         }
         Shape::Points { points } => {
             markers = true;
@@ -111,6 +161,7 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
         closed,
         markers,
         color: LAYER_PALETTE[0].to_string(),
+        direction,
     }
 }
 

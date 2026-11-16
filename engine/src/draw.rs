@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::display::display_shape;
 use crate::document::Document;
-use crate::geometry::{Point, Polyline, Shape, Vertex};
+use crate::geometry::{Point, Polyline, Shape, Vertex, rectangle_corners};
 
 /// Points closer than this (mm) count as the same point.
 const SAME_POINT: f64 = 1e-9;
@@ -132,16 +132,14 @@ pub fn arc_start_end_centre(start: Point, end: Point, near: Point) -> Option<Sha
     })
 }
 
-/// Rectangle from two opposite corners, as a closed polyline running counter-clockwise from
-/// the lower-left corner.
+/// Rectangle (a PolyRectangle) from two opposite corners, unrotated.
 pub fn rectangle_from_corners(a: Point, b: Point) -> Shape {
-    let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
-    Shape::Polyline(Polyline::rectangle(
-        x0,
-        y0,
-        (a.x - b.x).abs(),
-        (a.y - b.y).abs(),
-    ))
+    Shape::Rectangle {
+        lower_left: Point::new(a.x.min(b.x), a.y.min(b.y)),
+        width: (a.x - b.x).abs(),
+        height: (a.y - b.y).abs(),
+        rotation: 0.0,
+    }
 }
 
 /// Rotates `v` by `angle` radians counter-clockwise.
@@ -302,6 +300,24 @@ pub fn validate(shape: &Shape) -> Result<(), String> {
             ok(finite(*center) && radius.is_finite(), NOT_NUMBER)?;
             ok(*radius > 0.0, "The radius must be more than 0.")
         }
+        Shape::Rectangle {
+            lower_left,
+            width,
+            height,
+            rotation,
+        } => {
+            ok(
+                finite(*lower_left)
+                    && width.is_finite()
+                    && height.is_finite()
+                    && rotation.is_finite(),
+                NOT_NUMBER,
+            )?;
+            ok(
+                *width > 0.0 && *height > 0.0,
+                "A rectangle's width and height must be more than 0.",
+            )
+        }
         Shape::Polyline(pl) => {
             ok(
                 pl.vertices
@@ -387,6 +403,17 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
             ]);
         }
         Shape::Circle { center, .. } => out.push((*center, Centre)),
+        Shape::Rectangle {
+            lower_left,
+            width,
+            height,
+            rotation,
+        } => {
+            let c = rectangle_corners(*lower_left, *width, *height, *rotation);
+            out.extend(c.iter().map(|p| (*p, End)));
+            out.extend((0..4).map(|i| (mid(c[i], c[(i + 1) % 4]), Mid)));
+            out.push((mid(c[0], c[2]), Centre));
+        }
         Shape::Polyline(pl) => {
             let n = pl.vertices.len();
             out.extend(pl.vertices.iter().map(|v| (v.point(), End)));
