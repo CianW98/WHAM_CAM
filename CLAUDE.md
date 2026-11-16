@@ -165,8 +165,16 @@ Done:
 - Menu bar (File, View, Edit, Draw, Machining) sharing its commands with the right-click menu.
 - Edit tools (spec 5.3) in the engine (`edit.rs`): Join (tolerance dialog), Explode, Break at
   intersections, Close polyline.
+- Arrow keys step the selection; layer right-click menu (New layer, Rename, Delete layer);
+  zoom to fit only on request or after a DXF import. User checked the app (2026-11-16): good.
+- Project files (spec 5.8): `.whamcam` JSON with a format version, in the engine
+  (`project_file.rs`; serde_json is now an engine dependency). New/Open/Save/Save As, unsaved
+  changes prompt, title with `*`, safe write via temp file + rename in the app layer.
 
 Next:
-- User check of the drawing tools, menus, transforms, edit tools and Properties in the app.
+- Discuss the offsetting library in depth (candidate: cavalier_contours) before doing anything.
+- Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
+  running on the toolpath moves (same rules later on the G-code). Answer the toolpath open
+  questions (spec section 9 and the (?) defaults) at that stage. Then tool library, then G-code.
 - Dimensions and more DXF features: later in v1 (user to list the DXF features).
 - Then the offsetting library (candidate: cavalier_contours) and toolpaths.

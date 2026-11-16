@@ -227,8 +227,25 @@ Standard, widely compatible G-code through one generic post-processor (section 7
 Machine-specific post-processors, each with its own settings panel per machine type, come later.
 
 ### 5.8 Project files
-Save/open a WHAM_CAM project: one readable JSON file (`.wcam` (?)) with a format version number.
-Holds geometry, layers, parts, operations, tools used and post-processor settings.
+Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
+- File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
+  also on the toolbar. Save on a never-saved project does Save As.
+- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (1), `"saved_by"` (the WHAM_CAM
+  version) and the document: project name, grid spacing, layers (name, colour, shapes) and parts.
+  Operations, tools used and post-processor settings are added as they are built.
+- Numbers are written so they read back exactly. Files are written to a temporary file and then
+  renamed, so a failed save never leaves a half-written project.
+- Opening checks the file (format, unique ids and layer names, valid colours and shapes) and gives
+  a plain-English message on a damaged or non-WHAM_CAM file, leaving the current project as it
+  was. A file from a newer format version is refused, naming the WHAM_CAM version that made it.
+  Older format versions will be upgraded on open.
+- The project name (top of the tree) follows the file name. The window title shows the file name
+  and `*` while there are unsaved changes (undoing back to the saved state clears it).
+- New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
+- Opening starts a fresh undo history, zooms to fit and resets the current layer to the first.
+  The copy/paste clipboard is kept, so shapes can be copied between projects.
+- Not saved (yet): current layer, view position, snap settings. These wait for project
+  preferences (see `docs/roadmap.md`).
 
 ## 6. Operation settings
 

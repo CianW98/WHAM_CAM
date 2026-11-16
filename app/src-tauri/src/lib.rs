@@ -2,6 +2,7 @@
 //! from disk (the engine never touches the file system). No geometry, toolpath or G-code
 //! logic belongs in this file.
 
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -14,6 +15,9 @@ use wham_engine::{
 /// The open project, shared by all commands.
 struct AppState(Mutex<Project>);
 
+/// Where the open project was last saved or opened from (None until it is first saved).
+struct OpenFile(Mutex<Option<PathBuf>>);
+
 /// Everything the interface needs to redraw after a change.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,15 +26,30 @@ struct View {
     display: DisplayData,
     can_undo: bool,
     can_redo: bool,
+    /// Unsaved changes since the last save or open.
+    modified: bool,
+    /// The project file's name (e.g. "bracket.whamcam"), or None if never saved.
+    file_name: Option<String>,
 }
 
-fn view(p: &Project) -> View {
+fn view(p: &Project, file: Option<&Path>) -> View {
     View {
         document: p.document().clone(),
         display: p.display().clone(),
         can_undo: p.can_undo(),
         can_redo: p.can_redo(),
+        modified: p.is_modified(),
+        file_name: file
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().into_owned()),
     }
+}
+
+/// The project name for a file: its name without the extension.
+fn project_name(path: &Path) -> String {
+    path.file_stem()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Untitled".into())
 }
 
 /// Reads a file as text. Non-UTF-8 bytes (older DXFs use Windows code pages) are replaced;
@@ -42,8 +61,76 @@ fn read_text(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn get_view(state: State<AppState>) -> View {
-    view(&state.0.lock().unwrap())
+fn get_view(state: State<AppState>, file: State<OpenFile>) -> View {
+    view(&state.0.lock().unwrap(), file.0.lock().unwrap().as_deref())
+}
+
+// --- Project files ------------------------------------------------------------------------------
+
+#[tauri::command]
+fn new_project(state: State<AppState>, file: State<OpenFile>) {
+    state.0.lock().unwrap().new_project();
+    *file.0.lock().unwrap() = None;
+}
+
+#[tauri::command]
+fn open_project(path: String, state: State<AppState>, file: State<OpenFile>) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    state.0.lock().unwrap().open(&text, &project_name(&path))?;
+    *file.0.lock().unwrap() = Some(path);
+    Ok(())
+}
+
+/// Saves the project to `path` (adding the .whamcam extension if missing), or to the file it
+/// was last saved to or opened from if `path` is None.
+#[tauri::command]
+fn save_project(
+    path: Option<String>,
+    state: State<AppState>,
+    file: State<OpenFile>,
+) -> Result<(), String> {
+    let path = match path {
+        Some(p) => with_project_extension(PathBuf::from(p)),
+        None => file
+            .0
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or("The project hasn't been saved yet.")?,
+    };
+    let mut project = state.0.lock().unwrap();
+    let text = project.save_text(&project_name(&path));
+    write_safely(&path, &text).map_err(|e| format!("Could not save {}: {e}", path.display()))?;
+    project.mark_saved();
+    *file.0.lock().unwrap() = Some(path);
+    Ok(())
+}
+
+fn with_project_extension(path: PathBuf) -> PathBuf {
+    let ext = wham_engine::project_file::EXTENSION;
+    match path.extension() {
+        Some(e) if e.eq_ignore_ascii_case(ext) => path,
+        _ => {
+            let mut name = path.into_os_string();
+            name.push(format!(".{ext}"));
+            PathBuf::from(name)
+        }
+    }
+}
+
+/// Writes to a temporary file next to `path`, then renames it over `path`, so a failed save
+/// never leaves a half-written project behind.
+fn write_safely(path: &Path, text: &str) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".saving");
+    let tmp = PathBuf::from(tmp);
+    let result = std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[tauri::command]
@@ -222,8 +309,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState(Mutex::new(Project::new())))
+        .manage(OpenFile(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             get_view,
+            new_project,
+            open_project,
+            save_project,
             dxf_info,
             import_dxf,
             delete_objects,

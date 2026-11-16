@@ -182,6 +182,91 @@ export default function App() {
     notify("info", importMessage(report, scale !== 1 ? info.units.name : null));
   }, [ask, notify, refresh]);
 
+  // --- Project files ---------------------------------------------------------------------------
+
+  /** Save As…: ask where, then save. Resolves false if cancelled. */
+  const saveAs = useCallback(async () => {
+    const v = await engine.getView();
+    const path = await engine.chooseSavePath(v.fileName ?? `${v.document.name}.whamcam`);
+    if (!path) return false;
+    await engine.saveProject(path);
+    const after = await refresh();
+    notify("info", `Saved ${after.fileName ?? "the project"}.`);
+    return true;
+  }, [refresh, notify]);
+
+  /** Save: to the current file, or Save As… if it has never been saved. Resolves false if cancelled. */
+  const save = useCallback(async () => {
+    const v = await engine.getView();
+    if (!v.fileName) return saveAs();
+    await engine.saveProject(null);
+    await refresh();
+    notify("info", `Saved ${v.fileName}.`);
+    return true;
+  }, [saveAs, refresh, notify]);
+
+  /**
+   * With unsaved changes, asks Save / Don't save / Cancel. Resolves true if it's fine to carry
+   * on (saved, or the changes may be dropped), false if cancelled.
+   */
+  const confirmDiscard = useCallback(async () => {
+    const v = await engine.getView();
+    if (!v.modified) return true;
+    const answer = await ask({
+      title: "Unsaved changes",
+      message: `Save the changes to ${v.fileName ?? v.document.name} first?`,
+      options: ["Save", "Don't save"],
+    });
+    if (answer === null) return false;
+    return answer === "Save" ? save() : true;
+  }, [ask, save]);
+
+  /** After a different project is loaded: nothing selected, nothing being drawn or placed. */
+  const resetForNewDocument = useCallback(() => {
+    setDraft(null);
+    setSpecial(null);
+    setSelection(NOTHING);
+    setCurrentLayer(null);
+  }, [setDraft, setSpecial]);
+
+  const newProject = useCallback(async () => {
+    if (!(await confirmDiscard())) return;
+    await engine.newProject();
+    resetForNewDocument();
+    await refresh();
+  }, [confirmDiscard, resetForNewDocument, refresh]);
+
+  const openProject = useCallback(async () => {
+    if (!(await confirmDiscard())) return;
+    const path = await engine.chooseProjectFile();
+    if (!path) return;
+    await engine.openProject(path);
+    resetForNewDocument();
+    await refresh();
+    setFitRequest((n) => n + 1);
+  }, [confirmDiscard, resetForNewDocument, refresh]);
+
+  // The title bar: file name, with * while there are unsaved changes.
+  const title = `WHAM_CAM - ${view?.fileName ?? view?.document.name ?? "Untitled"}${view?.modified ? " *" : ""}`;
+  useEffect(() => {
+    engine.setWindowTitle(title).catch(() => {});
+  }, [title]);
+
+  // Closing the window with unsaved changes asks first.
+  const confirmDiscardRef = useRef(confirmDiscard);
+  confirmDiscardRef.current = confirmDiscard;
+  useEffect(() => {
+    const stop = engine.onCloseRequested(() =>
+      confirmDiscardRef.current().catch((err) => {
+        notify("error", String(err));
+        return false;
+      }),
+    );
+    return () => {
+      stop.then((f) => f()).catch(() => {});
+    };
+  }, [notify]);
+
   /** Deletes the selected objects, or the selected layer (with everything on it). */
   const deleteSelected = useCallback(async () => {
     if (selection.kind === "layer") {
@@ -535,6 +620,12 @@ export default function App() {
       return;
     }
     switch (name) {
+      case "New":
+        return run(newProject);
+      case "Open":
+        return run(openProject);
+      case "Save":
+        return run(save);
       case "Import":
         return run(importDxf);
       case "Undo":
@@ -597,7 +688,11 @@ export default function App() {
       else if (d && d.points.length > 0) setDraft(emptyDraft(d.tool));
       else if (d) setDraft(null);
       else setSelection(NOTHING);
-    } else if (ctrl && e.shiftKey && key === "a") run(() => selectAllOnLayer(drawLayer));
+    } else if (ctrl && key === "n") run(newProject);
+    else if (ctrl && key === "o") run(openProject);
+    else if (ctrl && e.shiftKey && key === "s") run(saveAs);
+    else if (ctrl && key === "s") run(save);
+    else if (ctrl && e.shiftKey && key === "a") run(() => selectAllOnLayer(drawLayer));
     else if (ctrl && key === "a") run(selectAll);
     else if (ctrl && key === "c") run(copySelected);
     else if (ctrl && key === "x") run(cutSelected);
@@ -741,10 +836,10 @@ export default function App() {
       {
         label: "File",
         items: [
-          c.later("New"),
-          c.later("Open…"),
-          c.later("Save"),
-          c.later("Save As…"),
+          { label: "New", shortcut: "Ctrl+N", action: () => run(newProject) },
+          { label: "Open…", shortcut: "Ctrl+O", action: () => run(openProject) },
+          { label: "Save", shortcut: "Ctrl+S", action: () => run(save) },
+          { label: "Save As…", shortcut: "Ctrl+Shift+S", action: () => run(saveAs) },
           c.sep({ label: "Import DXF…", action: () => run(importDxf) }),
         ],
       },

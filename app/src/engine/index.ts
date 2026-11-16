@@ -5,7 +5,8 @@
 // else in the interface changes. The types mirror the engine's Rust types.
 
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 export interface Point {
   x: number;
@@ -93,6 +94,10 @@ export interface View {
   display: DisplayData;
   canUndo: boolean;
   canRedo: boolean;
+  /** Unsaved changes since the last save or open. */
+  modified: boolean;
+  /** The project file's name (e.g. "bracket.whamcam"), or null if never saved. */
+  fileName: string | null;
 }
 
 export interface DxfUnits {
@@ -164,6 +169,51 @@ export function getView(): Promise<View> {
 }
 
 /** Shows the file-open dialog for DXF files. Returns the chosen path, or null if cancelled. */
+// --- Project files ---------------------------------------------------------------------------
+
+const PROJECT_FILTER = { name: "WHAM_CAM projects", extensions: ["whamcam"] };
+
+/** Asks which project file to open. Null if cancelled. */
+export async function chooseProjectFile(): Promise<string | null> {
+  const path = await open({ title: "Open project", multiple: false, directory: false, filters: [PROJECT_FILTER] });
+  return typeof path === "string" ? path : null;
+}
+
+/** Asks where to save the project. Null if cancelled. */
+export async function chooseSavePath(defaultName: string): Promise<string | null> {
+  return (await save({ title: "Save project as", defaultPath: defaultName, filters: [PROJECT_FILTER] })) ?? null;
+}
+
+/** Sets the window's title bar text. */
+export function setWindowTitle(title: string): Promise<void> {
+  return getCurrentWindow().setTitle(title);
+}
+
+/**
+ * Runs `canClose` when the user tries to close the window; the window only closes if it
+ * resolves true. Returns a function that stops listening.
+ */
+export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() => void> {
+  return getCurrentWindow().onCloseRequested(async (event) => {
+    if (!(await canClose())) event.preventDefault();
+  });
+}
+
+/** Starts a new, empty project. */
+export function newProject(): Promise<void> {
+  return invoke<void>("new_project");
+}
+
+/** Opens a project file, replacing the current project. Fails with a plain-English message. */
+export function openProject(path: string): Promise<void> {
+  return invoke<void>("open_project", { path });
+}
+
+/** Saves to `path` (".whamcam" added if missing), or to the current file if null. */
+export function saveProject(path: string | null): Promise<void> {
+  return invoke<void>("save_project", { path });
+}
+
 export async function chooseDxfFile(): Promise<string | null> {
   const path = await open({
     title: "Import DXF",

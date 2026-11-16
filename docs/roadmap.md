@@ -12,6 +12,10 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Holding tabs.**
 - **PolyRectangle corner radius** (rounded corners as true arcs, at most half the shorter side).
   Left out of v1 (decided 2026-11-16); the PolyRectangle has Lower Left, Width, Height, Rotation.
+- **Project preferences**: a section of per-project settings saved in the project file, e.g.
+  current layer, view position, snap settings and grid settings. Raised 2026-11-16 when saving
+  was built; until then those aren't saved (grid spacing already is, as part of the project).
+- **Recent files** list in the File menu (not wanted yet, 2026-11-16).
 
 ## Later
 
