@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::display::display_shape;
 use crate::document::Document;
-use crate::geometry::{Point, Polyline, Shape, Vertex, rectangle_corners};
+use crate::geometry::{
+    Point, Polyline, Shape, Vertex, angle_deg, arc_sweep_deg, bulge_arc, cross, dot, mid,
+    on_circle, rectangle_corners, sub,
+};
 
 /// Points closer than this (mm) count as the same point.
 const SAME_POINT: f64 = 1e-9;
@@ -85,22 +88,6 @@ pub struct SnapOptions {
 // ---------------------------------------------------------------------------------------------
 // Building shapes
 
-fn sub(a: Point, b: Point) -> Point {
-    Point::new(a.x - b.x, a.y - b.y)
-}
-
-fn mid(a: Point, b: Point) -> Point {
-    Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)
-}
-
-/// Angle of `p` seen from `center`, in degrees, in [0, 360).
-fn angle_deg(center: Point, p: Point) -> f64 {
-    (p.y - center.y)
-        .atan2(p.x - center.x)
-        .to_degrees()
-        .rem_euclid(360.0)
-}
-
 /// Arc from `start` to `end`, counter-clockwise, with its centre on the line halfway between
 /// them, as close as possible to `near`.
 pub fn arc_start_end_centre(start: Point, end: Point, near: Point) -> Option<Shape> {
@@ -115,11 +102,7 @@ pub fn arc_start_end_centre(start: Point, end: Point, near: Point) -> Option<Sha
     let along = (near.x - m.x) * n.x + (near.y - m.y) * n.y;
     let center = Point::new(m.x + n.x * along, m.y + n.y * along);
     let radius = center.distance_to(start);
-    // A start a hair below 360° (rounding noise) is really 0°.
-    let start_angle = match angle_deg(center, start) {
-        a if a > 360.0 - 1e-9 => 0.0,
-        a => a,
-    };
+    let start_angle = angle_deg(center, start);
     let mut end_angle = angle_deg(center, end);
     if end_angle <= start_angle {
         end_angle += 360.0;
@@ -158,7 +141,7 @@ fn end_direction(a: Point, b: Point, bulge: f64) -> Point {
 pub fn tangent_bulge(dir: Point, from: Point, to: Point) -> f64 {
     let c = sub(to, from);
     // Signed angle from the start direction to the chord is half the sweep.
-    let alpha = (dir.x * c.y - dir.y * c.x).atan2(dir.x * c.x + dir.y * c.y);
+    let alpha = cross(dir, c).atan2(dot(dir, c));
     (alpha / 2.0).tan()
 }
 
@@ -358,32 +341,10 @@ pub fn validate(shape: &Shape) -> Result<(), String> {
 // ---------------------------------------------------------------------------------------------
 // Snapping
 
-/// Point on a polyline segment's arc (or straight line) halfway along, and the arc centre.
-fn segment_mid_and_centre(a: Point, b: Point, bulge: f64) -> (Point, Option<Point>) {
-    let m = mid(a, b);
-    let c = sub(b, a);
-    let len = c.x.hypot(c.y);
-    if bulge == 0.0 || len <= SAME_POINT {
-        return (m, None);
-    }
-    // Unit vector to the right of the chord; a counter-clockwise arc (bulge > 0) bulges this way.
-    let n = Point::new(c.y / len, -c.x / len);
-    let sagitta = bulge * len / 2.0;
-    let radius = len * (1.0 + bulge * bulge) / (4.0 * bulge.abs());
-    let along = |d: f64| Point::new(m.x + n.x * d, m.y + n.y * d);
-    (
-        along(sagitta),
-        Some(along(sagitta - radius * bulge.signum())),
-    )
-}
-
 /// Points a shape offers for object snapping.
 fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
     use SnapKind::*;
-    let polar = |c: Point, r: f64, deg: f64| {
-        let (s, co) = deg.to_radians().sin_cos();
-        Point::new(c.x + r * co, c.y + r * s)
-    };
+    let polar = |c: Point, r: f64, deg: f64| on_circle(c, r, deg.to_radians());
     match shape {
         Shape::Line { start, end } => {
             out.extend([(*start, End), (*end, End), (mid(*start, *end), Mid)]);
@@ -394,7 +355,7 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
             start_angle,
             end_angle,
         } => {
-            let sweep = (end_angle - start_angle).rem_euclid(360.0);
+            let sweep = arc_sweep_deg(*start_angle, *end_angle);
             out.extend([
                 (polar(*center, *radius, *start_angle), End),
                 (polar(*center, *radius, *end_angle), End),
@@ -420,9 +381,10 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
             let segments = if pl.closed { n } else { n.saturating_sub(1) };
             for i in 0..segments {
                 let (a, b) = (pl.vertices[i], pl.vertices[(i + 1) % n]);
-                let (m, c) = segment_mid_and_centre(a.point(), b.point(), a.bulge);
-                out.push((m, Mid));
-                out.extend(c.map(|c| (c, Centre)));
+                match bulge_arc(a.point(), b.point(), a.bulge) {
+                    Some(arc) => out.extend([(arc.mid_point(), Mid), (arc.center, Centre)]),
+                    Option::None => out.push((mid(a.point(), b.point()), Mid)),
+                }
             }
         }
         Shape::Points { points } => out.extend(points.iter().map(|p| (*p, End))),

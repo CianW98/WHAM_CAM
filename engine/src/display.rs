@@ -7,7 +7,9 @@ use std::f64::consts::TAU;
 use serde::{Deserialize, Serialize};
 
 use crate::document::{Document, LAYER_PALETTE};
-use crate::geometry::{Point, Polyline, Shape, Spline, rectangle_corners};
+use crate::geometry::{
+    BulgeArc, Point, Polyline, Shape, Spline, arc_sweep_deg, bulge_arc, rectangle_corners,
+};
 
 /// Maximum distance between a true arc and its on-screen approximation, in mm.
 pub const DISPLAY_TOLERANCE: f64 = 0.01;
@@ -102,10 +104,7 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
         } => {
             let mut pts = Vec::new();
             // Always anticlockwise from start to end, including across 0° (e.g. 300° to 30°).
-            let sweep = match (end_angle - start_angle).rem_euclid(360.0) {
-                s if s < 1e-9 => 360.0,
-                s => s,
-            };
+            let sweep = arc_sweep_deg(*start_angle, *end_angle);
             push_arc(
                 &mut pts,
                 *center,
@@ -180,8 +179,12 @@ fn polyline_points(pl: &Polyline) -> Vec<[f64; 2]> {
     for i in 0..segments {
         let a = pl.vertices[i];
         let b = pl.vertices[(i + 1) % n];
-        if a.bulge != 0.0
-            && let Some((center, radius, start, sweep)) = bulge_arc(a.point(), b.point(), a.bulge)
+        if let Some(BulgeArc {
+            center,
+            radius,
+            start,
+            sweep,
+        }) = bulge_arc(a.point(), b.point(), a.bulge)
         {
             push_arc(&mut pts, center, radius, start, sweep);
             pts.pop(); // replaced by the exact end vertex below
@@ -192,25 +195,6 @@ fn polyline_points(pl: &Polyline) -> Vec<[f64; 2]> {
         pts.pop(); // the closing point duplicates the first vertex
     }
     pts
-}
-
-/// Centre, radius, start angle and signed sweep of the arc from `a` to `b` with the given bulge.
-pub(crate) fn bulge_arc(a: Point, b: Point, bulge: f64) -> Option<(Point, f64, f64, f64)> {
-    let chord = a.distance_to(b);
-    if chord == 0.0 {
-        return None;
-    }
-    let sweep = 4.0 * bulge.atan();
-    // Distance from chord midpoint to centre, towards the left of a→b.
-    let offset = chord / 2.0 * (1.0 - bulge * bulge) / (2.0 * bulge);
-    let (dx, dy) = ((b.x - a.x) / chord, (b.y - a.y) / chord);
-    let center = Point::new(
-        (a.x + b.x) / 2.0 - dy * offset,
-        (a.y + b.y) / 2.0 + dx * offset,
-    );
-    let radius = center.distance_to(a);
-    let start = (a.y - center.y).atan2(a.x - center.x);
-    Some((center, radius, start, sweep))
 }
 
 /// Appends points along an arc (angles in radians), including both the start and end points.

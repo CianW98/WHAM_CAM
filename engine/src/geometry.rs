@@ -292,12 +292,95 @@ impl Transform {
     }
 }
 
+// --- Shared point and arc maths ------------------------------------------------------------------
+// Every file that works with arcs uses these, so they all agree (e.g. on how an arc that crosses
+// 0° sweeps). Angles stored in shapes are degrees; the bulge maths works in radians.
+
+/// `a − b`.
+pub fn sub(a: Point, b: Point) -> Point {
+    Point::new(a.x - b.x, a.y - b.y)
+}
+
+/// The point halfway between `a` and `b`.
+pub fn mid(a: Point, b: Point) -> Point {
+    Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)
+}
+
+/// Cross product (z part): positive if `b` is anticlockwise from `a`.
+pub fn cross(a: Point, b: Point) -> f64 {
+    a.x * b.y - a.y * b.x
+}
+
+pub fn dot(a: Point, b: Point) -> f64 {
+    a.x * b.x + a.y * b.y
+}
+
+/// The point on a circle at `angle` radians anticlockwise from +X.
+pub fn on_circle(center: Point, radius: f64, angle: f64) -> Point {
+    let (s, c) = angle.sin_cos();
+    Point::new(center.x + radius * c, center.y + radius * s)
+}
+
+/// An angle in degrees brought into [0, 360). A value a hair under 360 (rounding noise) is 0.
+pub fn norm_deg(a: f64) -> f64 {
+    let a = a.rem_euclid(360.0);
+    if 360.0 - a < 1e-9 { 0.0 } else { a }
+}
+
 /// Angle of `p` seen from `center`, in degrees, in [0, 360).
-fn angle_deg(center: Point, p: Point) -> f64 {
-    (p.y - center.y)
-        .atan2(p.x - center.x)
-        .to_degrees()
-        .rem_euclid(360.0)
+pub fn angle_deg(center: Point, p: Point) -> f64 {
+    norm_deg((p.y - center.y).atan2(p.x - center.x).to_degrees())
+}
+
+/// How far an arc stored as start and end angles (degrees) sweeps, anticlockwise from start to
+/// end, in degrees in (0, 360]. Crossing 0° is fine (300° to 30° sweeps 90°). Equal angles
+/// (or within 1e-9°) mean a full circle.
+pub fn arc_sweep_deg(start_angle: f64, end_angle: f64) -> f64 {
+    let s = (end_angle - start_angle).rem_euclid(360.0);
+    if s < 1e-9 { 360.0 } else { s }
+}
+
+/// The arc of a polyline segment with a bulge. Angles in radians.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BulgeArc {
+    pub center: Point,
+    pub radius: f64,
+    /// Angle of the segment's start point seen from the centre.
+    pub start: f64,
+    /// Signed sweep: positive = anticlockwise (bulge > 0), negative = clockwise.
+    pub sweep: f64,
+}
+
+impl BulgeArc {
+    /// The point on the arc halfway along.
+    pub fn mid_point(&self) -> Point {
+        on_circle(self.center, self.radius, self.start + self.sweep / 2.0)
+    }
+}
+
+/// The arc of the polyline segment from `a` to `b` with `bulge` (tan of a quarter of the
+/// sweep). `None` for a straight segment (bulge 0) or if `a` and `b` are the same point.
+pub fn bulge_arc(a: Point, b: Point, bulge: f64) -> Option<BulgeArc> {
+    let chord = a.distance_to(b);
+    if bulge == 0.0 || chord == 0.0 {
+        return None;
+    }
+    // Distance from the chord's midpoint to the centre, towards the left of a→b.
+    let offset = chord / 2.0 * (1.0 - bulge * bulge) / (2.0 * bulge);
+    let (dx, dy) = ((b.x - a.x) / chord, (b.y - a.y) / chord);
+    let m = mid(a, b);
+    let center = Point::new(m.x - dy * offset, m.y + dx * offset);
+    Some(BulgeArc {
+        center,
+        radius: center.distance_to(a),
+        start: (a.y - center.y).atan2(a.x - center.x),
+        sweep: 4.0 * bulge.atan(),
+    })
+}
+
+/// The bulge of an arc segment that sweeps `sweep` radians (positive = anticlockwise).
+pub fn bulge_from_sweep(sweep: f64) -> f64 {
+    (sweep / 4.0).tan()
 }
 
 impl Shape {
@@ -328,21 +411,13 @@ impl Shape {
                 end_angle,
             } => {
                 let s = uniform?;
-                let at = |deg: f64| {
-                    let (sn, cs) = deg.to_radians().sin_cos();
-                    t.apply(Point::new(center.x + radius * cs, center.y + radius * sn))
-                };
+                let at = |deg: f64| t.apply(on_circle(*center, *radius, deg.to_radians()));
                 let c = t.apply(*center);
                 let (p0, p1) = (at(*start_angle), at(*end_angle));
                 // A mirror reverses direction; swap ends to keep the arc counter-clockwise.
                 let from = if t.mirrors() { p1 } else { p0 };
-                let sweep = (end_angle - start_angle).rem_euclid(360.0);
                 let start = angle_deg(c, from);
-                let end = if sweep == 0.0 {
-                    start + 360.0
-                } else {
-                    start + sweep
-                };
+                let end = start + arc_sweep_deg(*start_angle, *end_angle);
                 Shape::Arc {
                     center: c,
                     radius: radius * s,

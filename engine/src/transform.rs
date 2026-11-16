@@ -4,7 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::display::display_shape;
-use crate::geometry::{Point, Shape, Transform, rectangle_corners};
+use crate::geometry::{
+    Point, Shape, Transform, arc_sweep_deg, bulge_arc, on_circle, rectangle_corners,
+};
 
 /// One transform of the selected shapes.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -100,10 +102,7 @@ fn grow_arc(b: &mut Option<Bounds>, centre: Point, radius: f64, start: f64, swee
     } else {
         (start, sweep)
     };
-    let at = |deg: f64| {
-        let (s, c) = deg.to_radians().sin_cos();
-        Point::new(centre.x + radius * c, centre.y + radius * s)
-    };
+    let at = |deg: f64| on_circle(centre, radius, deg.to_radians());
     grow(b, at(start));
     grow(b, at(start + sweep));
     let first = (start / 90.0).ceil() as i64;
@@ -112,23 +111,6 @@ fn grow_arc(b: &mut Option<Bounds>, centre: Point, radius: f64, start: f64, swee
     for k in first..=last.min(first + 4) {
         grow(b, at(k as f64 * 90.0));
     }
-}
-
-/// Centre, radius, start angle and sweep (degrees, signed) of a polyline bulge segment.
-fn bulge_arc(a: Point, b: Point, bulge: f64) -> Option<(Point, f64, f64, f64)> {
-    let (cx, cy) = (b.x - a.x, b.y - a.y);
-    let len = cx.hypot(cy);
-    if bulge == 0.0 || len == 0.0 {
-        return None;
-    }
-    let n = Point::new(cy / len, -cx / len);
-    let sagitta = bulge * len / 2.0;
-    let radius = len * (1.0 + bulge * bulge) / (4.0 * bulge.abs());
-    let d = sagitta - radius * bulge.signum();
-    let centre = Point::new((a.x + b.x) / 2.0 + n.x * d, (a.y + b.y) / 2.0 + n.y * d);
-    let start = (a.y - centre.y).atan2(a.x - centre.x).to_degrees();
-    let sweep = 4.0 * bulge.atan().to_degrees();
-    Some((centre, radius, start, sweep))
 }
 
 /// Exact bounding box of a shape (splines and ellipses: within the 0.01 mm display tolerance).
@@ -146,8 +128,7 @@ pub fn shape_bounds(shape: &Shape) -> Option<Bounds> {
             start_angle,
             end_angle,
         } => {
-            let sweep = (end_angle - start_angle).rem_euclid(360.0);
-            let sweep = if sweep == 0.0 { 360.0 } else { sweep };
+            let sweep = arc_sweep_deg(*start_angle, *end_angle);
             grow_arc(&mut b, *center, *radius, *start_angle, sweep);
         }
         Shape::Circle { center, radius } => {
@@ -162,8 +143,9 @@ pub fn shape_bounds(shape: &Shape) -> Option<Bounds> {
             let segments = if pl.closed { n } else { n.saturating_sub(1) };
             for i in 0..segments {
                 let (v, w) = (pl.vertices[i], pl.vertices[(i + 1) % n]);
-                if let Some((c, r, start, sweep)) = bulge_arc(v.point(), w.point(), v.bulge) {
-                    grow_arc(&mut b, c, r, start, sweep);
+                if let Some(arc) = bulge_arc(v.point(), w.point(), v.bulge) {
+                    let (start, sweep) = (arc.start.to_degrees(), arc.sweep.to_degrees());
+                    grow_arc(&mut b, arc.center, arc.radius, start, sweep);
                 }
             }
         }

@@ -3,41 +3,13 @@
 
 use std::f64::consts::TAU;
 
-use crate::display::bulge_arc;
-use crate::geometry::{Point, Polyline, Shape, Vertex, rectangle_corners};
+use crate::geometry::{
+    Point, Polyline, Shape, Vertex, arc_sweep_deg, bulge_arc, bulge_from_sweep, cross, dot,
+    norm_deg, on_circle, rectangle_corners, sub,
+};
 
 /// Points closer than this (mm) count as the same point when closing or breaking.
 pub const EDIT_TOLERANCE: f64 = 0.001;
-
-// --- Small helpers ------------------------------------------------------------------------------
-
-fn sub(a: Point, b: Point) -> Point {
-    Point::new(a.x - b.x, a.y - b.y)
-}
-
-fn cross(a: Point, b: Point) -> f64 {
-    a.x * b.y - a.y * b.x
-}
-
-fn dot(a: Point, b: Point) -> f64 {
-    a.x * b.x + a.y * b.y
-}
-
-/// An angle in degrees in [0, 360), with values a hair under 360 taken as 0.
-fn norm_deg(a: f64) -> f64 {
-    let a = a.rem_euclid(360.0);
-    if 360.0 - a < 1e-9 { 0.0 } else { a }
-}
-
-/// The sweep of a stored (counter-clockwise) arc in degrees, in (0, 360].
-fn arc_sweep_deg(start: f64, end: f64) -> f64 {
-    let s = (end - start).rem_euclid(360.0);
-    if s < 1e-9 { 360.0 } else { s }
-}
-
-fn on_circle(c: Point, r: f64, angle_rad: f64) -> Point {
-    Point::new(c.x + r * angle_rad.cos(), c.y + r * angle_rad.sin())
-}
 
 // --- Simple pieces: a straight segment or an arc ----------------------------------------------
 
@@ -60,8 +32,13 @@ enum Prim {
 impl Prim {
     /// The straight segment or arc between two polyline vertices.
     fn from_bulge(a: Point, b: Point, bulge: f64) -> Prim {
-        match (bulge != 0.0).then(|| bulge_arc(a, b, bulge)).flatten() {
-            Some((c, r, start, sweep)) => Prim::Arc { c, r, start, sweep },
+        match bulge_arc(a, b, bulge) {
+            Some(arc) => Prim::Arc {
+                c: arc.center,
+                r: arc.radius,
+                start: arc.start,
+                sweep: arc.sweep,
+            },
             None => Prim::Line { a, b },
         }
     }
@@ -100,7 +77,7 @@ impl Prim {
     fn bulge(&self) -> f64 {
         match *self {
             Prim::Line { .. } => 0.0,
-            Prim::Arc { sweep, .. } => (sweep / 4.0).tan(),
+            Prim::Arc { sweep, .. } => bulge_from_sweep(sweep),
         }
     }
 
@@ -227,7 +204,7 @@ fn as_run(shape: &Shape) -> Option<Vec<Vertex>> {
                 Vertex {
                     x: a.x,
                     y: a.y,
-                    bulge: (sweep.to_radians() / 4.0).tan(),
+                    bulge: bulge_from_sweep(sweep.to_radians()),
                 },
                 Vertex::line(b.x, b.y),
             ])

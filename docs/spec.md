@@ -1,8 +1,9 @@
 # WHAM_CAM v1 Specification
 
-Status: **v1 in progress.** Import, layers, drawing, selection and transforms (sections 5.1–5.3,
-apart from SVG, join/split and dimensions) are built; see the Status in CLAUDE.md. Items marked
-**(?)** need a decision from the user.
+Status: **v1 in progress.** DXF import, layers, drawing, selection, transforms, edit tools
+(sections 5.1–5.3, apart from SVG import and dimensions) and project files (5.8) are built.
+Operations, tool library, toolpath preview and G-code (5.4–5.7) are next; see the Status in
+CLAUDE.md. Items marked **(?)** need a decision from the user.
 
 ## 1. Purpose
 

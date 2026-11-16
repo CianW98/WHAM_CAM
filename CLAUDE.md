@@ -72,6 +72,9 @@ Anything not on this list waits until v1 works end to end. Note such ideas in `d
 - The engine is its own Rust crate/library with its own tests. It must build and pass its tests without the UI.
 - The interface only displays things and passes settings to the engine. No toolpath maths, geometry calculations or G-code generation in the front-end code.
 - UI changes must never change G-code output. If a UI change needs an engine change, stop and explain it before doing it.
+- Point and arc maths (bulge ↔ arc, arc sweep across 0°, angle normalising, point helpers) lives
+  once in `engine/src/geometry.rs` with its own tests (`engine/tests/arc_maths.rs`). Use those
+  helpers; don't write another copy (copies drifting apart caused the arc-across-0° display bug).
 
 ## Future option: browser version via WebAssembly
 Not in v1 scope, but keep the door open. A later goal is a browser build: the same web interface
@@ -170,6 +173,8 @@ Done:
 - Project files (spec 5.8): `.whamcam` JSON with a format version, in the engine
   (`project_file.rs`; serde_json is now an engine dependency). New/Open/Save/Save As, unsaved
   changes prompt, title with `*`, safe write via temp file + rename in the app layer.
+- Cleanup before toolpaths: the duplicated point/arc maths gathered into shared helpers in
+  `geometry.rs` (no behaviour change; all tests pass).
 
 Next:
 - Discuss the offsetting library in depth (candidate: cavalier_contours) before doing anything.
