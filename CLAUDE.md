@@ -112,7 +112,7 @@ interface file that talks to the engine.
 - **Version numbers** use semantic versioning, `MAJOR.MINOR.PATCH`. While building towards v1,
   MAJOR stays 0: a release that adds features bumps MINOR (0.2.0), a release with only fixes
   bumps PATCH (0.2.1). 1.0.0 = the v1 scope works end to end. After that, MAJOR goes up only for
-  breaking changes (e.g. old project files no longer open). The current version, 0.1.0, becomes the first release.
+  breaking changes (e.g. old project files no longer open).
 - **One version everywhere:** `engine/Cargo.toml`, `app/src-tauri/Cargo.toml`, `app/package.json`
   and `app/src-tauri/tauri.conf.json` must always carry the same version. A release bumps all
   four in one commit ("Release vX.Y.Z").
@@ -153,13 +153,15 @@ Done:
   tangent arcs (A/L), point list; snapping (grid, end, mid, centre) in the engine (`draw.rs`);
   current layer; finished shape is selected; editable shape values and per-project grid spacing.
   (Typed-coordinate box removed at the user's request: unintuitive.)
-
 - Right-click menu (View, Draw, Transform, Edit, Select All / On Layer, Cut/Copy/Paste,
-  Undo/Redo). Transforms (move, rotate, scale, mirror) around the selection centre in the engine
-  (`transform.rs`); app clipboard with click-to-place paste.
+  Undo/Redo). Transforms (move, rotate, scale, mirror; move and rotate also by clicking) around
+  the selection centre in the engine (`transform.rs`); app clipboard with click-to-place paste.
+- PolyRectangle shape (lower left, width, height, rotation). Properties: `x,y` point boxes,
+  points pop-up for polylines/point lists, direction (CW/CCW). The user wants our own look,
+  not a copy of the reference program's (2026-11-16).
 
 Next:
-- User check of the drawing tools, right-click menu and transforms in the app.
+- User check of the drawing tools, right-click menu, transforms and Properties in the app.
 - Rest of the edit tools (spec 5.3): join, split/explode, close polyline, dimensions
   (already greyed in the Edit menu).
 - Then the offsetting library (candidate: cavalier_contours) and toolpaths.

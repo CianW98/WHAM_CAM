@@ -1,6 +1,8 @@
 # WHAM_CAM v1 Specification
 
-Status: **draft for review**. Nothing here is built yet. Items marked **(?)** need a decision from the user.
+Status: **v1 in progress.** Import, layers, drawing, selection and transforms (sections 5.1–5.3,
+apart from SVG, join/split and dimensions) are built; see the Status in CLAUDE.md. Items marked
+**(?)** need a decision from the user.
 
 ## 1. Purpose
 

@@ -7,8 +7,10 @@ It keeps the common workflow quick and plain: one main screen with the drawing a
 object/operation tree and a properties panel, and every setting visible and editable.
 WHAM_CAM runs on Windows and Linux, works fully offline, and is not tied to any one machine or controller.
 
-**Status: early development.** WHAM_CAM can import DXF files and organise them into layers.
-Drawing tools, toolpaths and G-code output are still being built, so it can't produce G-code yet.
+**Status: early development.** WHAM_CAM can import DXF files, organise them into layers, draw
+lines, arcs, circles, rectangles, polylines and points with snapping, and move, rotate, scale,
+mirror, cut, copy and paste them. Toolpaths and G-code output are still being built, so it can't
+produce G-code yet.
 See `docs/spec.md` for the v1 plan and `docs/roadmap.md` for ideas beyond it.
 
 ## Download
