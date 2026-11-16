@@ -146,6 +146,8 @@ Done:
 - Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree.
 - Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`, git-ignored (this machine only).
 - Release 0.1.0 published (2026-11-15): DXF import, layers, selection, undo/redo. No G-code yet.
+- Release 0.2.0 published (2026-11-16): drawing tools, snapping, right-click menu, transforms,
+  clipboard, PolyRectangle, points pop-up. No G-code yet.
 - Release workflow: pushing a `vX.Y.Z` tag checks versions, runs engine tests (Linux + Windows) and
   builds Windows/Linux installers into a draft release. CI also runs engine tests on Windows.
 - Roadmap for post-v1 ideas: `docs/roadmap.md`. Build setup moved from the spec to the README.
