@@ -138,6 +138,13 @@ function GroupRow({ label }: { label: string }) {
   );
 }
 
+/** Reads a list of shape ids like "1, 2, 3" (commas and/or spaces). Null if not whole numbers. */
+function parseIds(text: string): number[] | null {
+  const parts = text.split(/[\s,;]+/).filter((p) => p !== "");
+  if (parts.length === 0 || !parts.every((p) => /^\d+$/.test(p))) return null;
+  return [...new Set(parts.map(Number))];
+}
+
 const parseNumber = (t: string) => (t.trim() !== "" && Number.isFinite(Number(t)) ? Number(t) : null);
 
 /** "(Collection)" with a … button that opens the points pop-up. */
@@ -321,10 +328,12 @@ function OperationRows({
   op,
   state,
   onSet,
+  onSetShapes,
 }: {
   op: Operation;
   state: OperationState | undefined;
   onSet: (op: Operation) => Promise<boolean>;
+  onSetShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
 }) {
   const c = op.common;
   const common = (patch: Partial<Operation["common"]>) => onSet({ ...op, common: { ...c, ...patch } });
@@ -342,7 +351,13 @@ function OperationRows({
       <Row label="Show toolpath">
         <BoolField value={op.show_toolpath} onSave={(show_toolpath) => void onSet({ ...op, show_toolpath })} />
       </Row>
-      <Row label="Shapes">{op.shape_ids.length}</Row>
+      <Row label="Shapes">
+        <TextField
+          shown={op.shape_ids.join(", ")}
+          parse={parseIds}
+          onSave={(ids) => onSetShapes(op.id, ids)}
+        />
+      </Row>
       {state?.message && (
         <Row label={state.status === "outdated" ? "Last error" : "Error"}>
           <span className="prop-error">{state.message}</span>
@@ -437,6 +452,8 @@ interface Edits {
   onSetGridSpacing: (mm: number) => Promise<boolean>;
   /** Resolves false if the engine refused the change. */
   onSetOperation: (op: Operation) => Promise<boolean>;
+  /** Resolves false if the engine refused the shapes. */
+  onSetOperationShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
   operationStates: OperationState[];
 }
 
@@ -524,6 +541,7 @@ function Content({
             op={op}
             state={edits.operationStates.find((s) => s.id === op.id)}
             onSet={edits.onSetOperation}
+            onSetShapes={edits.onSetOperationShapes}
           />
         </Grid>
       ) : (

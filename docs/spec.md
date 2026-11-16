@@ -309,7 +309,9 @@ Decided for when Profile is built (2026-11-16):
 | Finish stepover | Light final wall pass | 0 | later |
 
 Behaviour (built 2026-11-16, matches the reference Pocket example move for move):
-- Select closed shapes (polylines, PolyRectangles, circles), then Pocket. Nesting decides the
+- Select closed shapes (polylines, PolyRectangles, circles), then Pocket. The operation's
+  **Shapes** in Properties lists their ids (e.g. `1, 2, 3`, as shown in the tree) and can be
+  edited; ids that don't exist or can't be pocketed are refused. Nesting decides the
   roles: a shape inside the boundary is an **island** (left uncut); a shape inside an island is a
   new boundary, pocketed on its own. Shapes that cross are refused. Open shapes, splines and
   ellipses are refused with a message.

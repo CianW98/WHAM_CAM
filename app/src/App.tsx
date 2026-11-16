@@ -431,6 +431,10 @@ export default function App() {
   );
   const setGridSpacing = useCallback((mm: number) => tryEdit(() => engine.setGridSpacing(mm)), [tryEdit]);
   const setOperation = useCallback((op: Operation) => tryEdit(() => engine.setOperation(op)), [tryEdit]);
+  const setOperationShapes = useCallback(
+    (id: number, shapeIds: number[]) => tryEdit(() => engine.setOperationShapes(id, shapeIds)),
+    [tryEdit],
+  );
 
   const undoRedo = useCallback(
     async (which: "undo" | "redo") => {
@@ -990,6 +994,7 @@ export default function App() {
             onSetShape={setShape}
             onSetGridSpacing={setGridSpacing}
             onSetOperation={setOperation}
+            onSetOperationShapes={setOperationShapes}
             operationStates={view?.operations ?? []}
           />
         </section>

@@ -154,3 +154,29 @@ fn set_operation_refuses_bad_values() {
     assert!(proj.delete_operation(op));
     assert!(!proj.delete_operation(op));
 }
+
+#[test]
+fn operation_shapes_can_be_changed_and_bad_ones_are_refused() {
+    let (mut proj, shape, op) = project_with_pocket();
+    let other = proj.add_shape("Default", square(100.0, 0.0, 30.0)).unwrap();
+    proj.set_operation_shapes(op, &[shape, other]).unwrap();
+    assert_eq!(proj.operation(op).unwrap().shape_ids, vec![shape, other]);
+    // One undo step puts the old list back.
+    assert!(proj.undo());
+    assert_eq!(proj.operation(op).unwrap().shape_ids, vec![shape]);
+    // A missing id or a shape that can't be pocketed changes nothing.
+    let err = proj.set_operation_shapes(op, &[shape, 999]).unwrap_err();
+    assert!(err.contains("999"), "{err}");
+    let line = proj
+        .add_shape(
+            "Default",
+            Shape::Line {
+                start: Point::new(0.0, 0.0),
+                end: Point::new(5.0, 0.0),
+            },
+        )
+        .unwrap();
+    assert!(proj.set_operation_shapes(op, &[line]).is_err());
+    assert!(proj.set_operation_shapes(op, &[]).is_err());
+    assert_eq!(proj.operation(op).unwrap().shape_ids, vec![shape]);
+}
