@@ -3,7 +3,7 @@ import * as engine from "./engine";
 import {
   CLICKS_NEEDED,
   type BoxMode,
-  type CutWidthDisplay,
+  type CutWidthStep,
   type Draft,
   type DrawTool,
   type ImportReport,
@@ -94,7 +94,7 @@ function specialHint(sp: Special): string {
 
 /** Stable empty list, so the drawing area doesn't redraw toolpaths for nothing. */
 const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
-const EMPTY_CUT_WIDTHS: CutWidthDisplay[] = [];
+const EMPTY_CUT_WIDTHS: CutWidthStep[] = [];
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
@@ -131,7 +131,7 @@ export default function App() {
   // Shaded cutter width along the toolpaths (off by default; fetched only while it's on).
   const [showCutWidth, setShowCutWidth] = useState(false);
   const showCutWidthRef = useRef(false);
-  const [cutWidths, setCutWidths] = useState<CutWidthDisplay[]>(EMPTY_CUT_WIDTHS);
+  const [cutWidths, setCutWidths] = useState<CutWidthStep[]>(EMPTY_CUT_WIDTHS);
   const [showPlaybackBar, setShowPlaybackBar] = useState(true);
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [playTime, setPlayTime] = useState(0);
@@ -178,7 +178,6 @@ export default function App() {
   const refresh = useCallback(async () => {
     const v = await engine.getView();
     setView(v);
-    if (showCutWidthRef.current) setCutWidths(await engine.getCutWidths());
     // New or changed toolpaths: playback starts again from the beginning.
     const pb = await engine.getPlayback();
     const sig = playbackSignature(pb);
@@ -187,6 +186,8 @@ export default function App() {
       setPlayback(pb);
       setPlayTime(0);
       setPlaying(false);
+      // The cut widths go with the playback steps, so they are fetched again with them.
+      setCutWidths(showCutWidthRef.current ? await engine.getCutWidths() : EMPTY_CUT_WIDTHS);
     }
     const existing = new Set(v.display.shapes.map((s) => s.id));
     setSelection((sel) =>
@@ -752,6 +753,7 @@ export default function App() {
     showCutWidthRef.current = on;
     setShowCutWidth(on);
     if (on) engine.getCutWidths().then(setCutWidths, (err) => notify("error", String(err)));
+    else setCutWidths(EMPTY_CUT_WIDTHS);
   };
 
   const toggleToolpaths = () => {

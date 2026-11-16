@@ -6,10 +6,10 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import * as engine from "../engine";
-import { toolAt } from "../playback";
+import { toolAt, type ToolAt } from "../playback";
 import type {
   BoxMode,
-  CutWidthDisplay,
+  CutWidthStep,
   DisplayData,
   DisplayShape,
   Draft,
@@ -67,6 +67,8 @@ const TOOLPATH_FADED_OPACITY = 0.22;
 const TOOL_COLOR = 0xf0f0f4;
 /** The shaded cutter width under the toolpath lines (opaque, so overlaps don't darken). */
 const CUT_WIDTH_COLOR = 0x35506c;
+/** The cutter width still to come while playing back (fainter, like the toolpath lines). */
+const CUT_WIDTH_FADED_COLOR = 0x2e353f;
 const RAPID_DASH_MM = 2;
 const RAPID_GAP_MM = 1.5;
 const GRID_EXTENT = 1000; // mm either side of the origin (less for very fine grids)
@@ -98,6 +100,19 @@ interface Scene3 {
   toolpaths: THREE.Group;
   /** The shaded width the cutter sweeps, under the toolpath lines. */
   cutWidths: THREE.Group;
+  /** The cut width meshes, for playback (null when the cut width is off). */
+  cut: {
+    /** Every step's band (faded once playback has started). */
+    all: THREE.Mesh;
+    /** The same band revealed up to the tool. */
+    done: THREE.Mesh;
+    /** The part of the current segment done so far. */
+    partial: THREE.Mesh;
+    steps: CutWidthStep[];
+    /** Index of each step's first triangle in the combined band. */
+    offsets: number[];
+    data: Float32Array;
+  } | null;
   /** Playback: the moves done so far in full colour, drawn over the faded toolpaths. */
   done: THREE.Group;
   /** Playback: segments of each move kind done before each step (for the draw ranges). */
@@ -146,8 +161,8 @@ interface Props {
   display: DisplayData | null;
   /** Toolpaths to draw (cut, plunge and rapid moves, in 3D). */
   toolpaths: ToolpathDisplay[];
-  /** Shaded cutter widths to draw under the toolpaths (empty = off). */
-  cutWidths: CutWidthDisplay[];
+  /** Shaded cutter width of each playback step, to draw under the toolpaths (empty = off). */
+  cutWidths: CutWidthStep[];
   /** Tool playback data, or null when there's nothing to play. */
   playback: Playback | null;
   /** Playback time in seconds (0 = not started: toolpaths look normal). */
@@ -286,10 +301,82 @@ function buildDone(s: Scene3, pb: Playback | null) {
   s.doneCounts = counts;
 }
 
+/** Builds the cut width meshes: the whole band, the part done so far, and the current segment. */
+function buildCutWidths(s: Scene3, steps: CutWidthStep[]) {
+  clearGroup(s.cutWidths);
+  s.cut = null;
+  const offsets: number[] = [];
+  let n = 0;
+  for (const st of steps) {
+    offsets.push(n);
+    n += st.triangles.length / 9;
+  }
+  if (n === 0) return;
+  const data = new Float32Array(n * 9);
+  let k = 0;
+  for (const st of steps) {
+    data.set(st.triangles, k);
+    k += st.triangles.length;
+  }
+  const attr = new THREE.BufferAttribute(data, 3);
+  const mesh = (geom: THREE.BufferGeometry, color: number, order: number) => {
+    const m = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: false }));
+    m.renderOrder = order; // under the toolpath lines and the drawing
+    s.cutWidths.add(m);
+    return m;
+  };
+  const all = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 3);
+  const done = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 4);
+  const partial = mesh(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(18), 3)),
+    CUT_WIDTH_COLOR,
+    4,
+  );
+  done.visible = false;
+  partial.visible = false;
+  s.cut = { all, done, partial, steps, offsets, data };
+}
+
+/** Shows the cut width done by the tool at `at` in full colour and the rest faded. */
+function showCutWidth(s: Scene3, pb: Playback | null, at: ToolAt | null, started: boolean, finished: boolean) {
+  const cut = s.cut;
+  if (!cut) return;
+  const aligned = pb !== null && cut.steps.length === pb.steps.length;
+  const playing = started && !finished && aligned && at !== null;
+  (cut.all.material as THREE.MeshBasicMaterial).color.setHex(playing ? CUT_WIDTH_FADED_COLOR : CUT_WIDTH_COLOR);
+  cut.done.visible = playing;
+  cut.partial.visible = false;
+  if (!playing || !pb || !at) return;
+  const w = cut.steps[at.step];
+  const segStart = cut.offsets[at.step] + (w.segment_starts[at.seg] ?? w.triangles.length / 9);
+  cut.done.geometry.setDrawRange(0, segStart * 3);
+  // The strip of the current segment, cut off at the tool (its far corners moved back).
+  const pts = pb.steps[at.step].points;
+  const a = pts[at.seg];
+  const b = pts[at.seg + 1];
+  const hasStrip = w.triangles.length > 0 && b !== undefined && Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-9;
+  if (!hasStrip) return;
+  const v = cut.data.subarray(segStart * 9, segStart * 9 + 18);
+  const out = new Float32Array(v);
+  const lerp = (to: number, from: number) => {
+    for (let c = 0; c < 3; c++) out[to * 3 + c] = v[from * 3 + c] + (v[to * 3 + c] - v[from * 3 + c]) * at.u;
+  };
+  // Strip triangles: (a+n, a−n, b+n) and (b+n, a−n, b−n).
+  lerp(2, 0);
+  lerp(3, 0);
+  lerp(5, 4);
+  const attr = cut.partial.geometry.getAttribute("position") as THREE.BufferAttribute;
+  (attr.array as Float32Array).set(out);
+  attr.needsUpdate = true;
+  cut.partial.geometry.computeBoundingSphere();
+  cut.partial.visible = true;
+}
+
 /** Places the tool and reveals the moves done by time `t`; fades the rest once started. */
 function showPlayback(s: Scene3, pb: Playback | null, t: number) {
   const at = pb ? toolAt(pb, t) : null;
   const started = at !== null && t > 0;
+  showCutWidth(s, pb, at, started, pb !== null && t >= pb.total_s);
   for (const child of s.toolpaths.children) {
     const m = (child as THREE.Line).material as THREE.Material;
     m.opacity = started ? TOOLPATH_FADED_OPACITY : 1;
@@ -483,6 +570,7 @@ export default function Viewport({
       shapes,
       toolpaths: toolpathGroup,
       cutWidths: cutWidthGroup,
+      cut: null,
       done: doneGroup,
       doneCounts: null,
       current,
@@ -785,18 +873,8 @@ export default function Viewport({
   useEffect(() => {
     const s = sceneRef.current;
     if (!s) return;
-    clearGroup(s.cutWidths);
-    for (const cw of cutWidths) {
-      if (cw.triangles.length === 0) continue;
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(cw.triangles, 3));
-      const mesh = new THREE.Mesh(
-        geom,
-        new THREE.MeshBasicMaterial({ color: CUT_WIDTH_COLOR, side: THREE.DoubleSide, depthTest: false }),
-      );
-      mesh.renderOrder = 4; // under the toolpath lines and the drawing
-      s.cutWidths.add(mesh);
-    }
+    buildCutWidths(s, cutWidths);
+    showPlayback(s, playback, playTime);
     s.render();
   }, [cutWidths]);
 

@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::display::{
-    CutWidthDisplay, Playback, ToolpathDisplay, cut_width_display, playback, toolpath_display,
+    CutWidthStep, Playback, ToolpathDisplay, cut_width_steps, playback, toolpath_display,
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
@@ -964,13 +964,10 @@ impl Project {
         playback(&self.shown_toolpaths())
     }
 
-    /// The width the cutter sweeps along each drawn toolpath (same operations as
-    /// `toolpaths_display`).
-    pub fn cut_widths(&self) -> Vec<CutWidthDisplay> {
-        self.shown_toolpaths()
-            .into_iter()
-            .map(|(tp, d)| cut_width_display(tp, d))
-            .collect()
+    /// The width the cutter sweeps along each step of `playback()` (same steps, same order), so
+    /// it can be revealed as the tool plays back.
+    pub fn cut_widths(&self) -> Vec<CutWidthStep> {
+        cut_width_steps(&self.playback())
     }
 
     /// Generated toolpaths of enabled, shown operations in tree order, each with the tool

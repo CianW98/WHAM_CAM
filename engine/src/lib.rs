@@ -22,7 +22,7 @@ pub mod toolpath;
 pub mod transform;
 
 pub use display::{
-    ASSUMED_RAPID_RATE, CutWidthDisplay, DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape,
+    ASSUMED_RAPID_RATE, CutWidthStep, DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape,
     Playback, PlaybackStep, ToolpathDisplay, display_data,
 };
 pub use document::{DEFAULT_GRID_SPACING, Document, DrawingObject, LAYER_PALETTE, Layer, Part};

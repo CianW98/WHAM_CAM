@@ -7,6 +7,8 @@ export interface ToolAt {
   step: number;
   /** Index of the segment within the step (points[seg] → points[seg + 1]). */
   seg: number;
+  /** How far along that segment the tool is (0..1). */
+  u: number;
   /** Tool position (tool tip centre), mm. */
   point: [number, number, number];
 }
@@ -32,7 +34,7 @@ export function toolAt(pb: Playback, t: number): ToolAt | null {
   const s: PlaybackStep = pb.steps[i];
   const f = s.duration_s > 0 ? Math.min(1, Math.max(0, (t - s.start_s) / s.duration_s)) : 1;
   const pts = s.points;
-  if (pts.length < 2) return { step: i, seg: 0, point: [...pts[0]] };
+  if (pts.length < 2) return { step: i, seg: 0, u: 1, point: [...pts[0]] };
   let total = 0;
   for (let k = 1; k < pts.length; k++) total += dist(pts[k - 1], pts[k]);
   let want = f * total;
@@ -45,12 +47,13 @@ export function toolAt(pb: Playback, t: number): ToolAt | null {
       return {
         step: i,
         seg: k - 1,
+        u,
         point: [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u],
       };
     }
     want -= len;
   }
-  return { step: i, seg: pts.length - 2, point: [...pts[pts.length - 1]] };
+  return { step: i, seg: pts.length - 2, u: 1, point: [...pts[pts.length - 1]] };
 }
 
 /** "m:ss" (or "h:mm:ss"). */

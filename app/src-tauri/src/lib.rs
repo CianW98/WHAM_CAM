@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::State;
 use wham_engine::{
-    BoxMode, BreakReport, CutWidthDisplay, DisplayData, DisplayShape, Document, Draft, DxfInfo,
+    BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
     GenerateReport, ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project,
     Shape, Snap, SnapOptions, ToolpathDisplay, TransformOp,
 };
@@ -303,7 +303,7 @@ fn generate_toolpaths(ids: Vec<u32>, state: State<AppState>) -> GenerateReport {
 }
 
 #[tauri::command]
-fn cut_widths(state: State<AppState>) -> Vec<CutWidthDisplay> {
+fn cut_widths(state: State<AppState>) -> Vec<CutWidthStep> {
     state.0.lock().unwrap().cut_widths()
 }
 

@@ -188,7 +188,7 @@ fn project_plays_shown_toolpaths_with_their_tool() {
 
 // --- Cut width (display of the band the cutter sweeps) ---
 
-use wham_engine::display::cut_width_display;
+use wham_engine::display::cut_width_steps;
 
 fn in_tri(p: (f64, f64), t: &[f64]) -> bool {
     let (a, b, c) = ((t[0], t[1]), (t[3], t[4]), (t[6], t[7]));
@@ -221,12 +221,19 @@ fn cut_width_covers_the_cutter_band_and_nothing_else() {
         ],
         limits: limits(),
     };
-    let cw = cut_width_display(&tp, 6.0);
-    assert_eq!(cw.operation_id, 1);
-    assert_eq!(cw.triangles.len() % 9, 0);
+    let pb = playback(&[(&tp, 6.0)]);
+    let widths = cut_width_steps(&pb);
+    assert_eq!(widths.len(), pb.steps.len());
+    // Each step has a strip start for each of its segments, in order.
+    for (w, st) in widths.iter().zip(&pb.steps) {
+        assert_eq!(w.segment_starts.len(), st.points.len() - 1);
+        assert_eq!(w.triangles.len() % 9, 0);
+        assert!(w.segment_starts.windows(2).all(|p| p[0] <= p[1]));
+    }
+    let all: Vec<f64> = widths.iter().flat_map(|w| w.triangles.clone()).collect();
     // All at the cut height.
-    assert!(cw.triangles.chunks(3).all(|p| close(p[2], -1.0)));
-    let tris: Vec<&[f64]> = cw.triangles.chunks(9).collect();
+    assert!(all.chunks(3).all(|p| close(p[2], -1.0)));
+    let tris: Vec<&[f64]> = all.chunks(9).collect();
     let covered = |p: (f64, f64)| tris.iter().any(|t| in_tri(p, t));
     let dist = |p: (f64, f64)| {
         dist_to_segment(p, (0.0, 0.0), (20.0, 0.0)).min(dist_to_segment(
@@ -270,5 +277,6 @@ fn rapids_and_plunges_have_no_cut_width() {
         ],
         limits: limits(),
     };
-    assert!(cut_width_display(&tp, 6.0).triangles.is_empty());
+    let widths = cut_width_steps(&playback(&[(&tp, 6.0)]));
+    assert!(widths.iter().all(|w| w.triangles.is_empty()));
 }
