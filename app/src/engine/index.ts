@@ -62,6 +62,8 @@ export interface Document {
   name: string;
   layers: Layer[];
   parts: Part[];
+  /** Drawing grid spacing in mm. */
+  grid_spacing: number;
 }
 
 export interface DisplayShape {
@@ -108,6 +110,40 @@ export interface ImportReport {
 }
 
 export type BoxMode = "Window" | "Crossing";
+
+export type DrawTool = "Line" | "Arc" | "Circle" | "Rectangle" | "Polyline" | "Points";
+
+/** How many clicks finish each tool's shape; null = finished with Enter (polyline, points). */
+export const CLICKS_NEEDED: Record<DrawTool, number | null> = {
+  Line: 2,
+  Circle: 2,
+  Rectangle: 2,
+  Arc: 3,
+  Polyline: null,
+  Points: null,
+};
+
+/** A shape being drawn: the points clicked so far. */
+export interface Draft {
+  tool: DrawTool;
+  points: Point[];
+  /** Polyline: arcs[i] = segment from points[i] to points[i+1] is a tangent arc. */
+  arcs: boolean[];
+  /** Polyline: the next segment (to the cursor) is a tangent arc. */
+  arc_next: boolean;
+}
+
+export type SnapKind = "None" | "Grid" | "End" | "Mid" | "Centre";
+
+export interface Snap {
+  point: Point;
+  kind: SnapKind;
+}
+
+export interface SnapOptions {
+  grid: boolean;
+  objects: boolean;
+}
 
 export function getView(): Promise<View> {
   return invoke<View>("get_view");
@@ -167,4 +203,28 @@ export function pick(x: number, y: number, tolerance: number): Promise<number | 
 
 export function pickBox(x0: number, y0: number, x1: number, y1: number, mode: BoxMode): Promise<number[]> {
   return invoke<number[]>("pick_box", { x0, y0, x1, y1, mode });
+}
+
+/** Snaps a cursor position. `extra` are points of the shape being drawn. */
+export function snap(x: number, y: number, tolerance: number, options: SnapOptions, extra: Point[]): Promise<Snap> {
+  return invoke<Snap>("snap", { x, y, tolerance, options, extra });
+}
+
+/** The rubber-band preview of a shape being drawn, with the cursor as its next point. */
+export function previewShape(draft: Draft, cursor: Point | null): Promise<DisplayShape | null> {
+  return invoke<DisplayShape | null>("preview_shape", { draft, cursor });
+}
+
+/** Finishes a drawn shape and adds it to a layer. Returns the new object's id. */
+export function addDraft(layer: string, draft: Draft): Promise<number> {
+  return invoke<number>("add_draft", { layer, draft });
+}
+
+/** Replaces an object's shape. Rejects with a plain-English message if the shape isn't valid. */
+export function setShape(id: number, shape: Shape): Promise<void> {
+  return invoke<void>("set_shape", { id, shape });
+}
+
+export function setGridSpacing(mm: number): Promise<void> {
+  return invoke<void>("set_grid_spacing", { mm });
 }

@@ -6,7 +6,10 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::State;
-use wham_engine::{BoxMode, DisplayData, Document, DxfInfo, ImportReport, Project};
+use wham_engine::{
+    BoxMode, DisplayData, DisplayShape, Document, Draft, DxfInfo, ImportReport, Point, Project,
+    Shape, Snap, SnapOptions,
+};
 
 /// The open project, shared by all commands.
 struct AppState(Mutex<Project>);
@@ -99,6 +102,46 @@ fn pick_box(x0: f64, y0: f64, x1: f64, y1: f64, mode: BoxMode, state: State<AppS
     state.0.lock().unwrap().pick_box(x0, y0, x1, y1, mode)
 }
 
+#[tauri::command]
+fn snap(
+    x: f64,
+    y: f64,
+    tolerance: f64,
+    options: SnapOptions,
+    extra: Vec<Point>,
+    state: State<AppState>,
+) -> Snap {
+    state
+        .0
+        .lock()
+        .unwrap()
+        .snap(x, y, tolerance, options, &extra)
+}
+
+#[tauri::command]
+fn preview_shape(
+    draft: Draft,
+    cursor: Option<Point>,
+    state: State<AppState>,
+) -> Option<DisplayShape> {
+    state.0.lock().unwrap().preview(&draft, cursor)
+}
+
+#[tauri::command]
+fn add_draft(layer: String, draft: Draft, state: State<AppState>) -> Result<u32, String> {
+    state.0.lock().unwrap().add_draft(&layer, &draft)
+}
+
+#[tauri::command]
+fn set_shape(id: u32, shape: Shape, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_shape(id, shape)
+}
+
+#[tauri::command]
+fn set_grid_spacing(mm: f64, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_grid_spacing(mm)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -115,7 +158,12 @@ pub fn run() {
             undo,
             redo,
             pick,
-            pick_box
+            pick_box,
+            snap,
+            preview_shape,
+            add_draft,
+            set_shape,
+            set_grid_spacing
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHAM_CAM");
