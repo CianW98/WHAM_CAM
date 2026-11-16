@@ -128,6 +128,14 @@ function buildGrid(spacing: number): THREE.Group {
   return group;
 }
 
+/** Reads typed coordinates "x,y" (a comma and/or spaces between). Null if not two numbers. */
+function parseXY(text: string): Point | null {
+  const parts = text.trim().split(/\s*[,;\s]\s*/);
+  if (parts.length !== 2 || parts.some((p) => p === "")) return null;
+  const [x, y] = parts.map(Number);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
 /** Removes and frees everything in a group. */
 function clearGroup(group: THREE.Group) {
   for (const child of [...group.children]) {
@@ -227,6 +235,10 @@ export default function Viewport({
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [box, setBox] = useState<BoxDrag | null>(null);
   const [snapMark, setSnapMark] = useState<SnapMark | null>(null);
+  // Typed coordinates while drawing.
+  const [typed, setTyped] = useState("");
+  const [typedBad, setTypedBad] = useState(false);
+  const typedRef = useRef<HTMLInputElement>(null);
 
   // Latest props, so the once-only event listeners below always use the current ones.
   const live = useRef({ onPick, onBox, onDrawPoint, onFinishDraft, draft, snapOptions });
@@ -470,6 +482,31 @@ export default function Viewport({
     s.render();
   }, [gridSpacing]);
 
+  // While drawing, typing a number (or minus sign) starts typing a coordinate.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!live.current.draft || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (!/^[-0-9.]$/.test(e.key) || !typedRef.current) return;
+      e.preventDefault();
+      setTyped(e.key);
+      setTypedBad(false);
+      typedRef.current.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Stopping drawing clears the typed coordinate box.
+  const drawing = draft !== null;
+  useEffect(() => {
+    if (!drawing) {
+      setTyped("");
+      setTypedBad(false);
+    }
+  }, [drawing]);
+
   // Update the preview and snap marker when the shape being drawn or the snap settings change
   // (also clears them when drawing stops).
   useEffect(() => {
@@ -603,6 +640,45 @@ export default function Viewport({
           {snapMark.kind === "Centre" && <circle r={5.5} />}
           {snapMark.kind === "Grid" && <path d="M-5 0H5M0 -5V5" />}
         </svg>
+      )}
+      {draft && mode === "2D" && (
+        <div className="typed-point" title="Type an exact point, e.g. 25,10, then Enter">
+          <label htmlFor="typed-point">Point X,Y</label>
+          <input
+            id="typed-point"
+            ref={typedRef}
+            className={typedBad ? "bad" : ""}
+            value={typed}
+            placeholder="e.g. 25,10"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => {
+              setTyped(e.target.value);
+              setTypedBad(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (typed.trim() === "") {
+                  // Enter on an empty box finishes a polyline or point list.
+                  e.currentTarget.blur();
+                  onFinishDraft();
+                  return;
+                }
+                const p = parseXY(typed);
+                if (!p) {
+                  setTypedBad(true);
+                  return;
+                }
+                onDrawPoint(p);
+                setTyped("");
+              } else if (e.key === "Escape") {
+                setTyped("");
+                setTypedBad(false);
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
       )}
       <div className="cursor-readout">
         {draft && snapMark && cursor
