@@ -298,10 +298,11 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 
 | Setting | Meaning | Default | v1 |
 |---|---|---|---|
-| Inside/Outside | Inside, Outside, or On line (no offset) | Outside | v1 |
+| Inside/Outside | Inside, Outside, or On line (no offset). Open shapes: On line only | Outside (On line if any shape is open) | v1 |
 | Milling direction | Conventional / Climb | Conventional | v1 |
 | Cut ordering | Depth first / Level first (across multiple shapes) | Depth first | v1 |
 | Cut width | Total wall width; extra passes stepped by Stepover | 0 (= one tool width) | later |
+| Overlap | How far a closed profile cuts past its start point, on every level | 0 | v1 |
 | Corner overcut | Dog-bone style corner relief | false | later |
 | Holding tabs | | none | later |
 
@@ -311,6 +312,23 @@ Decided for when Profile is built (2026-11-16):
   walls clockwise; Climb is the reverse (matches the reference output).
 - **Overlap**: a setting, how far a closed profile cuts past its start point; default 0.
 - **Start point**: the shape's first point. No start point setting.
+
+Decided when Profile was built (2026-11-16):
+- **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
+  can only be cut **On line** (only that choice is offered). Splines, ellipses and point lists
+  are refused.
+- **On line direction:** closed shapes are cut like Outside (Conventional = anticlockwise, Climb
+  = clockwise); open shapes follow their drawn direction from the first point.
+- **Each shape is cut on its own** with the chosen side; nesting is not used (a hole inside an
+  outline needs its own Inside operation). An inside offset that splits into several loops cuts
+  them all; if nothing is left the tool is too big and that's an error.
+- **Start point on an offset path:** the point nearest the shape's first point (the first one
+  along the cut on a tie, e.g. round an outside corner arc).
+- **Several shapes:** the first listed, then always the nearest shape not yet cut (to its start).
+- **Entry:** straight plunge at the start point, as for Pocket (retract, rapid, rapid down to
+  fast plunge height above the last level, feed down). The reference Profile example uses a 15°
+  spiral lead-in that was set on purpose; its cut loop is matched move for move, the entry is
+  not (lead-ins are on the roadmap).
 
 ### 6.3 Pocket
 

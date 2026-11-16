@@ -8,7 +8,10 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Machine-specific post-processors**: RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3, each with its
   own settings panel per machine type. v1 has one generic post-processor only.
 - **Inches**, together with CAM styles/templates and workspaces. v1 is mm only.
-- **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate.
+- **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate. The reference
+  Profile example uses a spiral (ramp) lead-in at 15°: plunge to the stock surface, then ramp down
+  along the profile to the cut depth. That needs sloped arcs (helical G2/G3), so safety rule 5
+  ("arcs stay flat") must change with it.
 - **Holding tabs.**
 - **PolyRectangle corner radius** (rounded corners as true arcs, at most half the shorter side).
   Left out of v1 (decided 2026-11-16); the PolyRectangle has Lower Left, Width, Height, Rotation.
