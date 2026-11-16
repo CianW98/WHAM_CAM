@@ -19,6 +19,8 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Smarter moves between depth levels.** v1 retracts to clearance, rapids to the start, rapids
   down to fast plunge height and feeds down, as in the reference. The user wants to work on this
   later (2026-11-16), e.g. staying down when the next level starts where the last ended.
+- **Machine settings**, including the real rapid rate, so the tool playback's run time is accurate.
+  v1 assumes 5000 mm/min for rapids (decided 2026-11-16).
 - **Pocketing splines and ellipses**, by converting them to arcs within a tolerance. v1 refuses
   them with a message.
 
@@ -32,6 +34,9 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
     hosting, also free) is the better choice if we want WebAssembly to use several processor cores
     (this needs server settings GitHub Pages can't set) or small online features later, such as an
     update check or sharing a project by link.
+- **Material removal simulation**: a block of stock carved away as the tool plays back, showing
+  the finished part, gouges and leftover material (like CAMotics). v1 has tool playback only;
+  until then use CAMotics or NC Viewer on the G-code (discussed 2026-11-16).
 - **Predefined styles in the library** for common kinds of CNC work, e.g. PCB cutting, V-carving
   and other common uses. List to be filled in.
 

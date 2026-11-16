@@ -213,10 +213,13 @@ Done:
   in `engine/src/offset.rs` (arcs over 180° split, canary test for issue #15). Operations model
   (`operation.rs`), toolpath moves (`toolpath.rs`), safety checker (`safety.rs`), Pocket
   (`pocket.rs`, matches the reference Pocket example move for move), Generate toolpaths on the
-  button with out-of-date markers, toolpath preview in 2D/3D.
+  button with out-of-date markers, toolpath preview in 2D/3D. Tool playback (bar along the bottom
+  of the drawing area, cutter in 2D/3D, times at the feed rates, rapids assumed 5000 mm/min) and a
+  Show toolpaths toggle in the toolbar.
 
 Next:
-- User check of Pocket on the `offsetting` branch; merge into `main` when the user is happy.
+- User check of Pocket and tool playback on the `offsetting` branch; merge into `main` when the
+  user is happy.
 - Then Profile and Drill (decisions for Profile are in spec 6.2), the tool library, then G-code.
 - Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
   running on the toolpath moves (same rules later on the G-code). Answer the toolpath open

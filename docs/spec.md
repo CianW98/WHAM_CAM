@@ -227,6 +227,21 @@ from the library (which fills in its defaults) or have values typed in directly.
   `⟳` (out of date) in the tree; one that failed is marked `!` with the message in Properties.
 - Every toolpath is checked by the safety checker (section 7 rules) when it is generated; one that
   fails is not used.
+- **Show toolpaths** (toolbar button next to Generate toolpaths, and the View menu) hides or shows
+  all toolpaths at once. View state only: not saved, not an undo step. Each operation's own "Show
+  toolpath" still applies.
+- **Tool playback** (decided 2026-11-16): a bar along the bottom of the drawing area whenever
+  toolpaths are shown (View → Toolpath playback hides it).
+  - Back to start, one move back, play/pause, one move forward, a slider across the whole run, and
+    a speed of 1×, 2×, 5×, 10×, 50× or 100× real time.
+  - Real time follows the feed rates (arcs by their true length). Rapids use an **assumed rapid
+    rate of 5000 mm/min** until machine settings exist, so the run time is shown as an estimate.
+  - The readout shows operation, move number (as in safety checker messages), kind, feed and X Y Z.
+  - The tool is a circle of the tool diameter in 2D, and a flat-end cutter with shank in 3D.
+  - All shown operations play one after another in tree order. Once started, moves still to come
+    are faded and moves done are in full colour. New or changed toolpaths start again from the
+    beginning.
+  - Material removal simulation is not in v1 (see the roadmap).
 
 ### 5.7 G-code output
 Standard, widely compatible G-code through one generic post-processor (section 7).
