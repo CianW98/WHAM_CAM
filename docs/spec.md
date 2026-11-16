@@ -167,6 +167,9 @@ A classic CAD/CAM layout, with a toolbar:
   - **Move…** (dX, dY), **Rotate…** (angle, + = anticlockwise), **Scale…** (one factor, more
     than 0) in a small dialog that remembers the last values.
   - **Move by clicking**: click a base point, then the destination (snapped, with a preview).
+  - **Rotate by clicking**: a dashed line runs from the selection centre to the cursor; the first
+    click sets the reference direction, then the shapes turn with the cursor and the second
+    click sets the final angle.
   - **Mirror left–right** and **Mirror top–bottom**.
   - Rotate, scale and mirror work around the centre of the selection's bounding box.
 - Cut, Copy, Paste (Ctrl+X/C/V): the clipboard is inside the app. Paste follows the snapped

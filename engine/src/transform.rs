@@ -14,6 +14,10 @@ pub enum TransformOp {
     Move { dx: f64, dy: f64 },
     /// Rotate by `degrees`, counter-clockwise, around the selection centre.
     Rotate { degrees: f64 },
+    /// Rotate around the selection centre by the angle from the direction of `from` to the
+    /// direction of `to` (both seen from the centre), as when rotating by clicking. If either
+    /// point is on the centre there is no direction, and nothing turns.
+    RotateFromTo { from: Point, to: Point },
     /// Scale by `factor` (more than 0) around the selection centre.
     Scale { factor: f64 },
     /// Flip across the vertical line through the selection centre.
@@ -28,6 +32,9 @@ impl TransformOp {
         let ok = match *self {
             TransformOp::Move { dx, dy } => dx.is_finite() && dy.is_finite(),
             TransformOp::Rotate { degrees } => degrees.is_finite(),
+            TransformOp::RotateFromTo { from, to } => {
+                from.x.is_finite() && from.y.is_finite() && to.x.is_finite() && to.y.is_finite()
+            }
             TransformOp::Scale { factor } => {
                 if !(factor.is_finite() && factor > 0.0) {
                     return Err("The scale factor must be more than 0.".to_string());
@@ -53,11 +60,25 @@ impl TransformOp {
         match *self {
             TransformOp::Move { dx, dy } => Transform::translate(dx, dy),
             TransformOp::Rotate { degrees } => about(Transform::rotate_degrees(degrees)),
+            TransformOp::RotateFromTo { from, to } => {
+                about(Transform::rotate_degrees(angle_from_to(centre, from, to)))
+            }
             TransformOp::Scale { factor } => about(Transform::scale(factor, factor)),
             TransformOp::MirrorLeftRight => about(Transform::mirror_x()),
             TransformOp::MirrorTopBottom => about(Transform::mirror_y()),
         }
     }
+}
+
+/// Angle in degrees (counter-clockwise) from the direction of `from` to the direction of `to`,
+/// both seen from `centre`. 0 if either point is on the centre.
+pub fn angle_from_to(centre: Point, from: Point, to: Point) -> f64 {
+    let (fx, fy) = (from.x - centre.x, from.y - centre.y);
+    let (tx, ty) = (to.x - centre.x, to.y - centre.y);
+    if fx.hypot(fy) < 1e-9 || tx.hypot(ty) < 1e-9 {
+        return 0.0;
+    }
+    (fx * ty - fy * tx).atan2(fx * tx + fy * ty).to_degrees()
 }
 
 /// An axis-aligned box, [min_x, min_y, max_x, max_y].

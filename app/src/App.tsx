@@ -72,12 +72,18 @@ function drawHint(d: Draft): string {
   return `${hint} · Esc ${n > 0 ? "cancels" : "stops drawing"}`;
 }
 
-/** Moving by clicking or pasting: what is being placed besides a drawn shape. */
-type Special = { kind: "move"; ids: number[]; base: Point | null } | { kind: "paste" };
+/** Moving or rotating by clicking, or pasting: what is being placed besides a drawn shape. */
+type Special = Exclude<Placing, { kind: "draw" }>;
 
 function specialHint(sp: Special): string {
-  if (sp.kind === "paste") return "Click where the centre of the pasted shapes goes · Esc cancels";
-  return `${sp.base ? "Click the destination" : "Click the base point"} · Esc cancels`;
+  switch (sp.kind) {
+    case "paste":
+      return "Click where the centre of the pasted shapes goes · Esc cancels";
+    case "move":
+      return `${sp.base ? "Click the destination" : "Click the base point"} · Esc cancels`;
+    case "rotate":
+      return `${sp.reference ? "Click to set the new angle" : "Click to set the reference direction"} · Esc cancels`;
+  }
 }
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
@@ -389,15 +395,31 @@ export default function App() {
     setSpecial({ kind: "move", ids, base: null });
   }, [ids, setDraft, setSpecial]);
 
-  /** A snapped click while placing: a drawing point, a move base/destination, or a paste. */
+  const startRotateByClicking = useCallback(async () => {
+    if (ids.length === 0) return;
+    const centre = await engine.selectionCentre(ids);
+    if (!centre) return;
+    setDraft(null);
+    setSpecial({ kind: "rotate", ids, centre, reference: null });
+  }, [ids, setDraft, setSpecial]);
+
+  /** A snapped click while placing: a drawing point, a move/rotate step, or a paste. */
   const placePoint = useCallback(
     (p: Point) => {
       if (draftRef.current) return addDrawPoint(p);
       const sp = specialRef.current;
       if (!sp) return;
       if (sp.kind === "move" && !sp.base) return setSpecial({ ...sp, base: p });
+      if (sp.kind === "rotate" && !sp.reference) {
+        // A click on the centre itself gives no direction: wait for another.
+        if (!samePoint(sp.centre, p)) setSpecial({ ...sp, reference: p });
+        return;
+      }
       setSpecial(null);
-      if (sp.kind === "move" && sp.base) {
+      if (sp.kind === "rotate" && sp.reference) {
+        const from = sp.reference;
+        run(() => applyTransform(sp.ids, { type: "RotateFromTo", from, to: p }));
+      } else if (sp.kind === "move" && sp.base) {
         const base = sp.base;
         run(() => applyTransform(sp.ids, { type: "Move", dx: p.x - base.x, dy: p.y - base.y }));
       } else if (sp.kind === "paste") {
@@ -530,6 +552,7 @@ export default function App() {
           { label: "Move…", action: () => run(() => transformDialog("Move")) },
           { label: "Move by clicking", action: startMoveByClicking },
           { label: "Rotate…", action: () => run(() => transformDialog("Rotate")) },
+          { label: "Rotate by clicking", action: () => run(startRotateByClicking) },
           { label: "Scale…", action: () => run(() => transformDialog("Scale")) },
           {
             label: "Mirror left–right",

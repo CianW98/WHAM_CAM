@@ -144,6 +144,8 @@ export interface Snap {
 export type TransformOp =
   | { type: "Move"; dx: number; dy: number }
   | { type: "Rotate"; degrees: number }
+  /** Turn by the angle from the direction of `from` to that of `to`, seen from the centre. */
+  | { type: "RotateFromTo"; from: Point; to: Point }
   | { type: "Scale"; factor: number }
   | { type: "MirrorLeftRight" }
   | { type: "MirrorTopBottom" };
@@ -277,4 +279,9 @@ export function allIds(): Promise<number[]> {
 
 export function idsOnLayer(name: string): Promise<number[]> {
   return invoke<number[]>("ids_on_layer", { name });
+}
+
+/** Centre of the objects' bounding box (what rotate, scale and mirror turn around). */
+export function selectionCentre(ids: number[]): Promise<Point | null> {
+  return invoke<Point | null>("selection_centre", { ids });
 }

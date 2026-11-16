@@ -115,6 +115,39 @@ fn rotate_turns_around_the_selection_centre() {
 }
 
 #[test]
+fn rotate_by_clicking_turns_by_the_angle_between_the_clicks() {
+    // Line (0,0)-(10,0), centre (5,0). Reference straight right, then click straight up: 90°.
+    let (mut pr, ids) = project(vec![line(0.0, 0.0, 10.0, 0.0)]);
+    assert_eq!(pr.selection_centre(&ids), Some(p(5.0, 0.0)));
+    let op = TransformOp::RotateFromTo {
+        from: p(20.0, 0.0),
+        to: p(5.0, 7.0),
+    };
+    let preview = pr.transform_preview(&ids, op);
+    assert_eq!(preview.len(), 1);
+    pr.transform(&ids, op).unwrap();
+    let Shape::Line { start, end } = shape(&pr, ids[0]) else {
+        panic!()
+    };
+    assert_point(start, 5.0, -5.0);
+    assert_point(end, 5.0, 5.0);
+}
+
+#[test]
+fn rotate_by_clicking_measures_clockwise_as_negative() {
+    use wham_engine::transform::angle_from_to;
+    let c = p(1.0, 1.0);
+    assert!(close(angle_from_to(c, p(2.0, 1.0), p(1.0, 0.0)), -90.0));
+    assert!(close(
+        angle_from_to(c, p(2.0, 1.0), p(0.0, 1.0)).abs(),
+        180.0
+    ));
+    // A click on the centre has no direction: no turn.
+    assert_eq!(angle_from_to(c, c, p(5.0, 5.0)), 0.0);
+    assert!(Project::new().selection_centre(&[1]).is_none());
+}
+
+#[test]
 fn scale_grows_around_the_selection_centre() {
     let (mut pr, ids) = project(vec![
         Shape::Circle {

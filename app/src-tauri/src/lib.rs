@@ -153,6 +153,11 @@ fn transform_preview(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> 
 }
 
 #[tauri::command]
+fn selection_centre(ids: Vec<u32>, state: State<AppState>) -> Option<Point> {
+    state.0.lock().unwrap().selection_centre(&ids)
+}
+
+#[tauri::command]
 fn copy(ids: Vec<u32>, state: State<AppState>) -> usize {
     state.0.lock().unwrap().copy(&ids)
 }
@@ -211,6 +216,7 @@ pub fn run() {
             set_grid_spacing,
             transform,
             transform_preview,
+            selection_centre,
             copy,
             cut,
             has_clipboard,

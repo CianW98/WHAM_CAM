@@ -319,6 +319,13 @@ impl Project {
         Ok(())
     }
 
+    /// Centre of the objects' bounding box (what rotate, scale and mirror work around), or
+    /// `None` if none of the ids exist.
+    pub fn selection_centre(&self, ids: &[u32]) -> Option<Point> {
+        let found = self.located(ids);
+        bounds_of(found.iter().map(|f| &f.2)).map(centre)
+    }
+
     /// What `transform` would give, for drawing a preview. Empty on an error.
     pub fn transform_preview(&self, ids: &[u32], op: TransformOp) -> Vec<DisplayShape> {
         let shapes: Vec<Shape> = self.located(ids).into_iter().map(|f| f.2).collect();

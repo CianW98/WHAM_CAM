@@ -10,12 +10,26 @@ import type { BoxMode, DisplayData, DisplayShape, Draft, Point, SnapKind, SnapOp
 
 /**
  * Something being placed by clicking in the drawing area: a shape being drawn, selected shapes
- * being moved (base point, then destination), or the clipboard being pasted.
+ * being moved (base point, then destination) or rotated (reference direction, then final
+ * direction, around `centre`), or the clipboard being pasted.
  */
 export type Placing =
   | { kind: "draw"; draft: Draft }
   | { kind: "move"; ids: number[]; base: Point | null }
+  | { kind: "rotate"; ids: number[]; centre: Point; reference: Point | null }
   | { kind: "paste" };
+
+/** A dashed guide line between two points (drawn as-is; no calculation). */
+const guide = (a: Point, b: Point): DisplayShape => ({
+  id: 0,
+  points: [
+    [a.x, a.y],
+    [b.x, b.y],
+  ],
+  closed: false,
+  markers: false,
+  color: "",
+});
 
 export type ViewMode = "2D" | "3D";
 
@@ -353,6 +367,12 @@ export default function Viewport({
           return placing.base
             ? engine.transformPreview(placing.ids, { type: "Move", dx: p.x - placing.base.x, dy: p.y - placing.base.y })
             : [];
+        case "rotate": {
+          const { ids, centre, reference } = placing;
+          if (!reference) return [guide(centre, p)];
+          const turned = await engine.transformPreview(ids, { type: "RotateFromTo", from: reference, to: p });
+          return [guide(centre, reference), guide(centre, p), ...turned];
+        }
         case "paste":
           return engine.pastePreview(p);
       }
