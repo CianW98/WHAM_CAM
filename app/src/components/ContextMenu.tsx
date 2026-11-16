@@ -13,7 +13,7 @@ export interface MenuItem {
 }
 
 /** One menu panel; positioned so it stays on screen. */
-function Panel({
+export function Panel({
   items,
   x,
   y,

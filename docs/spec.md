@@ -81,6 +81,11 @@ A classic CAD/CAM layout, with a toolbar:
 └─────────────────────┴────────────────────────────────────────┘
 ```
 
+- **Menu bar** across the top: File (New, Open, Save, Save As, Import DXF), View, Edit (Undo/Redo,
+  Cut/Copy/Paste, Delete, Select All / On Layer, Transform, Join, Split, Close polyline,
+  Dimension), Draw (the drawing tools), Machining (Profile, Pocket, Drill, Tool library, Generate
+  toolpaths, Produce G-code). Click a heading to open it; while one is open, hovering another
+  switches to it. Items not built yet are greyed.
 - **Toolbar**: file actions (new, open, save, import), drawing tools (line, arc, circle,
   rectangle, polyline, point), operations (Profile, Pocket, Drill), Generate toolpaths and
   Produce G-code. Everything on the toolbar is also in the menus.

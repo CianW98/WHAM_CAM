@@ -19,6 +19,7 @@ import Properties from "./components/Properties";
 import Viewport, { type Placing, type ViewMode } from "./components/Viewport";
 import ChoiceDialog, { type Choice } from "./components/ChoiceDialog";
 import ContextMenu, { type MenuItem } from "./components/ContextMenu";
+import MenuBar from "./components/MenuBar";
 import NumberDialog, { type NumberQuestion } from "./components/NumberDialog";
 import { NOTHING, selectObjects, selectedIds, type Selection } from "./selection";
 
@@ -100,6 +101,8 @@ export default function App() {
   const [currentLayer, setCurrentLayer] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("2D");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  /** The open menu-bar heading, if any. */
+  const [barMenu, setBarMenu] = useState<number | null>(null);
   const [numbers, setNumbers] = useState<(NumberQuestion & { resolve: (v: number[] | null) => void }) | null>(
     null,
   );
@@ -462,9 +465,10 @@ export default function App() {
   keyHandler.current = (e: KeyboardEvent) => {
     if (choice || numbers) return;
     const key = e.key.toLowerCase();
-    if (menu) {
+    if (menu || barMenu !== null) {
       if (key === "escape") {
         setMenu(null);
+        setBarMenu(null);
         e.preventDefault();
       }
       return;
@@ -533,22 +537,23 @@ export default function App() {
     [draft, special],
   );
 
-  // The right-click menu. Items that can't be used right now are greyed.
-  const menuItems = (): MenuItem[] => {
+  // The commands shared by the menu bar and the right-click menu. Items that can't be used right
+  // now are greyed; ones not built yet are always greyed.
+  const commands = () => {
     const none = ids.length === 0;
     const later = (label: string): MenuItem => ({ label, disabled: true });
+    const sep = (item: MenuItem): MenuItem => ({ ...item, separatorBefore: true });
     const draw = (label: string): MenuItem => ({ label, action: () => onAction(label) });
-    return [
-      {
-        label: "View",
-        items: [
-          { label: "Zoom to fit", action: () => setFitRequest((n) => n + 1) },
-          { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
-          { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
-        ],
-      },
-      { label: "Draw", items: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw) },
-      {
+    return {
+      later,
+      sep,
+      view: [
+        { label: "Zoom to fit", action: () => setFitRequest((n) => n + 1) },
+        { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
+        { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
+      ] as MenuItem[],
+      draw: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw),
+      transform: {
         label: "Transform",
         disabled: none,
         items: [
@@ -557,46 +562,105 @@ export default function App() {
           { label: "Rotate…", action: () => run(() => transformDialog("Rotate")) },
           { label: "Rotate by clicking", action: () => run(startRotateByClicking) },
           { label: "Scale…", action: () => run(() => transformDialog("Scale")) },
-          {
-            label: "Mirror left–right",
-            separatorBefore: true,
-            action: () => run(() => applyTransform(ids, { type: "MirrorLeftRight" })),
-          },
+          sep({ label: "Mirror left–right", action: () => run(() => applyTransform(ids, { type: "MirrorLeftRight" })) }),
           { label: "Mirror top–bottom", action: () => run(() => applyTransform(ids, { type: "MirrorTopBottom" })) },
         ],
+      } as MenuItem,
+      del: {
+        label: "Delete",
+        shortcut: "Del",
+        disabled: disabled.has("Delete"),
+        action: () => run(deleteSelected),
+      } as MenuItem,
+      editLater: [sep(later("Join")), later("Split / Explode"), later("Close polyline"), later("Dimension")],
+      select: [
+        { label: "Select All", shortcut: "Ctrl+A", action: () => run(selectAll) },
+        {
+          label: `Select All On Layer "${drawLayer}"`,
+          shortcut: "Ctrl+Shift+A",
+          action: () => run(() => selectAllOnLayer(drawLayer)),
+        },
+      ] as MenuItem[],
+      clipboard: [
+        { label: "Cut", shortcut: "Ctrl+X", disabled: none, action: () => run(cutSelected) },
+        { label: "Copy", shortcut: "Ctrl+C", disabled: none, action: () => run(copySelected) },
+        { label: "Paste", shortcut: "Ctrl+V", disabled: !hasClipboard, action: startPaste },
+      ] as MenuItem[],
+      undo: [
+        { label: "Undo", shortcut: "Ctrl+Z", disabled: !view?.canUndo, action: () => run(() => undoRedo("undo")) },
+        { label: "Redo", shortcut: "Ctrl+Y", disabled: !view?.canRedo, action: () => run(() => undoRedo("redo")) },
+      ] as MenuItem[],
+    };
+  };
+
+  // The right-click menu in the drawing area.
+  const menuItems = (): MenuItem[] => {
+    const c = commands();
+    const [first, ...restSelect] = c.select;
+    const [cut, ...restClipboard] = c.clipboard;
+    const [undo, ...restUndo] = c.undo;
+    return [
+      { label: "View", items: c.view },
+      { label: "Draw", items: c.draw },
+      c.transform,
+      { label: "Edit", items: [c.del, ...c.editLater] },
+      c.sep(first),
+      ...restSelect,
+      c.sep(cut),
+      ...restClipboard,
+      c.sep(undo),
+      ...restUndo,
+    ];
+  };
+
+  // The menu bar across the top.
+  const menuBarItems = (): MenuItem[] => {
+    const c = commands();
+    const [first, ...restSelect] = c.select;
+    const [cut, ...restClipboard] = c.clipboard;
+    return [
+      {
+        label: "File",
+        items: [
+          c.later("New"),
+          c.later("Open…"),
+          c.later("Save"),
+          c.later("Save As…"),
+          c.sep({ label: "Import DXF…", action: () => run(importDxf) }),
+        ],
       },
+      { label: "View", items: c.view },
       {
         label: "Edit",
         items: [
-          { label: "Delete", shortcut: "Del", disabled: disabled.has("Delete"), action: () => run(deleteSelected) },
-          { ...later("Join"), separatorBefore: true },
-          later("Split / Explode"),
-          later("Close polyline"),
-          later("Dimension"),
+          ...c.undo,
+          c.sep(cut),
+          ...restClipboard,
+          c.del,
+          c.sep(first),
+          ...restSelect,
+          c.sep(c.transform),
+          ...c.editLater,
         ],
       },
-      { label: "Select All", shortcut: "Ctrl+A", separatorBefore: true, action: () => run(selectAll) },
+      { label: "Draw", items: c.draw },
       {
-        label: `Select All On Layer "${drawLayer}"`,
-        shortcut: "Ctrl+Shift+A",
-        action: () => run(() => selectAllOnLayer(drawLayer)),
+        label: "Machining",
+        items: [
+          c.later("Profile"),
+          c.later("Pocket"),
+          c.later("Drill"),
+          c.sep(c.later("Tool library")),
+          c.sep(c.later("Generate toolpaths")),
+          c.later("Produce G-code"),
+        ],
       },
-      { label: "Cut", shortcut: "Ctrl+X", separatorBefore: true, disabled: none, action: () => run(cutSelected) },
-      { label: "Copy", shortcut: "Ctrl+C", disabled: none, action: () => run(copySelected) },
-      { label: "Paste", shortcut: "Ctrl+V", disabled: !hasClipboard, action: startPaste },
-      {
-        label: "Undo",
-        shortcut: "Ctrl+Z",
-        separatorBefore: true,
-        disabled: !view?.canUndo,
-        action: () => run(() => undoRedo("undo")),
-      },
-      { label: "Redo", shortcut: "Ctrl+Y", disabled: !view?.canRedo, action: () => run(() => undoRedo("redo")) },
     ];
   };
 
   return (
     <div className="app">
+      <MenuBar menus={menuBarItems()} open={barMenu} onOpen={setBarMenu} />
       <Toolbar onAction={onAction} disabled={disabled} active={draft ? buttonForTool(draft.tool) : null} />
       <div className="side">
         <section className="panel tree-panel">
@@ -638,7 +702,10 @@ export default function App() {
         onBox={onBox}
         onPlacePoint={placePoint}
         onFinishDraft={finishDraft}
-        onContextMenu={(x, y) => setMenu({ x, y })}
+        onContextMenu={(x, y) => {
+          setBarMenu(null);
+          setMenu({ x, y });
+        }}
       />
       {menu && <ContextMenu items={menuItems()} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {numbers && (

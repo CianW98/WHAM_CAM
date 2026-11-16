@@ -28,8 +28,35 @@ body,
 .app {
   display: grid;
   grid-template-columns: 300px 1fr;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   height: 100%;
+}
+
+/* Menu bar (File, View, Edit, ...) */
+.menubar {
+  grid-column: 1 / -1;
+  display: flex;
+  padding: 0 4px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--panel-border);
+  user-select: none;
+}
+.menubar.active {
+  /* Above the menu's click-catching backdrop, so hovering another heading switches menus. */
+  position: relative;
+  z-index: 51;
+}
+.menubar button {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+.menubar button:hover,
+.menubar button.open {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* Toolbar */
