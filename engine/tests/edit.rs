@@ -1,7 +1,7 @@
 //! Edit tool tests: join, explode, close polyline, break at intersections.
 
-use wham_engine::edit::{break_at_intersections, close_polyline, explode, join};
 use wham_engine::display::display_shape;
+use wham_engine::edit::{break_at_intersections, close_polyline, explode, join};
 use wham_engine::*;
 
 fn p(x: f64, y: f64) -> Point {

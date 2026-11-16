@@ -68,6 +68,11 @@ fn delete_objects(ids: Vec<u32>, state: State<AppState>) -> usize {
 }
 
 #[tauri::command]
+fn add_layer(state: State<AppState>) -> String {
+    state.0.lock().unwrap().add_layer()
+}
+
+#[tauri::command]
 fn delete_layer(name: String, state: State<AppState>) -> bool {
     state.0.lock().unwrap().delete_layer(&name)
 }
@@ -222,6 +227,7 @@ pub fn run() {
             dxf_info,
             import_dxf,
             delete_objects,
+            add_layer,
             delete_layer,
             rename_layer,
             set_layer_color,

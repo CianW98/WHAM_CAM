@@ -198,6 +198,27 @@ export default function App() {
     await refresh();
   }, [selection, view, refresh]);
 
+  /** Adds a new empty layer, selects it and makes it the current layer. */
+  const addLayer = useCallback(async () => {
+    const name = await engine.addLayer();
+    await refresh();
+    const doc = await engine.getView();
+    const index = doc.document.layers.findIndex((l) => l.name === name);
+    setSelection({ kind: "layer", layer: index });
+    setCurrentLayer(name);
+    return name;
+  }, [refresh]);
+
+  /** Deletes a layer (with everything on it). */
+  const deleteLayer = useCallback(
+    async (name: string) => {
+      await engine.deleteLayer(name);
+      setSelection(NOTHING);
+      await refresh();
+    },
+    [refresh],
+  );
+
   const renameLayer = useCallback(
     async (oldName: string, newName: string) => {
       try {
@@ -770,6 +791,8 @@ export default function App() {
             onRenameLayer={renameLayer}
             onSetLayerColor={setLayerColor}
             currentLayer={drawLayer}
+            onAddLayer={addLayer}
+            onDeleteLayer={(name) => run(() => deleteLayer(name))}
           />
         </section>
         <section className="panel props-panel">

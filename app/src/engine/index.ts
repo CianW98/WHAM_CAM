@@ -188,6 +188,11 @@ export function deleteObjects(ids: number[]): Promise<number> {
 }
 
 /** Deletes a layer and everything on it. */
+/** Adds a new empty layer ("Layer 1", "Layer 2", ...). Returns its name. */
+export function addLayer(): Promise<string> {
+  return invoke<string>("add_layer");
+}
+
 export function deleteLayer(name: string): Promise<boolean> {
   return invoke<boolean>("delete_layer", { name });
 }

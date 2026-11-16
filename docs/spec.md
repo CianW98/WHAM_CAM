@@ -171,6 +171,9 @@ A classic CAD/CAM layout, with a toolbar:
 - Every layer has a name and a colour; everything on a layer is drawn in its colour.
   New layers get a colour automatically from a set of strong, distinct colours.
 - Layer colours are plain colours (no transparency). Yellow is reserved for the selection highlight.
+- Right-click a layer (or the Layers heading) for New layer, Rename and Delete layer. A new layer
+  is called "Layer 1", "Layer 2", ..., gets the next free colour, becomes the current layer and
+  opens for renaming straight away.
 - In the tree: click a layer to select it and open/close it; double-click to rename it in place;
   click its colour square to change the colour. Name and colour can also be edited in Properties.
 - Colour picker: 24 preset colours plus a box for an exact #rrggbb value.

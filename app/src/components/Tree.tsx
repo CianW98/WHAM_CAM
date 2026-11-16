@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Document, Layer, Shape } from "../engine";
 import { selectedIds, selectObjects, type Selection } from "../selection";
 import ColorSwatch from "./ColorSwatch";
+import ContextMenu, { type MenuItem } from "./ContextMenu";
 
 /** Tree label for a shape type, using common CAM names. */
 export function shapeLabel(shape: Shape): string {
@@ -19,22 +20,29 @@ interface Props {
   onSetLayerColor: (name: string, color: string) => void;
   /** Name of the layer new drawings go onto. */
   currentLayer: string | null;
+  /** Adds a new empty layer (selected and made current); resolves to its name. */
+  onAddLayer: () => Promise<string>;
+  onDeleteLayer: (name: string) => void;
 }
+
+type ContextEvent = React.MouseEvent<HTMLElement>;
 
 function Item({
   label,
   selected,
   onClick,
+  onContextMenu,
   children,
 }: {
   label: ReactNode;
   selected?: boolean;
   onClick?: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: ContextEvent) => void;
   children?: ReactNode;
 }) {
   return (
     <li>
-      <div className={`tree-item${selected ? " selected" : ""}`} onClick={onClick}>
+      <div className={`tree-item${selected ? " selected" : ""}`} onClick={onClick} onContextMenu={onContextMenu}>
         {label}
       </div>
       {children && <ul>{children}</ul>}
@@ -54,6 +62,9 @@ function LayerItem({
   onClick,
   onRename,
   onColor,
+  onContextMenu,
+  renameNow,
+  onRenameStarted,
   children,
 }: {
   layer: Layer;
@@ -63,6 +74,10 @@ function LayerItem({
   onClick: () => void;
   onRename: (newName: string) => Promise<boolean>;
   onColor: (color: string) => void;
+  onContextMenu: (e: ContextEvent) => void;
+  /** Start renaming in place (e.g. a layer just added from the menu). */
+  renameNow: boolean;
+  onRenameStarted: () => void;
   children: ReactNode;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -81,12 +96,19 @@ function LayerItem({
     if (save && name.trim() !== layer.name) await onRename(name);
   };
 
+  useEffect(() => {
+    if (!renameNow) return;
+    start();
+    onRenameStarted();
+  }, [renameNow]);
+
   return (
     <li>
       <div
         className={`tree-item${selected ? " selected" : ""}`}
         onClick={onClick}
         onDoubleClick={start}
+        onContextMenu={onContextMenu}
       >
         <span className="chevron">{open ? "▾" : "▸"}</span>
         <ColorSwatch color={layer.color} onPick={onColor} title={`Colour of layer ${layer.name}`} />
@@ -121,7 +143,31 @@ function LayerItem({
   );
 }
 
-export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLayerColor, currentLayer }: Props) {
+export default function Tree({
+  doc,
+  selection,
+  onSelect,
+  onRenameLayer,
+  onSetLayerColor,
+  currentLayer,
+  onAddLayer,
+  onDeleteLayer,
+}: Props) {
+  // The right-click menu: on a layer (its name) or on the Layers heading (null).
+  const [menu, setMenu] = useState<{ x: number; y: number; layer: string | null } | null>(null);
+  // A layer to start renaming in place.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  // Esc closes the menu (in the capture phase, before the app's own Esc handling).
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setMenu(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [menu]);
   // Which layers are closed (by name). Display-only state; all layers start open.
   const [closed, setClosed] = useState<Set<string>>(new Set());
   // Keep a single selected shape in view (e.g. when stepping with the arrow keys).
@@ -159,7 +205,30 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
     return ok;
   };
 
+  const openMenu = (e: ContextEvent, layer: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, layer });
+  };
+
+  const newLayer = async () => {
+    const name = await onAddLayer();
+    setRenaming(name);
+  };
+
+  const menuItems = (layer: string | null): MenuItem[] => {
+    const items: MenuItem[] = [{ label: "New layer", action: () => void newLayer() }];
+    if (layer !== null) {
+      items.push(
+        { label: "Rename", action: () => setRenaming(layer) },
+        { label: "Delete layer", separatorBefore: true, action: () => onDeleteLayer(layer) },
+      );
+    }
+    return items;
+  };
+
   return (
+    <>
     <ul className="tree">
       <Item label={doc.name} selected={is({ kind: "project" })} onClick={() => onSelect({ kind: "project" })}>
         <Item
@@ -170,6 +239,7 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
             </span>
           }
           onClick={toggleAll}
+          onContextMenu={(e) => openMenu(e, null)}
         >
           {doc.layers.map((layer, li) => (
             <LayerItem
@@ -184,6 +254,9 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
               }}
               onRename={(newName) => rename(layer.name, newName)}
               onColor={(color) => onSetLayerColor(layer.name, color)}
+              onContextMenu={(e) => openMenu(e, layer.name)}
+              renameNow={renaming === layer.name}
+              onRenameStarted={() => setRenaming(null)}
             >
               {layer.objects.map((obj) => (
                 <Item
@@ -208,5 +281,9 @@ export default function Tree({ doc, selection, onSelect, onRenameLayer, onSetLay
         </Item>
       </Item>
     </ul>
+    {menu && (
+      <ContextMenu items={menuItems(menu.layer)} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+    )}
+    </>
   );
 }

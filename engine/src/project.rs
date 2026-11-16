@@ -221,6 +221,19 @@ impl Project {
         true
     }
 
+    /// Adds a new, empty layer called "Layer 1" (or the next unused number) with the next free
+    /// colour, as one undo step. Returns its name.
+    pub fn add_layer(&mut self) -> String {
+        let name = (1..)
+            .map(|n| format!("Layer {n}"))
+            .find(|n| !self.doc.layers.iter().any(|l| &l.name == n))
+            .expect("some number is free");
+        self.edit(|doc| {
+            doc.layer_index(&name);
+        });
+        name
+    }
+
     /// Renames a layer as one undo step. The new name is trimmed, must not be empty and
     /// must not already be used by another layer. Errors are plain-English messages.
     pub fn rename_layer(&mut self, old: &str, new: &str) -> Result<(), String> {

@@ -250,3 +250,24 @@ fn documents_saved_without_layer_colours_still_load() {
     let doc: Document = serde_json::from_str(json).unwrap();
     assert_eq!(doc.layers[0].color, LAYER_PALETTE[0]);
 }
+
+#[test]
+fn add_layer_picks_a_free_name_and_colour() {
+    let mut proj = Project::new();
+    assert_eq!(proj.add_layer(), "Layer 1");
+    proj.rename_layer("Layer 1", "Keep").unwrap();
+    assert_eq!(proj.add_layer(), "Layer 1");
+    assert_eq!(proj.add_layer(), "Layer 2");
+    let layers = &proj.document().layers;
+    let names: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
+    assert!(
+        names.ends_with(&["Keep", "Layer 1", "Layer 2"]),
+        "{names:?}"
+    );
+    let colours: std::collections::HashSet<&str> =
+        layers.iter().map(|l| l.color.as_str()).collect();
+    assert_eq!(colours.len(), layers.len());
+    let before = layers.len();
+    assert!(proj.undo());
+    assert_eq!(proj.document().layers.len(), before - 1);
+}
