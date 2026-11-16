@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as engine from "./engine";
-import { CLICKS_NEEDED, type BoxMode, type Draft, type DrawTool, type ImportReport, type Point, type SnapOptions, type View } from "./engine";
+import { CLICKS_NEEDED, type BoxMode, type Draft, type DrawTool, type ImportReport, type Point, type Shape, type SnapOptions, type View } from "./engine";
 import { useNotify } from "./components/Notifications";
 import Toolbar from "./components/Toolbar";
 import Tree from "./components/Tree";
@@ -163,6 +163,26 @@ export default function App() {
     },
     [notify, refresh],
   );
+
+  /** Sends an edit from the Properties panel. Resolves false (with a pop-up) if refused. */
+  const tryEdit = useCallback(
+    async (change: () => Promise<void>) => {
+      try {
+        await change();
+        await refresh();
+        return true;
+      } catch (err) {
+        notify("error", String(err));
+        return false;
+      }
+    },
+    [notify, refresh],
+  );
+  const setShape = useCallback(
+    (id: number, shape: Shape) => tryEdit(() => engine.setShape(id, shape)),
+    [tryEdit],
+  );
+  const setGridSpacing = useCallback((mm: number) => tryEdit(() => engine.setGridSpacing(mm)), [tryEdit]);
 
   const undoRedo = useCallback(
     async (which: "undo" | "redo") => {
@@ -328,6 +348,8 @@ export default function App() {
             selection={selection}
             onRenameLayer={renameLayer}
             onSetLayerColor={setLayerColor}
+            onSetShape={setShape}
+            onSetGridSpacing={setGridSpacing}
           />
         </section>
       </div>

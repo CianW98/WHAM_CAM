@@ -449,3 +449,17 @@ button.primary {
 .typed-point input.bad {
   border-color: #e05050;
 }
+.point-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.point-table th {
+  width: auto;
+  font-weight: normal;
+  color: var(--muted);
+  text-align: left;
+}
+.point-table td:first-child,
+.point-table th:first-child {
+  width: 2em;
+}
