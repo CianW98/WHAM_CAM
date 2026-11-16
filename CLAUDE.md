@@ -154,7 +154,12 @@ Done:
   current layer; finished shape is selected; editable shape values and per-project grid spacing.
   (Typed-coordinate box removed at the user's request: unintuitive.)
 
+- Right-click menu (View, Draw, Transform, Edit, Select All / On Layer, Cut/Copy/Paste,
+  Undo/Redo). Transforms (move, rotate, scale, mirror) around the selection centre in the engine
+  (`transform.rs`); app clipboard with click-to-place paste.
+
 Next:
-- User check of the drawing tools in the app.
-- Edit tools (spec 5.3): transform, join/split, dimensions.
+- User check of the drawing tools, right-click menu and transforms in the app.
+- Rest of the edit tools (spec 5.3): join, split/explode, close polyline, dimensions
+  (already greyed in the Edit menu).
 - Then the offsetting library (candidate: cavalier_contours) and toolpaths.

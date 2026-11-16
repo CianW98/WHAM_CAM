@@ -85,6 +85,10 @@ A classic CAD/CAM layout, with a toolbar:
 - **Tree**: Layers → drawing objects; Machining → Parts → operations. Click to select,
   right-click for actions (rename, delete, enable/disable, generate toolpath).
 - **Properties panel**: every setting of whatever is selected, editable in place.
+- **Right-click menu** in the drawing area (right-click without dragging; right-drag pans):
+  View (Zoom to fit, 2D/3D), Draw (the drawing tools), Transform, Edit, Select All,
+  Select All On Layer (current layer), Cut, Copy, Paste, Undo, Redo. Items that can't be used
+  right now, or aren't built yet, are greyed.
 - **Drawing area**: dark background, grid, X/Y axes. Pan, zoom, select (click and box-select).
   A toggle switches between the 2D top view and a 3D orbit view of the toolpaths. The cursor
   X/Y position is shown in a small readout in a corner of the drawing area.
@@ -159,7 +163,15 @@ A classic CAD/CAM layout, with a toolbar:
 - Deleting a layer deletes everything on it. An emptied layer stays until deleted.
 
 ### 5.3 Edit
-- Transform: move, rotate, scale, mirror, with typed values.
+- Transform (right-click menu → Transform), always changing the selected shapes:
+  - **Move…** (dX, dY), **Rotate…** (angle, + = anticlockwise), **Scale…** (one factor, more
+    than 0) in a small dialog that remembers the last values.
+  - **Move by clicking**: click a base point, then the destination (snapped, with a preview).
+  - **Mirror left–right** and **Mirror top–bottom**.
+  - Rotate, scale and mirror work around the centre of the selection's bounding box.
+- Cut, Copy, Paste (Ctrl+X/C/V): the clipboard is inside the app. Paste follows the snapped
+  cursor (by the centre of the copied shapes) and a click drops it; pasted shapes go back onto
+  the layers they came from and are selected. Select All (Ctrl+A), Select All On Layer.
 - Join (lines/arcs into polylines, with a tolerance), split/explode, close polyline.
 - Basic dimensions: linear and radius/diameter annotations (display only, no effect on G-code).
 - Undo/redo.
