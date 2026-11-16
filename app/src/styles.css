@@ -123,21 +123,129 @@ button:hover {
 .props {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+  border: 1px solid #d6dbe3;
 }
 .props th,
 .props td {
   text-align: left;
-  padding: 3px 4px;
-  border-bottom: 1px solid #e2e2e8;
-  vertical-align: top;
+  padding: 2px 6px;
+  border-bottom: 1px solid #e6e9ee;
+  vertical-align: middle;
   font-weight: normal;
+  height: 24px;
 }
 .props th {
   width: 45%;
-  color: var(--muted);
+  color: var(--text);
+  border-right: 1px solid #e6e9ee;
+  padding-left: 18px;
 }
 .props td {
   word-break: break-word;
+}
+.props tr.read-only th,
+.props tr.read-only td {
+  color: #8a8f99;
+}
+.props .prop-section td {
+  background: #dce6f2;
+  color: #3a4252;
+  padding-left: 4px;
+  cursor: default;
+  user-select: none;
+}
+.prop-toggle {
+  display: inline-block;
+  width: 14px;
+  margin-right: 4px;
+  color: #5a6578;
+}
+.props .prop-input {
+  border-color: transparent;
+  background: transparent;
+  padding: 1px 2px;
+}
+.props .prop-input:hover {
+  border-color: var(--panel-border);
+}
+.props .prop-input:focus {
+  background: #fff;
+}
+.collection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.collection button {
+  padding: 0 6px;
+  line-height: 16px;
+}
+
+/* Points pop-up */
+.points-dialog {
+  max-width: 560px;
+  width: 520px;
+}
+.points-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.points-header .close,
+.points-table .remove {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.points-scroll {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 6px 0 12px;
+  border: 1px solid #d6dbe3;
+}
+.points-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.points-table th {
+  position: sticky;
+  top: 0;
+  background: #eef1f5;
+  font-weight: normal;
+  text-align: left;
+  padding: 3px 6px;
+}
+.points-table td {
+  border-top: 1px solid #e6e9ee;
+  padding: 1px 4px;
+}
+.points-table tbody tr:nth-child(even) {
+  background: #f7f7ec;
+}
+.points-table td:first-child {
+  width: 2.5em;
+  text-align: right;
+}
+.points-table .cell {
+  width: 100%;
+  font: inherit;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 4px;
+}
+.points-table .cell:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: #fff;
+}
+.points-table .cell.bad {
+  border-color: #e05050;
+}
+.modal-buttons .spacer {
+  flex: 1;
 }
 
 /* Drawing area */
@@ -421,20 +529,6 @@ button.primary {
   margin-left: 6px;
   font-size: 11px;
   color: var(--accent);
-}
-.point-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.point-table th {
-  width: auto;
-  font-weight: normal;
-  color: var(--muted);
-  text-align: left;
-}
-.point-table td:first-child,
-.point-table th:first-child {
-  width: 2em;
 }
 
 /* Right-click menu */

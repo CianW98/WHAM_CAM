@@ -24,6 +24,8 @@ export type Shape =
   | { type: "Arc"; center: Point; radius: number; start_angle: number; end_angle: number }
   | { type: "Circle"; center: Point; radius: number }
   | { type: "Polyline"; vertices: Vertex[]; closed: boolean }
+  /** A "PolyRectangle": width along `rotation` degrees CCW from +X, height at right angles. */
+  | { type: "Rectangle"; lower_left: Point; width: number; height: number; rotation: number }
   | { type: "Points"; points: Point[] }
   | {
       type: "Spline";
@@ -75,6 +77,8 @@ export interface DisplayShape {
   markers: boolean;
   /** Colour to draw it in, "#rrggbb" (its layer's colour). */
   color: string;
+  /** Which way a closed polyline or rectangle runs; null for other shapes. */
+  direction: "CW" | "CCW" | null;
 }
 
 export interface DisplayData {

@@ -471,6 +471,8 @@ export default function App() {
     }
     const target = e.target as HTMLElement | null;
     if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+    // Keys pressed inside a pop-up (e.g. the points table) belong to the pop-up.
+    if (target?.closest?.(".modal-backdrop")) return;
     const ctrl = e.ctrlKey || e.metaKey;
     const d = draftRef.current;
     if (key === "escape") {
@@ -612,6 +614,7 @@ export default function App() {
           <h2>Properties</h2>
           <Properties
             doc={view?.document ?? null}
+            display={view?.display ?? null}
             selection={selection}
             onRenameLayer={renameLayer}
             onSetLayerColor={setLayerColor}

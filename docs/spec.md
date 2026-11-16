@@ -84,7 +84,11 @@ A classic CAD/CAM layout, with a toolbar:
   Produce G-code. Everything on the toolbar is also in the menus.
 - **Tree**: Layers → drawing objects; Machining → Parts → operations. Click to select,
   right-click for actions (rename, delete, enable/disable, generate toolpath).
-- **Properties panel**: every setting of whatever is selected, editable in place.
+- **Properties panel**: every setting of whatever is selected, editable in place, as a property
+  grid with collapsible sections ("(General)", then the shape's own section). Read-only values
+  are greyed. A point is one `x,y` box. Polyline and point-list points open in a pop-up table
+  ("Points (Collection) …": X, Y and, for polylines, bulge; add/remove points, OK saves) instead
+  of filling the panel. Closed polylines and rectangles show their direction (CW/CCW).
 - **Right-click menu** in the drawing area (right-click without dragging; right-drag pans):
   View (Zoom to fit, 2D/3D), Draw (the drawing tools), Transform, Edit, Select All,
   Select All On Layer (current layer), Cut, Copy, Paste, Undo, Redo. Items that can't be used
@@ -131,8 +135,10 @@ A classic CAD/CAM layout, with a toolbar:
     so it is always the same distance from both. The arc runs counter-clockwise from start to end:
     putting the centre on the other side switches between the short and the long arc.
   - **Circle**: centre, then a point on the circle.
-  - **Rectangle**: two opposite corners. Stored as a closed polyline, counter-clockwise from the
-    lower-left corner.
+  - **Rectangle**: two opposite corners. Makes a **PolyRectangle**: Lower Left, Width, Height and
+    Rotation, always counter-clockwise. Moving, scaling, mirroring and rotating keep it a
+    PolyRectangle; rotations by multiples of 90° are stored unrotated with the true lower-left
+    corner.
   - **Polyline**: click points; **A** makes the next segments tangent arcs, **L** straight lines
     (the first segment is always straight). Enter or double-click finishes; clicking the first
     point closes it. Backspace removes the last point.
@@ -143,7 +149,8 @@ A classic CAD/CAM layout, with a toolbar:
   (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the
   drawing area, and a marker shows what was snapped to. A finished shape becomes the selection.
 - Exact values are edited in the properties panel afterwards: line ends, arc centre/radius/angles,
-  circle centre/radius, polyline closed, point-list points. Splines and ellipses are read-only.
+  circle centre/radius, polyline closed and points, rectangle lower left/width/height/rotation,
+  point-list points. Splines and ellipses are read-only.
   (A typed-coordinate box while drawing was tried and removed as unintuitive.)
 - Grid spacing: a project setting (default 10 mm), in the project's properties.
 

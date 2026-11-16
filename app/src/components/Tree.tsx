@@ -5,7 +5,9 @@ import ColorSwatch from "./ColorSwatch";
 
 /** Tree label for a shape type, using common CAM names. */
 export function shapeLabel(shape: Shape): string {
-  return shape.type === "Points" ? "PointList" : shape.type;
+  if (shape.type === "Points") return "PointList";
+  if (shape.type === "Rectangle") return "PolyRectangle";
+  return shape.type;
 }
 
 interface Props {

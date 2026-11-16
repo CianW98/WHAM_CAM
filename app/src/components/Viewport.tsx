@@ -29,6 +29,7 @@ const guide = (a: Point, b: Point): DisplayShape => ({
   closed: false,
   markers: false,
   color: "",
+  direction: null,
 });
 
 export type ViewMode = "2D" | "3D";

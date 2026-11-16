@@ -10,6 +10,8 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Inches**, together with CAM styles/templates and workspaces. v1 is mm only.
 - **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate.
 - **Holding tabs.**
+- **PolyRectangle corner radius** (rounded corners as true arcs, at most half the shorter side).
+  Left out of v1 (decided 2026-11-16); the PolyRectangle has Lower Left, Width, Height, Rotation.
 
 ## Later
 
