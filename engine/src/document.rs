@@ -9,6 +9,16 @@ pub struct Document {
     pub name: String,
     pub layers: Vec<Layer>,
     pub parts: Vec<Part>,
+    /// Drawing grid spacing in mm, used for display and grid snapping.
+    #[serde(default = "default_grid_spacing")]
+    pub grid_spacing: f64,
+}
+
+/// Grid spacing for new projects (and older project files that don't have one), in mm.
+pub const DEFAULT_GRID_SPACING: f64 = 10.0;
+
+fn default_grid_spacing() -> f64 {
+    DEFAULT_GRID_SPACING
 }
 
 /// Colours given to new layers, in order: strong, clearly different hues that stand out on
@@ -67,6 +77,7 @@ impl Document {
             parts: vec![Part {
                 name: "Part1".to_string(),
             }],
+            grid_spacing: DEFAULT_GRID_SPACING,
         }
     }
 

@@ -6,10 +6,11 @@ use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::display::{DisplayData, DisplayShape, display_data};
+use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
+use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
-use crate::geometry::Transform;
+use crate::geometry::{Point, Shape, Transform};
 
 /// How many undo steps are kept.
 const UNDO_LIMIT: usize = 100;
@@ -226,6 +227,64 @@ impl Project {
             .iter()
             .position(|l| l.name == name)
             .ok_or_else(|| format!("There is no layer called \"{name}\"."))
+    }
+
+    /// Adds a shape to a layer (created if it doesn't exist) as one undo step.
+    /// Returns the new object's id. Errors are plain-English messages.
+    pub fn add_shape(&mut self, layer: &str, shape: Shape) -> Result<u32, String> {
+        draw::validate(&shape)?;
+        let id = self.doc.max_id() + 1;
+        self.edit(|doc| {
+            let li = doc.layer_index(layer);
+            doc.layers[li].objects.push(DrawingObject { id, shape });
+        });
+        Ok(id)
+    }
+
+    /// Finishes a drawn shape and adds it to a layer, as one undo step. Returns the new id.
+    pub fn add_draft(&mut self, layer: &str, draft: &Draft) -> Result<u32, String> {
+        let shape = draw::finish(draft)?;
+        self.add_shape(layer, shape)
+    }
+
+    /// Replaces an object's shape (e.g. after editing values in Properties) as one undo step.
+    pub fn set_shape(&mut self, id: u32, shape: Shape) -> Result<(), String> {
+        draw::validate(&shape)?;
+        let (li, oi) = self
+            .doc
+            .layers
+            .iter()
+            .enumerate()
+            .find_map(|(li, l)| l.objects.iter().position(|o| o.id == id).map(|oi| (li, oi)))
+            .ok_or_else(|| format!("There is no object with id {id}."))?;
+        self.edit(|doc| doc.layers[li].objects[oi].shape = shape);
+        Ok(())
+    }
+
+    /// Sets the grid spacing in mm as one undo step.
+    pub fn set_grid_spacing(&mut self, mm: f64) -> Result<(), String> {
+        if !(mm.is_finite() && mm > 0.0) {
+            return Err("The grid spacing must be more than 0 mm.".to_string());
+        }
+        self.edit(|doc| doc.grid_spacing = mm);
+        Ok(())
+    }
+
+    /// Snaps a cursor position while drawing. `extra` are the points of the shape being drawn.
+    pub fn snap(
+        &self,
+        x: f64,
+        y: f64,
+        tolerance: f64,
+        options: SnapOptions,
+        extra: &[Point],
+    ) -> Snap {
+        draw::snap(&self.doc, Point::new(x, y), tolerance, options, extra)
+    }
+
+    /// The rubber-band preview of a shape being drawn, with the cursor as its next point.
+    pub fn preview(&self, draft: &Draft, cursor: Option<Point>) -> Option<DisplayShape> {
+        draw::preview(draft, cursor).map(|shape| display_shape(0, &shape))
     }
 
     /// The object nearest to (x, y) within `tolerance` mm, if any.
