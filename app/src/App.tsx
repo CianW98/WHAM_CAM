@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as engine from "./engine";
-import { CLICKS_NEEDED, type BoxMode, type Draft, type DrawTool, type ImportReport, type Point, type Shape, type SnapOptions, type View } from "./engine";
+import {
+  CLICKS_NEEDED,
+  type BoxMode,
+  type Draft,
+  type DrawTool,
+  type ImportReport,
+  type Point,
+  type Shape,
+  type SnapOptions,
+  type TransformOp,
+  type View,
+} from "./engine";
 import { useNotify } from "./components/Notifications";
 import Toolbar from "./components/Toolbar";
 import Tree from "./components/Tree";
 import Properties from "./components/Properties";
-import Viewport from "./components/Viewport";
+import Viewport, { type Placing, type ViewMode } from "./components/Viewport";
 import ChoiceDialog, { type Choice } from "./components/ChoiceDialog";
+import ContextMenu, { type MenuItem } from "./components/ContextMenu";
+import NumberDialog, { type NumberQuestion } from "./components/NumberDialog";
 import { NOTHING, selectObjects, selectedIds, type Selection } from "./selection";
 
 function importMessage(r: ImportReport, unitsName: string | null): string {
@@ -59,6 +72,16 @@ function drawHint(d: Draft): string {
   return `${hint} · Esc ${n > 0 ? "cancels" : "stops drawing"}`;
 }
 
+/** Moving by clicking or pasting: what is being placed besides a drawn shape. */
+type Special = { kind: "move"; ids: number[]; base: Point | null } | { kind: "paste" };
+
+function specialHint(sp: Special): string {
+  if (sp.kind === "paste") return "Click where the centre of the pasted shapes goes · Esc cancels";
+  return `${sp.base ? "Click the destination" : "Click the base point"} · Esc cancels`;
+}
+
+const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
 const samePoint = (a: Point | undefined, b: Point) => a !== undefined && a.x === b.x && a.y === b.y;
 
 export default function App() {
@@ -69,19 +92,45 @@ export default function App() {
   const [choice, setChoice] = useState<(Choice & { resolve: (a: string | null) => void }) | null>(null);
   const [snapOptions, setSnapOptions] = useState<SnapOptions>({ grid: true, objects: true });
   const [currentLayer, setCurrentLayer] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("2D");
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [numbers, setNumbers] = useState<(NumberQuestion & { resolve: (v: number[] | null) => void }) | null>(
+    null,
+  );
+  const [hasClipboard, setHasClipboard] = useState(false);
+  // Last values typed into the transform dialogs, offered again next time.
+  const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1 });
+
+  // Moving by clicking / pasting (null = neither). A ref as well, like the draft below.
+  const [special, setSpecialState] = useState<Special | null>(null);
+  const specialRef = useRef<Special | null>(null);
+  const setSpecial = useCallback((sp: Special | null) => {
+    specialRef.current = sp;
+    setSpecialState(sp);
+  }, []);
 
   // The shape being drawn (null = no drawing tool active). Kept in a ref as well, so clicks
   // that arrive before React re-renders always build on the latest points.
   const [draft, setDraftState] = useState<Draft | null>(null);
   const draftRef = useRef<Draft | null>(null);
-  const setDraft = useCallback((d: Draft | null) => {
-    draftRef.current = d;
-    setDraftState(d);
-  }, []);
+  const setDraft = useCallback(
+    (d: Draft | null) => {
+      draftRef.current = d;
+      setDraftState(d);
+      if (d) setSpecial(null); // drawing and moving/pasting never run together
+    },
+    [setSpecial],
+  );
 
   /** Ask the user a question in a dialog. */
   const ask = useCallback(
     (c: Choice) => new Promise<string | null>((resolve) => setChoice({ ...c, resolve })),
+    [],
+  );
+
+  /** Ask for one or more numbers in a dialog. Resolves null if cancelled. */
+  const askNumbers = useCallback(
+    (q: NumberQuestion) => new Promise<number[] | null>((resolve) => setNumbers({ ...q, resolve })),
     [],
   );
 
@@ -98,6 +147,7 @@ export default function App() {
 
   useEffect(() => {
     refresh().catch((err) => notify("error", `Could not reach the CAM engine: ${String(err)}`));
+    engine.hasClipboard().then(setHasClipboard, () => {});
   }, [refresh, notify]);
 
   const importDxf = useCallback(async () => {
@@ -248,11 +298,125 @@ export default function App() {
     [notify],
   );
 
+  const ids = selectedIds(selection);
+
+  /** Stops drawing, moving and pasting. */
+  const stopPlacing = useCallback(() => {
+    setDraft(null);
+    setSpecial(null);
+  }, [setDraft, setSpecial]);
+
+  const applyTransform = useCallback(
+    async (targets: number[], op: TransformOp) => {
+      if (targets.length === 0) return;
+      await engine.transform(targets, op);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  /** Move… / Rotate… / Scale…: ask for the value, then transform the selection. */
+  const transformDialog = useCallback(
+    async (kind: "Move" | "Rotate" | "Scale") => {
+      const targets = ids;
+      if (targets.length === 0) return;
+      const last = lastValues.current;
+      const n = plural(targets.length, "object");
+      if (kind === "Move") {
+        const v = await askNumbers({
+          title: `Move ${n}`,
+          fields: [
+            { label: "Move X by (mm)", value: last.dx },
+            { label: "Move Y by (mm)", value: last.dy },
+          ],
+        });
+        if (!v) return;
+        [last.dx, last.dy] = v;
+        await applyTransform(targets, { type: "Move", dx: v[0], dy: v[1] });
+      } else if (kind === "Rotate") {
+        const v = await askNumbers({
+          title: `Rotate ${n} around their centre`,
+          fields: [{ label: "Angle (°, + = anticlockwise)", value: last.degrees }],
+        });
+        if (!v) return;
+        last.degrees = v[0];
+        await applyTransform(targets, { type: "Rotate", degrees: v[0] });
+      } else {
+        const v = await askNumbers({
+          title: `Scale ${n} around their centre`,
+          fields: [{ label: "Scale factor", value: last.factor }],
+        });
+        if (!v) return;
+        last.factor = v[0];
+        await applyTransform(targets, { type: "Scale", factor: v[0] });
+      }
+    },
+    [ids, askNumbers, applyTransform],
+  );
+
+  const selectAll = useCallback(async () => {
+    setSelection({ kind: "objects", ids: await engine.allIds() });
+  }, []);
+
+  const selectAllOnLayer = useCallback(async (layer: string) => {
+    setSelection({ kind: "objects", ids: await engine.idsOnLayer(layer) });
+  }, []);
+
+  const copySelected = useCallback(async () => {
+    if (ids.length === 0) return;
+    await engine.copy(ids);
+    setHasClipboard(true);
+    notify("info", `Copied ${plural(ids.length, "object")}.`);
+  }, [ids, notify]);
+
+  const cutSelected = useCallback(async () => {
+    if (ids.length === 0) return;
+    const n = await engine.cut(ids);
+    setHasClipboard(true);
+    await refresh();
+    notify("info", `Cut ${plural(n, "object")}.`);
+  }, [ids, notify, refresh]);
+
+  const startPaste = useCallback(() => {
+    if (!hasClipboard) return;
+    setDraft(null);
+    setSpecial({ kind: "paste" });
+  }, [hasClipboard, setDraft, setSpecial]);
+
+  const startMoveByClicking = useCallback(() => {
+    if (ids.length === 0) return;
+    setDraft(null);
+    setSpecial({ kind: "move", ids, base: null });
+  }, [ids, setDraft, setSpecial]);
+
+  /** A snapped click while placing: a drawing point, a move base/destination, or a paste. */
+  const placePoint = useCallback(
+    (p: Point) => {
+      if (draftRef.current) return addDrawPoint(p);
+      const sp = specialRef.current;
+      if (!sp) return;
+      if (sp.kind === "move" && !sp.base) return setSpecial({ ...sp, base: p });
+      setSpecial(null);
+      if (sp.kind === "move" && sp.base) {
+        const base = sp.base;
+        run(() => applyTransform(sp.ids, { type: "Move", dx: p.x - base.x, dy: p.y - base.y }));
+      } else if (sp.kind === "paste") {
+        run(async () => {
+          const pasted = await engine.paste(p);
+          await refresh();
+          setSelection({ kind: "objects", ids: pasted });
+        });
+      }
+    },
+    [addDrawPoint, applyTransform, refresh, run, setSpecial],
+  );
+
   const onAction = (name: string) => {
     const tool = TOOL_BUTTONS[name];
     if (tool) {
       // Pressing the active tool again stops drawing.
-      setDraft(draftRef.current?.tool === tool ? null : emptyDraft(tool));
+      if (draftRef.current?.tool === tool) stopPlacing();
+      else setDraft(emptyDraft(tool));
       return;
     }
     switch (name) {
@@ -274,18 +438,30 @@ export default function App() {
   // Keyboard shortcuts (ignored while typing in a text box or while a dialog is open).
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
-    if (choice) return;
+    if (choice || numbers) return;
+    const key = e.key.toLowerCase();
+    if (menu) {
+      if (key === "escape") {
+        setMenu(null);
+        e.preventDefault();
+      }
+      return;
+    }
     const target = e.target as HTMLElement | null;
     if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
     const ctrl = e.ctrlKey || e.metaKey;
-    const key = e.key.toLowerCase();
     const d = draftRef.current;
     if (key === "escape") {
-      // Esc: cancel the shape in progress, then stop drawing, then clear the selection.
-      if (d && d.points.length > 0) setDraft(emptyDraft(d.tool));
+      // Esc: cancel a move/paste or the shape in progress, then stop drawing, then clear the selection.
+      if (specialRef.current) setSpecial(null);
+      else if (d && d.points.length > 0) setDraft(emptyDraft(d.tool));
       else if (d) setDraft(null);
       else setSelection(NOTHING);
-    } else if (d && key === "enter") finishDraft();
+    } else if (ctrl && key === "a") run(selectAll);
+    else if (ctrl && key === "c") run(copySelected);
+    else if (ctrl && key === "x") run(cutSelected);
+    else if (ctrl && key === "v") startPaste();
+    else if (d && key === "enter") finishDraft();
     else if (d && key === "backspace") {
       const points = d.points.slice(0, -1);
       setDraft({ ...d, points, arcs: d.arcs.slice(0, Math.max(0, points.length - 1)) });
@@ -316,7 +492,6 @@ export default function App() {
       setSelection((sel) => selectObjects(sel, ids, add));
     });
 
-  const ids = selectedIds(selection);
   const selectedSet = useMemo(() => new Set(ids), [ids]);
   const onSelect = (sel: Selection) => {
     setSelection(sel);
@@ -327,6 +502,68 @@ export default function App() {
   if (!view?.canUndo) disabled.add("Undo");
   if (!view?.canRedo) disabled.add("Redo");
   if (ids.length === 0 && selection.kind !== "layer") disabled.add("Delete");
+
+  const placing = useMemo<Placing | null>(
+    () => (draft ? { kind: "draw", draft } : special),
+    [draft, special],
+  );
+
+  // The right-click menu. Items that can't be used right now are greyed.
+  const menuItems = (): MenuItem[] => {
+    const none = ids.length === 0;
+    const later = (label: string): MenuItem => ({ label, disabled: true });
+    const draw = (label: string): MenuItem => ({ label, action: () => onAction(label) });
+    return [
+      {
+        label: "View",
+        items: [
+          { label: "Zoom to fit", action: () => setFitRequest((n) => n + 1) },
+          { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
+          { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
+        ],
+      },
+      { label: "Draw", items: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw) },
+      {
+        label: "Transform",
+        disabled: none,
+        items: [
+          { label: "Move…", action: () => run(() => transformDialog("Move")) },
+          { label: "Move by clicking", action: startMoveByClicking },
+          { label: "Rotate…", action: () => run(() => transformDialog("Rotate")) },
+          { label: "Scale…", action: () => run(() => transformDialog("Scale")) },
+          {
+            label: "Mirror left–right",
+            separatorBefore: true,
+            action: () => run(() => applyTransform(ids, { type: "MirrorLeftRight" })),
+          },
+          { label: "Mirror top–bottom", action: () => run(() => applyTransform(ids, { type: "MirrorTopBottom" })) },
+        ],
+      },
+      {
+        label: "Edit",
+        items: [
+          { label: "Delete", shortcut: "Del", disabled: disabled.has("Delete"), action: () => run(deleteSelected) },
+          { ...later("Join"), separatorBefore: true },
+          later("Split / Explode"),
+          later("Close polyline"),
+          later("Dimension"),
+        ],
+      },
+      { label: "Select All", shortcut: "Ctrl+A", separatorBefore: true, action: () => run(selectAll) },
+      { label: `Select All On Layer "${drawLayer}"`, action: () => run(() => selectAllOnLayer(drawLayer)) },
+      { label: "Cut", shortcut: "Ctrl+X", separatorBefore: true, disabled: none, action: () => run(cutSelected) },
+      { label: "Copy", shortcut: "Ctrl+C", disabled: none, action: () => run(copySelected) },
+      { label: "Paste", shortcut: "Ctrl+V", disabled: !hasClipboard, action: startPaste },
+      {
+        label: "Undo",
+        shortcut: "Ctrl+Z",
+        separatorBefore: true,
+        disabled: !view?.canUndo,
+        action: () => run(() => undoRedo("undo")),
+      },
+      { label: "Redo", shortcut: "Ctrl+Y", disabled: !view?.canRedo, action: () => run(() => undoRedo("redo")) },
+    ];
+  };
 
   return (
     <div className="app">
@@ -360,15 +597,28 @@ export default function App() {
         selectedIds={selectedSet}
         fitRequest={fitRequest}
         gridSpacing={view?.document.grid_spacing ?? 10}
-        draft={draft}
-        hint={draft ? drawHint(draft) : null}
+        mode={viewMode}
+        onMode={setViewMode}
+        placing={placing}
+        hint={draft ? drawHint(draft) : special ? specialHint(special) : null}
         snapOptions={snapOptions}
         onSnapOptions={setSnapOptions}
         onPick={onPick}
         onBox={onBox}
-        onDrawPoint={addDrawPoint}
+        onPlacePoint={placePoint}
         onFinishDraft={finishDraft}
+        onContextMenu={(x, y) => setMenu({ x, y })}
       />
+      {menu && <ContextMenu items={menuItems()} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
+      {numbers && (
+        <NumberDialog
+          question={numbers}
+          onAnswer={(v) => {
+            numbers.resolve(v);
+            setNumbers(null);
+          }}
+        />
+      )}
       {choice && (
         <ChoiceDialog
           choice={choice}

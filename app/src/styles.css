@@ -436,3 +436,57 @@ button.primary {
 .point-table th:first-child {
   width: 2em;
 }
+
+/* Right-click menu */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.context-menu {
+  position: fixed;
+  min-width: 190px;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  font-size: 13px;
+  user-select: none;
+}
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 12px;
+  cursor: default;
+  white-space: nowrap;
+}
+.menu-item:hover:not(.disabled),
+.menu-item.open {
+  background: var(--accent);
+  color: #fff;
+}
+.menu-item.disabled {
+  color: #aaa;
+}
+.menu-shortcut {
+  color: inherit;
+  opacity: 0.6;
+}
+.menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--panel-border);
+}
+.number-fields th {
+  text-align: left;
+  font-weight: normal;
+  padding: 4px 12px 4px 0;
+}
+.number-fields input {
+  width: 120px;
+}
+.prop-input.bad {
+  border-color: #e05050;
+}
