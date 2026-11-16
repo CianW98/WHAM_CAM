@@ -11,6 +11,7 @@ pub mod dxf;
 pub mod edit;
 pub mod geometry;
 pub mod project;
+pub mod project_file;
 pub mod transform;
 
 pub use display::{DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape, display_data};

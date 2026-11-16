@@ -12,6 +12,7 @@ use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::edit;
 use crate::geometry::{Point, Shape, Transform};
+use crate::project_file;
 use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
 
 /// How many undo steps are kept.
@@ -77,6 +78,8 @@ pub struct Project {
     display: DisplayData,
     /// Copied shapes with the layer each came from. Not part of the document or of undo.
     clipboard: Vec<(String, Shape)>,
+    /// The document as last saved or opened, to tell whether there are unsaved changes.
+    saved: Document,
 }
 
 impl Default for Project {
@@ -90,11 +93,65 @@ impl Project {
         let doc = Document::new("Untitled");
         let display = display_data(&doc);
         Self {
+            saved: doc.clone(),
             doc,
             undo: Vec::new(),
             redo: Vec::new(),
             display,
             clipboard: Vec::new(),
+        }
+    }
+
+    // --- Project files ---------------------------------------------------------------------
+
+    /// Starts a new, empty project. The clipboard is kept.
+    pub fn new_project(&mut self) {
+        self.replace_document(Document::new("Untitled"));
+    }
+
+    /// Opens a project from project-file text, replacing the current one with a fresh undo
+    /// history. It is named `name` (the file name without its extension). On an error nothing
+    /// changes. The clipboard is kept.
+    pub fn open(&mut self, text: &str, name: &str) -> Result<(), String> {
+        let mut doc = project_file::from_text(text)?;
+        doc.name = name.to_string();
+        self.replace_document(doc);
+        Ok(())
+    }
+
+    fn replace_document(&mut self, doc: Document) {
+        self.saved = doc.clone();
+        self.display = display_data(&doc);
+        self.doc = doc;
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// The project as project-file text, named `name` (the file name without its extension).
+    /// The name change is not an undo step. Call [`Project::mark_saved`] once the file is written.
+    pub fn save_text(&mut self, name: &str) -> String {
+        self.set_name(name);
+        project_file::to_text(&self.doc)
+    }
+
+    /// Records that the project as it is now has been saved.
+    pub fn mark_saved(&mut self) {
+        self.saved = self.doc.clone();
+    }
+
+    /// True if the project has changed since it was last saved or opened (undoing back to that
+    /// state counts as unchanged).
+    pub fn is_modified(&self) -> bool {
+        self.doc != self.saved
+    }
+
+    /// Sets the project name everywhere in the history, so undo doesn't bring back an old name.
+    fn set_name(&mut self, name: &str) {
+        for doc in std::iter::once(&mut self.doc)
+            .chain(&mut self.undo)
+            .chain(&mut self.redo)
+        {
+            doc.name = name.to_string();
         }
     }
 
