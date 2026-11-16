@@ -101,7 +101,11 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
             end_angle,
         } => {
             let mut pts = Vec::new();
-            let sweep = end_angle - start_angle;
+            // Always anticlockwise from start to end, including across 0° (e.g. 300° to 30°).
+            let sweep = match (end_angle - start_angle).rem_euclid(360.0) {
+                s if s < 1e-9 => 360.0,
+                s => s,
+            };
             push_arc(
                 &mut pts,
                 *center,

@@ -1,6 +1,7 @@
 //! Edit tool tests: join, explode, close polyline, break at intersections.
 
 use wham_engine::edit::{break_at_intersections, close_polyline, explode, join};
+use wham_engine::display::display_shape;
 use wham_engine::*;
 
 fn p(x: f64, y: f64) -> Point {
@@ -424,4 +425,43 @@ fn break_circle_once_stays_whole_and_rectangle_becomes_polylines() {
     assert_eq!(report.ids.len(), 5); // 2 polylines + 3 lines
     assert!(proj.undo());
     assert_eq!(shapes_of(&proj).len(), 2);
+}
+
+#[test]
+fn arc_across_zero_degrees_is_drawn_anticlockwise() {
+    // 300° to 30° runs anticlockwise through 0° (the right-hand side), never through 180°.
+    let shape = display_shape(1, &arc(0.0, 0.0, 10.0, 300.0, 30.0));
+    assert!(
+        shape.points.iter().all(|q| q[0] > 4.9),
+        "{:?}",
+        shape.points
+    );
+    assert!(
+        shape
+            .points
+            .iter()
+            .any(|q| close(q[0], 10.0) && close(q[1], 0.0))
+    );
+}
+
+#[test]
+fn broken_circle_pieces_are_drawn_without_overlap() {
+    let circle = Shape::Circle {
+        center: p(0.0, 0.0),
+        radius: 10.0,
+    };
+    let (broken, _) = break_at_intersections(&[circle, line(-20.0, -5.0, 20.0, 8.0)]);
+    let pieces = &broken.iter().find(|b| b.source == 0).unwrap().pieces;
+    // Drawn lengths add up to the circumference: nothing missing, nothing twice.
+    let drawn: f64 = pieces
+        .iter()
+        .map(|s| {
+            let pts = display_shape(1, s).points;
+            pts.windows(2)
+                .map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]))
+                .sum::<f64>()
+        })
+        .sum();
+    let full = 2.0 * std::f64::consts::PI * 10.0;
+    assert!((drawn - full).abs() < 0.1, "drawn {drawn}, circle {full}");
 }
