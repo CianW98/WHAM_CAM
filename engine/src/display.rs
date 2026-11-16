@@ -10,6 +10,7 @@ use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{
     BulgeArc, Point, Polyline, Shape, Spline, arc_sweep_deg, bulge_arc, rectangle_corners,
 };
+use crate::toolpath::{Move, Point3, Toolpath};
 
 /// Maximum distance between a true arc and its on-screen approximation, in mm.
 pub const DISPLAY_TOLERANCE: f64 = 0.01;
@@ -199,18 +200,109 @@ fn polyline_points(pl: &Polyline) -> Vec<[f64; 2]> {
 
 /// Appends points along an arc (angles in radians), including both the start and end points.
 fn push_arc(pts: &mut Vec<[f64; 2]>, center: Point, radius: f64, start: f64, sweep: f64) {
-    let max_step = if radius > DISPLAY_TOLERANCE {
-        2.0 * (1.0 - DISPLAY_TOLERANCE / radius).acos()
-    } else {
-        TAU / 8.0
-    };
-    let steps = ((sweep.abs() / max_step).ceil() as usize).clamp(2, MAX_CURVE_STEPS);
+    let steps = arc_steps(radius, sweep);
     for i in 0..=steps {
         let angle = start + sweep * (i as f64) / (steps as f64);
         pts.push([
             center.x + radius * angle.cos(),
             center.y + radius * angle.sin(),
         ]);
+    }
+}
+
+/// How many straight steps draw an arc within the display tolerance.
+fn arc_steps(radius: f64, sweep: f64) -> usize {
+    let max_step = if radius > DISPLAY_TOLERANCE {
+        2.0 * (1.0 - DISPLAY_TOLERANCE / radius).acos()
+    } else {
+        TAU / 8.0
+    };
+    ((sweep.abs() / max_step).ceil() as usize).clamp(2, MAX_CURVE_STEPS)
+}
+
+// --- Toolpaths ---------------------------------------------------------------------------------
+
+/// What kind of move a run of toolpath points is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MoveKind {
+    /// Feed moves that cut sideways (lines and arcs).
+    Cut,
+    /// Feed moves straight down (or up) only.
+    Plunge,
+    Rapid,
+}
+
+/// A run of connected points of one kind, in 3D.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolpathRun {
+    pub kind: MoveKind,
+    pub points: Vec<[f64; 3]>,
+}
+
+/// A toolpath ready to draw: runs of cut, plunge and rapid moves, arcs as short steps.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolpathDisplay {
+    pub operation_id: u32,
+    pub runs: Vec<ToolpathRun>,
+}
+
+pub fn toolpath_display(tp: &Toolpath) -> ToolpathDisplay {
+    let mut runs: Vec<ToolpathRun> = Vec::new();
+    let mut at: Option<Point3> = None;
+    for m in &tp.moves {
+        let to = m.to();
+        let Some(from) = at else {
+            at = Some(to);
+            continue;
+        };
+        let (kind, mut pts) = match *m {
+            Move::Rapid { .. } => (MoveKind::Rapid, vec![[to.x, to.y, to.z]]),
+            Move::Feed { .. } => {
+                let sideways = (to.x - from.x).hypot(to.y - from.y) > 1e-9;
+                let kind = if sideways {
+                    MoveKind::Cut
+                } else {
+                    MoveKind::Plunge
+                };
+                (kind, vec![[to.x, to.y, to.z]])
+            }
+            Move::Arc {
+                center_x,
+                center_y,
+                ccw,
+                ..
+            } => {
+                let c = Point::new(center_x, center_y);
+                let radius = c.distance_to(Point::new(from.x, from.y));
+                let a0 = (from.y - c.y).atan2(from.x - c.x);
+                let a1 = (to.y - c.y).atan2(to.x - c.x);
+                let ccw_sweep = match (a1 - a0).rem_euclid(TAU) {
+                    s if s < 1e-12 => TAU,
+                    s => s,
+                };
+                let sweep = if ccw { ccw_sweep } else { ccw_sweep - TAU };
+                let mut flat = Vec::new();
+                push_arc(&mut flat, c, radius, a0, sweep);
+                flat.pop(); // replaced by the exact end point
+                let mut pts: Vec<[f64; 3]> =
+                    flat.iter().skip(1).map(|p| [p[0], p[1], to.z]).collect();
+                pts.push([to.x, to.y, to.z]);
+                (MoveKind::Cut, pts)
+            }
+        };
+        match runs.last_mut() {
+            Some(run) if run.kind == kind => run.points.append(&mut pts),
+            _ => {
+                let mut points = vec![[from.x, from.y, from.z]];
+                points.append(&mut pts);
+                runs.push(ToolpathRun { kind, points });
+            }
+        }
+        at = Some(to);
+    }
+    ToolpathDisplay {
+        operation_id: tp.operation_id,
+        runs,
     }
 }
 

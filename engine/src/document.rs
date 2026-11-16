@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::Shape;
+use crate::operation::Operation;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
@@ -59,10 +60,12 @@ pub struct DrawingObject {
     pub shape: Shape,
 }
 
-/// A group of machining operations. Operations are added in a later step.
+/// A group of machining operations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Part {
     pub name: String,
+    #[serde(default)]
+    pub operations: Vec<Operation>,
 }
 
 impl Document {
@@ -76,6 +79,7 @@ impl Document {
             }],
             parts: vec![Part {
                 name: "Part1".to_string(),
+                operations: Vec::new(),
             }],
             grid_spacing: DEFAULT_GRID_SPACING,
         }

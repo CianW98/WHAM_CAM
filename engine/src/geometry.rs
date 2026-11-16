@@ -49,6 +49,34 @@ pub struct Polyline {
 }
 
 impl Polyline {
+    /// The same path walked the other way. Arcs turn the other way, so bulges change sign.
+    pub fn reversed(&self) -> Polyline {
+        let v = &self.vertices;
+        let n = v.len();
+        let vertices = (0..n)
+            .rev()
+            .map(|k| {
+                // The new segment from v[k] runs back to v[k-1] (to v[n-1] from v[0] if closed).
+                let bulge = if k > 0 {
+                    -v[k - 1].bulge
+                } else if self.closed {
+                    -v[n - 1].bulge
+                } else {
+                    0.0
+                };
+                Vertex {
+                    x: v[k].x,
+                    y: v[k].y,
+                    bulge,
+                }
+            })
+            .collect();
+        Polyline {
+            vertices,
+            closed: self.closed,
+        }
+    }
+
     /// Axis-aligned rectangle with its lower-left corner at (x, y), drawn counter-clockwise.
     pub fn rectangle(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {

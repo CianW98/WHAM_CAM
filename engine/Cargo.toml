@@ -10,4 +10,6 @@ license.workspace = true
 serde = { version = "1", features = ["derive"] }
 # Project files. float_roundtrip: numbers read back exactly as they were written.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# Offsetting. Pinned exactly (CLAUDE.md: libraries that shape toolpaths); only src/offset.rs uses it.
+cavalier_contours = "=0.9.0"
 

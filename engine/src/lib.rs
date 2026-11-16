@@ -10,8 +10,13 @@ pub mod draw;
 pub mod dxf;
 pub mod edit;
 pub mod geometry;
+pub mod offset;
+pub mod operation;
+pub mod pocket;
 pub mod project;
 pub mod project_file;
+pub mod safety;
+pub mod toolpath;
 pub mod transform;
 
 pub use display::{DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape, display_data};
@@ -19,5 +24,8 @@ pub use document::{DEFAULT_GRID_SPACING, Document, DrawingObject, LAYER_PALETTE,
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};
-pub use project::{BoxMode, BreakReport, DxfInfo, ImportReport, JoinReport, Project};
+pub use project::{
+    BoxMode, BreakReport, DxfInfo, GenerateReport, ImportReport, JoinReport, OperationState,
+    Project,
+};
 pub use transform::{TransformOp, shape_bounds};

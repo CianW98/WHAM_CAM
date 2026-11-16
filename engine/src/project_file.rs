@@ -111,6 +111,12 @@ fn check(doc: &Document) -> Result<(), String> {
             }
         }
     }
+    let mut op_ids = HashSet::new();
+    for op in doc.parts.iter().flat_map(|p| &p.operations) {
+        if !op_ids.insert(op.id) {
+            return damaged(format!("two operations have the id {}", op.id));
+        }
+    }
     Ok(())
 }
 
