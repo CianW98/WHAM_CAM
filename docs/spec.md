@@ -151,6 +151,9 @@ A classic CAD/CAM layout, with a toolbar:
     point closes it. Backspace removes the last point.
   - **Point**: each click adds a point; Enter or double-click makes them one point list.
   - Esc cancels the shape in progress; a second Esc stops drawing.
+  - Shortcut keys start a tool: **L** line, **A** arc, **C** circle, **R** rectangle, **P**
+    polyline (shown in the Draw menu). While a polyline is being drawn (after its first click),
+    A and L instead switch its next segment between arc and line.
 - New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
 - Points are set by clicking. Clicks snap to end points, mid points and centres of shapes
   (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the

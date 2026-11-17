@@ -49,6 +49,10 @@ const TOOL_BUTTONS: Record<string, DrawTool> = {
   Polyline: "Polyline",
   Point: "Points",
 };
+/** One-key shortcuts for the drawing tools (no Ctrl/Alt). */
+const TOOL_KEYS: Record<string, DrawTool> = { l: "Line", a: "Arc", c: "Circle", r: "Rectangle", p: "Polyline" };
+const TOOL_KEY_LABELS: Record<string, string> = { Line: "L", Arc: "A", Circle: "C", Rectangle: "R", Polyline: "P" };
+
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
 
 const emptyDraft = (tool: DrawTool): Draft => ({ tool, points: [], arcs: [], arc_next: false });
@@ -876,8 +880,12 @@ export default function App() {
     else if (d && key === "backspace") {
       const points = d.points.slice(0, -1);
       setDraft({ ...d, points, arcs: d.arcs.slice(0, Math.max(0, points.length - 1)) });
-    } else if (d?.tool === "Polyline" && !ctrl && (key === "a" || key === "l")) {
+    } else if (d?.tool === "Polyline" && d.points.length > 0 && !ctrl && !e.altKey && (key === "a" || key === "l")) {
+      // While a polyline is being drawn, A and L switch its next segment between arc and line.
       setDraft({ ...d, arc_next: key === "a" });
+    } else if (!ctrl && !e.altKey && TOOL_KEYS[key]) {
+      // Drawing tool shortcuts (L, A, C, R, P). The tool already in use carries on as it is.
+      if (d?.tool !== TOOL_KEYS[key]) setDraft(emptyDraft(TOOL_KEYS[key]));
     } else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
     else if (key === "delete") run(deleteSelected);
     else if (ctrl && key === "z" && !e.shiftKey) run(() => undoRedo("undo"));
@@ -931,7 +939,7 @@ export default function App() {
     const none = ids.length === 0;
     const later = (label: string): MenuItem => ({ label, disabled: true });
     const sep = (item: MenuItem): MenuItem => ({ ...item, separatorBefore: true });
-    const draw = (label: string): MenuItem => ({ label, action: () => onAction(label) });
+    const draw = (label: string): MenuItem => ({ label, shortcut: TOOL_KEY_LABELS[label], action: () => onAction(label) });
     return {
       later,
       sep,
