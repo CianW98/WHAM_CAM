@@ -6,13 +6,25 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::display::{
+    CutWidthStep, Playback, ToolpathDisplay, cut_width_steps, playback, toolpath_display,
+};
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
+use crate::drill;
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::edit;
 use crate::geometry::{Point, Shape, Transform};
+use crate::operation::{
+    DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
+};
+use crate::path;
+use crate::pocket;
+use crate::profile;
 use crate::project_file;
+use crate::safety;
+use crate::toolpath::Toolpath;
 use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
 
 /// How many undo steps are kept.
@@ -61,6 +73,35 @@ pub struct BreakReport {
     pub crossings: usize,
 }
 
+/// The state of an operation's toolpath, for the tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OperationState {
+    pub id: u32,
+    /// "none" (never generated), "ok", "outdated" (settings or shapes changed since) or "error".
+    pub status: String,
+    /// The error, for "error" (and an out-of-date error).
+    pub message: Option<String>,
+    /// True if it machines any open shapes (lines, arcs, open polylines): a Profile then only
+    /// offers On line.
+    pub has_open_shapes: bool,
+}
+
+/// Result of Generate toolpaths, for the pop-up message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GenerateReport {
+    pub generated: usize,
+    /// (operation name, error) for each operation that failed.
+    pub errors: Vec<(String, String)>,
+}
+
+/// A generated toolpath (or its error), with what it was made from.
+#[derive(Debug, Clone)]
+struct Generated {
+    operation: Operation,
+    shapes: Vec<Option<Shape>>,
+    result: Result<Toolpath, String>,
+}
+
 /// Box selection rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BoxMode {
@@ -80,6 +121,8 @@ pub struct Project {
     clipboard: Vec<(String, Shape)>,
     /// The document as last saved or opened, to tell whether there are unsaved changes.
     saved: Document,
+    /// Generated toolpaths by operation id. Not part of the document: regenerated on request.
+    toolpaths: BTreeMap<u32, Generated>,
 }
 
 impl Default for Project {
@@ -99,6 +142,7 @@ impl Project {
             redo: Vec::new(),
             display,
             clipboard: Vec::new(),
+            toolpaths: BTreeMap::new(),
         }
     }
 
@@ -120,6 +164,7 @@ impl Project {
     }
 
     fn replace_document(&mut self, doc: Document) {
+        self.toolpaths.clear();
         self.saved = doc.clone();
         self.display = display_data(&doc);
         self.doc = doc;
@@ -617,6 +662,365 @@ impl Project {
             broken,
             crossings,
         }
+    }
+
+    // --- Operations ---------------------------------------------------------------------------
+
+    /// Where an operation is: (part index, operation index).
+    fn find_operation(&self, id: u32) -> Option<(usize, usize)> {
+        self.doc.parts.iter().enumerate().find_map(|(pi, part)| {
+            part.operations
+                .iter()
+                .position(|o| o.id == id)
+                .map(|oi| (pi, oi))
+        })
+    }
+
+    pub fn operation(&self, id: u32) -> Option<&Operation> {
+        self.find_operation(id)
+            .map(|(pi, oi)| &self.doc.parts[pi].operations[oi])
+    }
+
+    /// The selected shapes as closed outlines, or why they can't be pocketed.
+    fn outlines(&self, ids: &[u32]) -> Result<Vec<(u32, crate::geometry::Polyline)>, String> {
+        ids.iter()
+            .map(|&id| {
+                let shape = self
+                    .doc
+                    .objects()
+                    .find(|o| o.id == id)
+                    .map(|o| &o.shape)
+                    .ok_or_else(|| format!("Shape {id} no longer exists."))?;
+                Ok((id, pocket::closed_outline(id, shape)?))
+            })
+            .collect()
+    }
+
+    /// The shapes as paths to profile (closed or open), with their ids.
+    fn profile_paths(&self, ids: &[u32]) -> Result<Vec<(u32, crate::geometry::Polyline)>, String> {
+        ids.iter()
+            .map(|&id| {
+                let shape = self
+                    .doc
+                    .objects()
+                    .find(|o| o.id == id)
+                    .map(|o| &o.shape)
+                    .ok_or_else(|| format!("Shape {id} no longer exists."))?;
+                Ok((id, path::profile_path(id, shape)?))
+            })
+            .collect()
+    }
+
+    /// The hole positions of the shapes, with their ids.
+    fn drill_holes(&self, ids: &[u32]) -> Result<Vec<(u32, Vec<drill::Hole>)>, String> {
+        ids.iter()
+            .map(|&id| {
+                let shape = self
+                    .doc
+                    .objects()
+                    .find(|o| o.id == id)
+                    .map(|o| &o.shape)
+                    .ok_or_else(|| format!("Shape {id} no longer exists."))?;
+                Ok((id, drill::drill_points(id, shape)?))
+            })
+            .collect()
+    }
+
+    /// Adds a Drill of the given shapes (point lists, circles, arcs) to the first part, as one
+    /// undo step. Returns its id.
+    pub fn add_drill(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
+        if shape_ids.is_empty() {
+            return Err("Select the point lists, circles or arcs to drill first.".into());
+        }
+        self.add_operation(
+            shape_ids,
+            "Drill",
+            OperationKind::Drill(DrillSettings::default()),
+        )
+    }
+
+    /// Checks the shapes suit an operation of this kind.
+    fn check_shapes(&self, kind: &OperationKind, ids: &[u32]) -> Result<(), String> {
+        match kind {
+            OperationKind::Profile(_) => self.profile_paths(ids).map(|_| ()),
+            OperationKind::Pocket(_) => self.outlines(ids).map(|_| ()),
+            OperationKind::Drill(_) => self.drill_holes(ids).map(|_| ()),
+        }
+    }
+
+    /// Adds a Pocket of the given shapes to the first part, as one undo step. Returns its id.
+    /// Refuses shapes that can't be pocketed (open, splines, ...).
+    pub fn add_pocket(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
+        if shape_ids.is_empty() {
+            return Err("Select the closed shapes to pocket first.".into());
+        }
+        self.add_operation(
+            shape_ids,
+            "Pocket",
+            OperationKind::Pocket(PocketSettings::default()),
+        )
+    }
+
+    /// Adds a Profile of the given shapes to the first part, as one undo step. Returns its id.
+    /// It cuts Outside, or On line if any of the shapes are open. Refuses shapes that can't be
+    /// profiled (points, splines, ...).
+    pub fn add_profile(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
+        if shape_ids.is_empty() {
+            return Err("Select the shapes to profile first.".into());
+        }
+        let paths = self.profile_paths(shape_ids)?;
+        let mut settings = ProfileSettings::default();
+        if paths.iter().any(|(_, pl)| !pl.closed) {
+            settings.side = ProfileSide::OnLine;
+        }
+        self.add_operation(shape_ids, "Profile", OperationKind::Profile(settings))
+    }
+
+    fn add_operation(
+        &mut self,
+        shape_ids: &[u32],
+        base_name: &str,
+        kind: OperationKind,
+    ) -> Result<u32, String> {
+        self.check_shapes(&kind, shape_ids)?;
+        let id = self
+            .doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .map(|o| o.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let name = (1..)
+            .map(|n| format!("{base_name}{n}"))
+            .find(|n| {
+                !self
+                    .doc
+                    .parts
+                    .iter()
+                    .flat_map(|p| &p.operations)
+                    .any(|o| &o.name == n)
+            })
+            .expect("some number is free");
+        let op = Operation {
+            id,
+            name,
+            enabled: true,
+            show_toolpath: true,
+            shape_ids: shape_ids.to_vec(),
+            common: Default::default(),
+            kind,
+        };
+        self.edit(|doc| {
+            if doc.parts.is_empty() {
+                doc.parts.push(crate::document::Part {
+                    name: "Part1".into(),
+                    operations: Vec::new(),
+                });
+            }
+            doc.parts[0].operations.push(op);
+        });
+        Ok(id)
+    }
+
+    /// Replaces an operation's settings (matched by id) as one undo step. Only checks that the
+    /// name isn't empty and values are numbers; the full check happens when generating.
+    pub fn set_operation(&mut self, op: Operation) -> Result<(), String> {
+        let (pi, oi) = self
+            .find_operation(op.id)
+            .ok_or_else(|| format!("There is no operation with id {}.", op.id))?;
+        if op.name.trim().is_empty() {
+            return Err("An operation needs a name.".into());
+        }
+        if let Err(e) = op.validate()
+            && e.starts_with("Every setting")
+        {
+            return Err(e);
+        }
+        self.edit(|doc| doc.parts[pi].operations[oi] = op);
+        Ok(())
+    }
+
+    /// Sets which shapes an operation machines, as one undo step.
+    pub fn set_operation_shapes(&mut self, id: u32, shape_ids: &[u32]) -> Result<(), String> {
+        let (pi, oi) = self
+            .find_operation(id)
+            .ok_or_else(|| format!("There is no operation with id {id}."))?;
+        if shape_ids.is_empty() {
+            return Err("Select the shapes for the operation first.".into());
+        }
+        let kind = self.doc.parts[pi].operations[oi].kind.clone();
+        self.check_shapes(&kind, shape_ids)?;
+        self.edit(|doc| doc.parts[pi].operations[oi].shape_ids = shape_ids.to_vec());
+        Ok(())
+    }
+
+    /// Deletes an operation as one undo step. Returns false if there is none with that id.
+    pub fn delete_operation(&mut self, id: u32) -> bool {
+        let Some((pi, oi)) = self.find_operation(id) else {
+            return false;
+        };
+        self.edit(|doc| {
+            doc.parts[pi].operations.remove(oi);
+        });
+        true
+    }
+
+    /// The operation's shapes as they are now (None for ones that no longer exist).
+    fn current_shapes(&self, op: &Operation) -> Vec<Option<Shape>> {
+        op.shape_ids
+            .iter()
+            .map(|id| {
+                self.doc
+                    .objects()
+                    .find(|o| o.id == *id)
+                    .map(|o| o.shape.clone())
+            })
+            .collect()
+    }
+
+    fn make_toolpath(&self, op: &Operation) -> Result<Toolpath, String> {
+        op.validate()?;
+        let tp = match &op.kind {
+            OperationKind::Profile(p) => {
+                let paths = self.profile_paths(&op.shape_ids)?;
+                profile::profile_toolpath(op.id, &paths, &op.common, p)?
+            }
+            OperationKind::Pocket(p) => {
+                let outlines = self.outlines(&op.shape_ids)?;
+                pocket::pocket_toolpath(op.id, &outlines, &op.common, p)?
+            }
+            OperationKind::Drill(d) => {
+                let holes = self.drill_holes(&op.shape_ids)?;
+                drill::drill_toolpath(op.id, &holes, &op.common, d)?
+            }
+        };
+        let problems = safety::check(&tp.moves, &tp.limits);
+        if !problems.is_empty() {
+            return Err(format!(
+                "The safety checker rejected this toolpath, so it isn't used. Please report this. {}",
+                problems.join(" ")
+            ));
+        }
+        Ok(tp)
+    }
+
+    /// Generates the toolpaths of the given operations (all enabled ones if `ids` is empty).
+    pub fn generate(&mut self, ids: &[u32]) -> GenerateReport {
+        let ops: Vec<Operation> = self
+            .doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .filter(|o| {
+                if ids.is_empty() {
+                    o.enabled
+                } else {
+                    ids.contains(&o.id)
+                }
+            })
+            .cloned()
+            .collect();
+        let mut report = GenerateReport {
+            generated: 0,
+            errors: Vec::new(),
+        };
+        for op in ops {
+            let result = self.make_toolpath(&op);
+            match &result {
+                Ok(_) => report.generated += 1,
+                Err(e) => report.errors.push((op.name.clone(), e.clone())),
+            }
+            let shapes = self.current_shapes(&op);
+            self.toolpaths.insert(
+                op.id,
+                Generated {
+                    operation: op,
+                    shapes,
+                    result,
+                },
+            );
+        }
+        report
+    }
+
+    /// The toolpath state of every operation, for the tree.
+    pub fn operation_states(&self) -> Vec<OperationState> {
+        self.doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .map(|op| {
+                let (status, message) = match self.toolpaths.get(&op.id) {
+                    None => ("none", None),
+                    Some(g) => {
+                        let current = g.operation == *op && g.shapes == self.current_shapes(op);
+                        match (&g.result, current) {
+                            (Ok(_), true) => ("ok", None),
+                            (Err(e), true) => ("error", Some(e.clone())),
+                            (Ok(_), false) => ("outdated", None),
+                            (Err(e), false) => ("outdated", Some(e.clone())),
+                        }
+                    }
+                };
+                let has_open_shapes = self.current_shapes(op).iter().flatten().any(|shape| {
+                    matches!(shape, Shape::Line { .. } | Shape::Arc { .. })
+                        || matches!(shape, Shape::Polyline(pl) if !pl.closed)
+                });
+                OperationState {
+                    id: op.id,
+                    status: status.into(),
+                    message,
+                    has_open_shapes,
+                }
+            })
+            .collect()
+    }
+
+    /// The toolpath of an operation, if one has been generated without error.
+    pub fn toolpath(&self, id: u32) -> Option<&Toolpath> {
+        self.toolpaths.get(&id).and_then(|g| g.result.as_ref().ok())
+    }
+
+    /// Toolpaths to draw: generated ones of existing operations that are enabled and shown.
+    pub fn toolpaths_display(&self) -> Vec<ToolpathDisplay> {
+        self.doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .filter(|op| op.enabled && op.show_toolpath)
+            .filter_map(|op| self.toolpath(op.id).map(toolpath_display))
+            .collect()
+    }
+
+    /// The tool playback of the drawn toolpaths: the same operations as `toolpaths_display`, in
+    /// tree order.
+    pub fn playback(&self) -> Playback {
+        playback(&self.shown_toolpaths())
+    }
+
+    /// The width the cutter sweeps along each step of `playback()` (same steps, same order), so
+    /// it can be revealed as the tool plays back.
+    pub fn cut_widths(&self) -> Vec<CutWidthStep> {
+        cut_width_steps(&self.playback())
+    }
+
+    /// Generated toolpaths of enabled, shown operations in tree order, each with the tool
+    /// diameter it was made with.
+    fn shown_toolpaths(&self) -> Vec<(&Toolpath, f64)> {
+        self.doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .filter(|op| op.enabled && op.show_toolpath)
+            .filter_map(|op| {
+                // The diameter the toolpath was made with (the setting may have changed since).
+                let g = self.toolpaths.get(&op.id)?;
+                let tp = g.result.as_ref().ok()?;
+                Some((tp, g.operation.common.tool_diameter))
+            })
+            .collect()
     }
 
     /// Ids of every object in the drawing.

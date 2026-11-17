@@ -2,11 +2,24 @@
 // where the user clicked or dragged, in mm. Deciding which shape was clicked, where a point
 // snaps to and what a shape being drawn looks like is all done by the engine.
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import * as engine from "../engine";
-import type { BoxMode, DisplayData, DisplayShape, Draft, Point, SnapKind, SnapOptions } from "../engine";
+import { toolAt, type ToolAt } from "../playback";
+import type {
+  BoxMode,
+  CutWidthStep,
+  DisplayData,
+  DisplayShape,
+  Draft,
+  MoveKind,
+  Playback,
+  Point,
+  SnapKind,
+  SnapOptions,
+  ToolpathDisplay,
+} from "../engine";
 
 /**
  * Something being placed by clicking in the drawing area: a shape being drawn, selected shapes
@@ -43,6 +56,21 @@ const COLORS = {
   selected: 0xffd24a,
   draft: 0xe8e8f0,
 };
+/** Toolpath colours (spec 5.6): cuts, plunges and (dashed) rapids. */
+const TOOLPATH_COLORS: Record<MoveKind, number> = {
+  Cut: 0x4da6ff,
+  Plunge: 0xff66cc,
+  Rapid: 0xb0b0b8,
+};
+/** Toolpaths still to come while playing back are drawn this faint. */
+const TOOLPATH_FADED_OPACITY = 0.22;
+const TOOL_COLOR = 0xf0f0f4;
+/** The shaded cutter width under the toolpath lines (opaque, so overlaps don't darken). */
+const CUT_WIDTH_COLOR = 0x35506c;
+/** The cutter width still to come while playing back (fainter, like the toolpath lines). */
+const CUT_WIDTH_FADED_COLOR = 0x2e353f;
+const RAPID_DASH_MM = 2;
+const RAPID_GAP_MM = 1.5;
 const GRID_EXTENT = 1000; // mm either side of the origin (less for very fine grids)
 const GRID_MAX_LINES = 500; // most grid lines either side of the origin
 const GRID_MAJOR_EVERY = 5; // every 5th grid line is drawn brighter
@@ -68,6 +96,31 @@ interface Scene3 {
   persp: THREE.PerspectiveCamera;
   orbit: OrbitControls;
   shapes: THREE.Group;
+  /** Generated toolpaths. */
+  toolpaths: THREE.Group;
+  /** The shaded width the cutter sweeps, under the toolpath lines. */
+  cutWidths: THREE.Group;
+  /** The cut width meshes, for playback (null when the cut width is off). */
+  cut: {
+    /** Every step's band (faded once playback has started). */
+    all: THREE.Mesh;
+    /** The same band revealed up to the tool. */
+    done: THREE.Mesh;
+    /** The part of the current segment done so far. */
+    partial: THREE.Mesh;
+    steps: CutWidthStep[];
+    /** Index of each step's first triangle in the combined band. */
+    offsets: number[];
+    data: Float32Array;
+  } | null;
+  /** Playback: the moves done so far in full colour, drawn over the faded toolpaths. */
+  done: THREE.Group;
+  /** Playback: segments of each move kind done before each step (for the draw ranges). */
+  doneCounts: Record<MoveKind, number[]> | null;
+  /** Playback: the part of the current segment done so far. */
+  current: THREE.Line;
+  /** Playback: the cutter (outline in 2D and 3D, solid body in 3D only). */
+  tool: { group: THREE.Group; outline: THREE.LineLoop; body: THREE.Group };
   grid: THREE.Group;
   /** The dashed preview of whatever is being placed. */
   preview: THREE.Group;
@@ -106,6 +159,16 @@ interface SnapMark {
 
 interface Props {
   display: DisplayData | null;
+  /** Toolpaths to draw (cut, plunge and rapid moves, in 3D). */
+  toolpaths: ToolpathDisplay[];
+  /** Shaded cutter width of each playback step, to draw under the toolpaths (empty = off). */
+  cutWidths: CutWidthStep[];
+  /** Tool playback data, or null when there's nothing to play. */
+  playback: Playback | null;
+  /** Playback time in seconds (0 = not started: toolpaths look normal). */
+  playTime: number;
+  /** Shown along the bottom of the drawing area (the playback bar). */
+  children?: ReactNode;
   selectedIds: Set<number>;
   /** Changes whenever the view should zoom to fit the drawing. */
   fitRequest: number;
@@ -166,6 +229,185 @@ function clearGroup(group: THREE.Group) {
     for (const m of [o.material].flat()) m?.dispose();
     group.remove(child);
   }
+}
+
+const KINDS: MoveKind[] = ["Cut", "Plunge", "Rapid"];
+
+/**
+ * The playback cutter, 1 mm in diameter (scaled to the tool), tip at the origin: an outline
+ * circle, and in 3D a flat-end cutter body with a slightly thinner shank above it.
+ */
+function buildTool(): Scene3["tool"] {
+  const group = new THREE.Group();
+  group.visible = false;
+  const circle: number[] = [];
+  for (let i = 0; i < 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    circle.push(0.5 * Math.cos(a), 0.5 * Math.sin(a), 0);
+  }
+  const outline = new THREE.LineLoop(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(circle, 3)),
+    new THREE.LineBasicMaterial({ color: TOOL_COLOR, depthTest: false }),
+  );
+  outline.renderOrder = 8;
+  group.add(outline);
+  const body = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: TOOL_COLOR, transparent: true, opacity: 0.45, depthWrite: false });
+  // Cylinders in three.js stand along Y; turn them to stand along Z.
+  const cutter = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2, 32), mat);
+  cutter.rotation.x = Math.PI / 2;
+  cutter.position.z = 1;
+  const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 3, 32), mat);
+  shank.rotation.x = Math.PI / 2;
+  shank.position.z = 3.5;
+  body.add(cutter, shank);
+  for (const m of [cutter, shank]) m.renderOrder = 7;
+  group.add(body);
+  return { group, outline, body };
+}
+
+/**
+ * The "done" overlay: every playback segment of each move kind in one line set, in order, so
+ * the moves done so far can be revealed with a draw range.
+ */
+function buildDone(s: Scene3, pb: Playback | null) {
+  clearGroup(s.done);
+  s.doneCounts = null;
+  if (!pb || pb.steps.length === 0) return;
+  const positions: Record<MoveKind, number[]> = { Cut: [], Plunge: [], Rapid: [] };
+  const counts: Record<MoveKind, number[]> = { Cut: [], Plunge: [], Rapid: [] };
+  const n: Record<MoveKind, number> = { Cut: 0, Plunge: 0, Rapid: 0 };
+  for (const step of pb.steps) {
+    for (const k of KINDS) counts[k].push(n[k]);
+    for (let i = 1; i < step.points.length; i++) {
+      positions[step.kind].push(...step.points[i - 1], ...step.points[i]);
+      n[step.kind]++;
+    }
+  }
+  for (const k of KINDS) {
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions[k], 3));
+    const color = TOOLPATH_COLORS[k];
+    const mat =
+      k === "Rapid"
+        ? new THREE.LineDashedMaterial({ color, dashSize: RAPID_DASH_MM, gapSize: RAPID_GAP_MM, depthTest: false })
+        : new THREE.LineBasicMaterial({ color, depthTest: false });
+    const lines = new THREE.LineSegments(geom, mat);
+    if (k === "Rapid") lines.computeLineDistances();
+    lines.renderOrder = 6;
+    lines.userData.kind = k;
+    s.done.add(lines);
+  }
+  s.doneCounts = counts;
+}
+
+/** Builds the cut width meshes: the whole band, the part done so far, and the current segment. */
+function buildCutWidths(s: Scene3, steps: CutWidthStep[]) {
+  clearGroup(s.cutWidths);
+  s.cut = null;
+  const offsets: number[] = [];
+  let n = 0;
+  for (const st of steps) {
+    offsets.push(n);
+    n += st.triangles.length / 9;
+  }
+  if (n === 0) return;
+  const data = new Float32Array(n * 9);
+  let k = 0;
+  for (const st of steps) {
+    data.set(st.triangles, k);
+    k += st.triangles.length;
+  }
+  const attr = new THREE.BufferAttribute(data, 3);
+  const mesh = (geom: THREE.BufferGeometry, color: number, order: number) => {
+    const m = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: false }));
+    m.renderOrder = order; // under the toolpath lines and the drawing
+    s.cutWidths.add(m);
+    return m;
+  };
+  const all = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 3);
+  const done = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 4);
+  const partial = mesh(
+    new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(18), 3)),
+    CUT_WIDTH_COLOR,
+    4,
+  );
+  done.visible = false;
+  partial.visible = false;
+  s.cut = { all, done, partial, steps, offsets, data };
+}
+
+/** Shows the cut width done by the tool at `at` in full colour and the rest faded. */
+function showCutWidth(s: Scene3, pb: Playback | null, at: ToolAt | null, started: boolean, finished: boolean) {
+  const cut = s.cut;
+  if (!cut) return;
+  const aligned = pb !== null && cut.steps.length === pb.steps.length;
+  const playing = started && !finished && aligned && at !== null;
+  (cut.all.material as THREE.MeshBasicMaterial).color.setHex(playing ? CUT_WIDTH_FADED_COLOR : CUT_WIDTH_COLOR);
+  cut.done.visible = playing;
+  cut.partial.visible = false;
+  if (!playing || !pb || !at) return;
+  const w = cut.steps[at.step];
+  const segStart = cut.offsets[at.step] + (w.segment_starts[at.seg] ?? w.triangles.length / 9);
+  cut.done.geometry.setDrawRange(0, segStart * 3);
+  // The strip of the current segment, cut off at the tool (its far corners moved back).
+  const pts = pb.steps[at.step].points;
+  const a = pts[at.seg];
+  const b = pts[at.seg + 1];
+  const hasStrip = w.triangles.length > 0 && b !== undefined && Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-9;
+  if (!hasStrip) return;
+  const v = cut.data.subarray(segStart * 9, segStart * 9 + 18);
+  const out = new Float32Array(v);
+  const lerp = (to: number, from: number) => {
+    for (let c = 0; c < 3; c++) out[to * 3 + c] = v[from * 3 + c] + (v[to * 3 + c] - v[from * 3 + c]) * at.u;
+  };
+  // Strip triangles: (a+n, a−n, b+n) and (b+n, a−n, b−n).
+  lerp(2, 0);
+  lerp(3, 0);
+  lerp(5, 4);
+  const attr = cut.partial.geometry.getAttribute("position") as THREE.BufferAttribute;
+  (attr.array as Float32Array).set(out);
+  attr.needsUpdate = true;
+  cut.partial.geometry.computeBoundingSphere();
+  cut.partial.visible = true;
+}
+
+/** Places the tool and reveals the moves done by time `t`; fades the rest once started. */
+function showPlayback(s: Scene3, pb: Playback | null, t: number) {
+  const at = pb ? toolAt(pb, t) : null;
+  const started = at !== null && t > 0;
+  showCutWidth(s, pb, at, started, pb !== null && t >= pb.total_s);
+  for (const child of s.toolpaths.children) {
+    const m = (child as THREE.Line).material as THREE.Material;
+    m.opacity = started ? TOOLPATH_FADED_OPACITY : 1;
+  }
+  s.done.visible = started;
+  s.current.visible = false;
+  s.tool.group.visible = at !== null;
+  if (!pb || !at) return;
+
+  const step = pb.steps[at.step];
+  if (s.doneCounts) {
+    for (const child of s.done.children) {
+      const k = child.userData.kind as MoveKind;
+      const segs = s.doneCounts[k][at.step] + (step.kind === k ? at.seg : 0);
+      (child as THREE.LineSegments).geometry.setDrawRange(0, segs * 2);
+    }
+  }
+  if (started) {
+    const a = step.points[at.seg];
+    const pos = s.current.geometry.getAttribute("position") as THREE.BufferAttribute;
+    pos.setXYZ(0, a[0], a[1], a[2]);
+    pos.setXYZ(1, at.point[0], at.point[1], at.point[2]);
+    pos.needsUpdate = true;
+    s.current.geometry.computeBoundingSphere();
+    (s.current.material as THREE.LineBasicMaterial).color.setHex(TOOLPATH_COLORS[step.kind]);
+    s.current.visible = true;
+  }
+  const d = Math.max(step.tool_diameter, 0.01);
+  s.tool.group.position.set(at.point[0], at.point[1], at.point[2]);
+  s.tool.group.scale.set(d, d, d);
+  s.tool.body.visible = s.mode === "3D";
 }
 
 /** Draws the preview of what is being placed: dashed lines, or markers for point lists. */
@@ -240,6 +482,11 @@ function fitTo(s: Scene3, bounds: [number, number, number, number]) {
 
 export default function Viewport({
   display,
+  toolpaths,
+  cutWidths,
+  playback,
+  playTime,
+  children,
   selectedIds,
   fitRequest,
   gridSpacing,
@@ -276,6 +523,21 @@ export default function Viewport({
     const scene = new THREE.Scene();
     const grid = buildGrid(10);
     scene.add(grid);
+    const cutWidthGroup = new THREE.Group();
+    scene.add(cutWidthGroup);
+    const toolpathGroup = new THREE.Group();
+    scene.add(toolpathGroup);
+    const doneGroup = new THREE.Group();
+    scene.add(doneGroup);
+    const current = new THREE.Line(
+      new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3)),
+      new THREE.LineBasicMaterial({ color: TOOLPATH_COLORS.Cut, depthTest: false }),
+    );
+    current.renderOrder = 6;
+    current.visible = false;
+    scene.add(current);
+    const tool = buildTool();
+    scene.add(tool.group);
     const shapes = new THREE.Group();
     scene.add(shapes);
     const previewGroup = new THREE.Group();
@@ -306,6 +568,13 @@ export default function Viewport({
       persp,
       orbit,
       shapes,
+      toolpaths: toolpathGroup,
+      cutWidths: cutWidthGroup,
+      cut: null,
+      done: doneGroup,
+      doneCounts: null,
+      current,
+      tool,
       grid,
       preview: previewGroup,
       hover: () => {},
@@ -573,6 +842,59 @@ export default function Viewport({
     s.render();
   }, [display]);
 
+  // Rebuild the drawn toolpaths when they change.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    clearGroup(s.toolpaths);
+    for (const tp of toolpaths) {
+      for (const run of tp.runs) {
+        const positions: number[] = [];
+        for (const [x, y, z] of run.points) positions.push(x, y, z);
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        const color = TOOLPATH_COLORS[run.kind];
+        const mat =
+          run.kind === "Rapid"
+            ? new THREE.LineDashedMaterial({ color, dashSize: RAPID_DASH_MM, gapSize: RAPID_GAP_MM, depthTest: false })
+            : new THREE.LineBasicMaterial({ color, depthTest: false });
+        mat.transparent = true;
+        const line = new THREE.Line(geom, mat);
+        if (run.kind === "Rapid") line.computeLineDistances();
+        line.renderOrder = 5; // under the drawing, so shapes stay visible and clickable
+        s.toolpaths.add(line);
+      }
+    }
+    showPlayback(s, playback, playTime);
+    s.render();
+  }, [toolpaths]);
+
+  // Rebuild the shaded cut widths when they change.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    buildCutWidths(s, cutWidths);
+    showPlayback(s, playback, playTime);
+    s.render();
+  }, [cutWidths]);
+
+  // Rebuild the "done" overlay when the playback changes.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    buildDone(s, playback);
+    showPlayback(s, playback, playTime);
+    s.render();
+  }, [playback]);
+
+  // Move the tool and reveal the done moves as the playback time changes.
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (!s) return;
+    showPlayback(s, playback, playTime);
+    s.render();
+  }, [playTime]);
+
   // Recolour selected shapes.
   useEffect(() => {
     const s = sceneRef.current;
@@ -613,6 +935,7 @@ export default function Viewport({
     const s = sceneRef.current;
     if (!s) return;
     s.mode = mode;
+    s.tool.body.visible = mode === "3D";
     s.orbit.enabled = mode === "3D";
     if (mode === "3D") {
       const { cx, cy, scale } = s.view;
@@ -627,7 +950,7 @@ export default function Viewport({
   }, [mode]);
 
   return (
-    <main className="viewport" ref={containerRef}>
+    <main className={`viewport${children ? " with-bar" : ""}`} ref={containerRef}>
       {box && (
         <div
           className={`select-box ${box.x1 >= box.x0 ? "window" : "crossing"}`}
@@ -683,6 +1006,7 @@ export default function Viewport({
               : ""}
         {hint && mode === "2D" && <span className="draw-hint">{hint}</span>}
       </div>
+      {children}
     </main>
   );
 }

@@ -1,9 +1,10 @@
 # WHAM_CAM v1 Specification
 
 Status: **v1 in progress.** DXF import, layers, drawing, selection, transforms, edit tools
-(sections 5.1–5.3, apart from SVG import and dimensions) and project files (5.8) are built.
-Operations, tool library, toolpath preview and G-code (5.4–5.7) are next; see the Status in
-CLAUDE.md. Items marked **(?)** need a decision from the user.
+(sections 5.1–5.3, apart from SVG import and dimensions), project files (5.8), and Profile,
+Pocket and Drill toolpaths with preview and playback (5.4, 5.6, 6.1–6.4) are built. The tool
+library (5.5) and G-code output (5.7, 7) are next; see the Status in CLAUDE.md. Items marked
+**(?)** need a decision from the user.
 
 ## 1. Purpose
 
@@ -151,6 +152,9 @@ A classic CAD/CAM layout, with a toolbar:
     point closes it. Backspace removes the last point.
   - **Point**: each click adds a point; Enter or double-click makes them one point list.
   - Esc cancels the shape in progress; a second Esc stops drawing.
+  - Shortcut keys start a tool: **L** line, **A** arc, **C** circle, **R** rectangle, **P**
+    polyline, **.** (full stop) point (shown in the Draw menu). While a polyline is being drawn (after its first click),
+    A and L instead switch its next segment between arc and line.
 - New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
 - Points are set by clicking. Clicks snap to end points, mid points and centres of shapes
   (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the
@@ -221,7 +225,31 @@ from the library (which fills in its defaults) or have values typed in directly.
 ### 5.6 Toolpath preview
 - Cutting moves, plunges and rapids drawn in different colours (rapids dashed).
 - 2D top view and 3D view showing the depth levels.
-- Per-operation show/hide.
+- Per-operation show/hide ("Show toolpath"); disabled operations aren't drawn.
+- Toolpaths are recalculated only on **Generate toolpaths** (toolbar, Machining menu, or an
+  operation's right-click menu). An operation whose settings or shapes changed since is marked
+  `⟳` (out of date) in the tree; one that failed is marked `!` with the message in Properties.
+- Every toolpath is checked by the safety checker (section 7 rules) when it is generated; one that
+  fails is not used.
+- **Show toolpaths** (toolbar button next to Generate toolpaths, and the View menu) hides or shows
+  all toolpaths at once. View state only: not saved, not an undo step. Each operation's own "Show
+  toolpath" still applies.
+- **Show cut width** (toolbar button next to Show toolpaths, and the View menu; off by default)
+  shades the band the cutter sweeps along every cutting move (tool diameter wide, rounded at
+  bends and ends), under the toolpath lines. Rapids and plunges aren't shaded. View state only.
+  During playback it fades and brightens with the tool, like the toolpath lines.
+- **Tool playback** (decided 2026-11-16): a bar along the bottom of the drawing area whenever
+  toolpaths are shown (View → Toolpath playback hides it).
+  - Back to start, one move back, play/pause, one move forward, a slider across the whole run, and
+    a speed of 1×, 2×, 5×, 10×, 50× or 100× real time.
+  - Real time follows the feed rates (arcs by their true length). Rapids use an **assumed rapid
+    rate of 5000 mm/min** until machine settings exist, so the run time is shown as an estimate.
+  - The readout shows operation, move number (as in safety checker messages), kind, feed and X Y Z.
+  - The tool is a circle of the tool diameter in 2D, and a flat-end cutter with shank in 3D.
+  - All shown operations play one after another in tree order. Once started, moves still to come
+    are faded and moves done are in full colour. New or changed toolpaths start again from the
+    beginning.
+  - Material removal simulation is not in v1 (see the roadmap).
 
 ### 5.7 G-code output
 Standard, widely compatible G-code through one generic post-processor (section 7).
@@ -264,7 +292,8 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 | Target depth | Final Z (negative = into material) | — (must be set) | v1 |
 | Depth increment | Max depth per pass | from tool | v1 |
 | Final depth increment | Size of the last pass (0 = equal passes) | 0 | v1 |
-| Clearance plane | Z for rapids between cuts | 3 **(?)** | v1 |
+| Clearance plane | Z for rapids between cuts | 3 | v1 |
+| Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down | 1 | v1 |
 | Cut feedrate | mm/min | from tool | v1 |
 | Plunge feedrate | mm/min | from tool | v1 |
 | Spindle speed | RPM | from tool | v1 |
@@ -277,7 +306,7 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 
 | Setting | Meaning | Default | v1 |
 |---|---|---|---|
-| Inside/Outside | Inside, Outside, or On line (no offset) | Outside | v1 |
+| Inside/Outside | Inside, Outside, or On line (no offset). Open shapes: On line only | Outside (On line if any shape is open) | v1 |
 | Milling direction | Conventional / Climb | Conventional | v1 |
 | Cut ordering | Depth first / Level first (across multiple shapes) | Depth first | v1 |
 | Cut width | Total wall width; extra passes stepped by Stepover | 0 (= one tool width) | later |
@@ -285,7 +314,27 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 | Holding tabs | | none | later |
 
 Behaviour (observed in the reference output): outside corners get an arc of tool radius (G2/G3).
-For a closed shape, the cut overlaps back over its start point. **(?)** How much overlap does v1 need without lead-ins?
+Decided for when Profile is built (2026-11-16):
+- **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
+  walls clockwise; Climb is the reverse (matches the reference output).
+- **Start point**: the shape's first point. No start point setting.
+
+Decided when Profile was built (2026-11-16):
+- **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
+  can only be cut **On line** (only that choice is offered). Splines, ellipses and point lists
+  are refused.
+- **On line direction:** closed shapes are cut like Outside (Conventional = anticlockwise, Climb
+  = clockwise); open shapes follow their drawn direction from the first point.
+- **Each shape is cut on its own** with the chosen side; nesting is not used (a hole inside an
+  outline needs its own Inside operation). An inside offset that splits into several loops cuts
+  them all; if nothing is left the tool is too big and that's an error.
+- **Start point on an offset path:** the point nearest the shape's first point (the first one
+  along the cut on a tie, e.g. round an outside corner arc).
+- **Several shapes:** the first listed, then always the nearest shape not yet cut (to its start).
+- **Entry:** straight plunge at the start point, as for Pocket (retract, rapid, rapid down to
+  fast plunge height above the last level, feed down). The reference Profile example uses a 15°
+  spiral lead-in that was set on purpose; its cut loop is matched move for move, the entry is
+  not (lead-ins are on the roadmap).
 
 ### 6.3 Pocket
 
@@ -298,19 +347,68 @@ For a closed shape, the cut overlaps back over its start point. **(?)** How much
 | Cut ordering | Depth first / Level first | Depth first | v1 |
 | Finish stepover | Light final wall pass | 0 | later |
 
-Islands: closed shapes inside the selected boundary are left uncut. **(?)** Confirm this matches what you expect.
+Behaviour (built 2026-11-16, matches the reference Pocket example move for move):
+- Select closed shapes (polylines, PolyRectangles, circles), then Pocket. The operation's
+  **Shapes** in Properties lists their ids (e.g. `1, 2, 3`, as shown in the tree) and can be
+  edited; ids that don't exist or can't be pocketed are refused. Nesting decides the
+  roles: a shape inside the boundary is an **island** (left uncut); a shape inside an island is a
+  new boundary, pocketed on its own. Shapes that cross are refused. Open shapes, splines and
+  ellipses are refused with a message.
+- Rings: the first is offset by tool radius + roughing clearance (inward from the boundary,
+  outward round islands, with tool-radius arcs on corners); then every stepover × tool diameter
+  until nothing is left. If a stepover over half the tool would leave a spot uncut in the middle,
+  an extra ring is added.
+- **Known limitation (stepover over 0.5):** the rings are then further apart than the tool
+  reaches from one ring alone, so where the pocket narrows (lobes, tips, thin branches) and the
+  next ring doesn't fit, a sliver down the middle can be left uncut. The extra-ring check above
+  works on whole rings, so it misses a branch of a larger ring. At 0.5 or less everything is
+  cleared (checked by the user 2026-11-16 on a complex pocket). Left as is for v1 and documented
+  (user's decision); the fix is on the roadmap.
+- Rings are cut from the **inside out**, each starting at its point nearest to where the last
+  ended. Conventional cuts the rings clockwise (and round islands anticlockwise); Climb reverses.
+- The move to the next ring is fed at the stepover feed rate when it is short (up to 2 ×
+  stepover) and crosses no other ring or island; otherwise the tool retracts and approaches as
+  between depth levels.
+- Between depth levels (and areas): retract to clearance, rapid to the start, rapid down to fast
+  plunge height above the last cut level, feed down at the plunge rate.
 
 ### 6.4 Drill
 
 | Setting | Meaning | Default | v1 |
 |---|---|---|---|
-| Points | Point lists, or circle centres | — | v1 |
-| Peck distance | 0 = single plunge | 0 | v1 |
-| Retract height | Z between pecks / holes | 3 | v1 |
-| Dwell | Seconds at bottom | 0 | v1 |
-| Drilling method | Each hole written out in full: rapid to retract height, feed down (pecking if set), back up | Full moves | v1 |
+| Points | Point lists (every point), circle centres and arc centres | — | v1 |
+| Method | Standard (straight plunge), Peck, or Spiral | Standard | v1 |
+| Retract height | Z the tool rapids down to before feeding in, and goes back to between pecks. Above the stock surface, not above the clearance plane | 3 | v1 |
+| Peck distance | Depth of each peck (Peck only) | 1 | v1 |
+| Hole diameter | Spiral only, for point lists and arcs; must be bigger than the tool. Circles are cut to their own diameter | 10 | v1 |
+| Milling direction | Spiral only: Conventional (clockwise round the hole) / Climb | Conventional | v1 |
+| Depth per turn | Spiral only: the common Depth increment, shown under this name | 1 | v1 |
+| Dwell | Seconds at the bottom | 0 | later (needs a pause move; with G-code) |
 
-The exact G-code format for drilling is decided with the machine-specific post-processors.
+Decided and built 2026-11-16 (matches the reference Drill example, written out in full, move for
+move; the reference itself uses a canned cycle G81 with G98):
+- **Hole order:** the first listed hole, then always the nearest hole not yet drilled.
+- **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
+- **Standard:** rapid over the hole at clearance, rapid down to the retract height (if lower),
+  feed to the target depth at the plunge feed rate, rapid back up to clearance.
+- **Peck:** as Standard, but feed down one peck distance at a time; after each peck, rapid up to
+  the retract height to clear chips, rapid back down to fast plunge height above the last depth,
+  and feed on.
+- **Spiral:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
+  centre. A circle is cut to its own diameter (user's decision, 2026-11-17); point lists and arcs
+  use the Hole diameter setting. A circle no bigger than the tool is refused with a message. Rapid over the wall position, down to the retract height, feed to the stock surface,
+  then a helix down in equal turns no deeper than the depth per turn (at the cut feed rate), one
+  flat full circle at the target depth to clean the floor. Then:
+  - hole no more than twice the tool diameter (the centre is cleared): feed to the hole centre,
+    off the wall, and rapid straight up;
+  - bigger hole: a core of material is left in the middle, so the tool must not move inward at
+    the bottom (it would run into the core). It rapids straight up from the wall (user's decision,
+    2026-11-17). Clearing the core is not done; use a Pocket for that.
+- Depth increment (except as Spiral's depth per turn), final depth increment and roughing
+  clearance don't apply to drilling and are hidden for Drill.
+
+The exact G-code format for drilling (written out in full, or canned cycles) is decided with the
+post-processors.
 
 ## 7. G-code output
 
@@ -329,6 +427,9 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   a rapid straight down to just above the material or the previous cut level, then a feed move down.
 - No horizontal rapid below the clearance plane.
 - The program starts and ends at the clearance plane.
+- Nothing goes below the target depth.
+- Arcs never go up. They may go down as they turn (a helix, e.g. spiral drilling); changed from
+  "arcs stay flat" when spiral drilling was added (user's decision, 2026-11-16).
 
 ## 8. Testing
 
@@ -345,9 +446,8 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 9. Open questions
 
-1. **Profile overlap** without lead-ins: how far past the start point should a closed profile cut?
-2. **Fast plunge height.** Between depth levels the reference output rapids down to 1 mm above the last cut level.
-   Should this be a setting, and is 1 mm the right default?
+None at the moment. Answered 2026-11-16: fast plunge height is a setting, default 1 mm (6.1).
+Profile has no overlap setting (user's decision, 2026-11-16).
 
 ## 10. Out of scope for v1
 

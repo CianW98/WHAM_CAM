@@ -3,12 +3,16 @@ import * as engine from "./engine";
 import {
   CLICKS_NEEDED,
   type BoxMode,
+  type CutWidthStep,
   type Draft,
   type DrawTool,
   type ImportReport,
+  type Operation,
+  type Playback,
   type Point,
   type Shape,
   type SnapOptions,
+  type ToolpathDisplay,
   type TransformOp,
   type View,
 } from "./engine";
@@ -21,6 +25,7 @@ import ChoiceDialog, { type Choice } from "./components/ChoiceDialog";
 import ContextMenu, { type MenuItem } from "./components/ContextMenu";
 import MenuBar from "./components/MenuBar";
 import NumberDialog, { type NumberQuestion } from "./components/NumberDialog";
+import PlaybackBar from "./components/PlaybackBar";
 import { NOTHING, selectObjects, selectedIds, type Selection } from "./selection";
 
 function importMessage(r: ImportReport, unitsName: string | null): string {
@@ -44,6 +49,24 @@ const TOOL_BUTTONS: Record<string, DrawTool> = {
   Polyline: "Polyline",
   Point: "Points",
 };
+/** One-key shortcuts for the drawing tools (no Ctrl/Alt). */
+const TOOL_KEYS: Record<string, DrawTool> = {
+  l: "Line",
+  a: "Arc",
+  c: "Circle",
+  r: "Rectangle",
+  p: "Polyline",
+  ".": "Points",
+};
+const TOOL_KEY_LABELS: Record<string, string> = {
+  Line: "L",
+  Arc: "A",
+  Circle: "C",
+  Rectangle: "R",
+  Polyline: "P",
+  Point: ".",
+};
+
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
 
 const emptyDraft = (tool: DrawTool): Draft => ({ tool, points: [], arcs: [], arc_next: false });
@@ -87,7 +110,21 @@ function specialHint(sp: Special): string {
   }
 }
 
+/** Stable empty list, so the drawing area doesn't redraw toolpaths for nothing. */
+const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
+const EMPTY_CUT_WIDTHS: CutWidthStep[] = [];
+
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+/** Cheap fingerprint of a playback, to tell when the toolpaths have changed. */
+function playbackSignature(pb: Playback): string {
+  let sum = 0;
+  for (const st of pb.steps) {
+    const p = st.points[st.points.length - 1];
+    sum += st.operation_id + p[0] * 1.3 + p[1] * 1.7 + p[2] * 1.9 + st.tool_diameter;
+  }
+  return `${pb.steps.length}|${pb.total_s}|${sum}`;
+}
 
 const samePoint = (a: Point | undefined, b: Point) => a !== undefined && a.x === b.x && a.y === b.y;
 
@@ -107,6 +144,18 @@ export default function App() {
     null,
   );
   const [hasClipboard, setHasClipboard] = useState(false);
+  // Toolpath display and tool playback (view state only: not saved, not undo steps).
+  const [showToolpaths, setShowToolpaths] = useState(true);
+  // Shaded cutter width along the toolpaths (off by default; fetched only while it's on).
+  const [showCutWidth, setShowCutWidth] = useState(false);
+  const showCutWidthRef = useRef(false);
+  const [cutWidths, setCutWidths] = useState<CutWidthStep[]>(EMPTY_CUT_WIDTHS);
+  const [showPlaybackBar, setShowPlaybackBar] = useState(true);
+  const [playback, setPlayback] = useState<Playback | null>(null);
+  const [playTime, setPlayTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(10);
+  const playbackSig = useRef("");
   // Last values typed into the transform dialogs, offered again next time.
   const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1, tolerance: 0.01 });
 
@@ -147,6 +196,17 @@ export default function App() {
   const refresh = useCallback(async () => {
     const v = await engine.getView();
     setView(v);
+    // New or changed toolpaths: playback starts again from the beginning.
+    const pb = await engine.getPlayback();
+    const sig = playbackSignature(pb);
+    if (sig !== playbackSig.current) {
+      playbackSig.current = sig;
+      setPlayback(pb);
+      setPlayTime(0);
+      setPlaying(false);
+      // The cut widths go with the playback steps, so they are fetched again with them.
+      setCutWidths(showCutWidthRef.current ? await engine.getCutWidths() : EMPTY_CUT_WIDTHS);
+    }
     const existing = new Set(v.display.shapes.map((s) => s.id));
     setSelection((sel) =>
       sel.kind === "objects" ? { kind: "objects", ids: sel.ids.filter((id) => existing.has(id)) } : sel,
@@ -267,8 +327,111 @@ export default function App() {
     };
   }, [notify]);
 
+  // --- Operations ----------------------------------------------------------------------------
+
+  /** Pocket: adds a Pocket of the selected shapes and selects it. */
+  const addPocket = useCallback(async () => {
+    const shapes = selectedIds(selection);
+    if (shapes.length === 0) {
+      notify("info", "Select the closed shapes to pocket first (the outline and any islands).");
+      return;
+    }
+    const id = await engine.addPocket(shapes);
+    await refresh();
+    setSelection({ kind: "operation", id });
+    notify("info", "Pocket added. Set its target depth in Properties, then Generate toolpaths.");
+  }, [selection, refresh, notify]);
+
+  /** Profile: adds a Profile of the selected shapes and selects it. */
+  const addProfile = useCallback(async () => {
+    const shapes = selectedIds(selection);
+    if (shapes.length === 0) {
+      notify("info", "Select the shapes to profile first.");
+      return;
+    }
+    const id = await engine.addProfile(shapes);
+    await refresh();
+    setSelection({ kind: "operation", id });
+    notify("info", "Profile added. Set its target depth in Properties, then Generate toolpaths.");
+  }, [selection, refresh, notify]);
+
+  /** Drill: adds a Drill of the selected point lists, circles and arcs and selects it. */
+  const addDrill = useCallback(async () => {
+    const shapes = selectedIds(selection);
+    if (shapes.length === 0) {
+      notify("info", "Select the point lists, circles or arcs to drill first.");
+      return;
+    }
+    const id = await engine.addDrill(shapes);
+    await refresh();
+    setSelection({ kind: "operation", id });
+    notify("info", "Drill added. Set its target depth in Properties, then Generate toolpaths.");
+  }, [selection, refresh, notify]);
+
+  /** Generate toolpaths: for the given operations, or all enabled ones. */
+  const generateToolpaths = useCallback(
+    async (ids: number[] = []) => {
+      const report = await engine.generateToolpaths(ids);
+      await refresh();
+      if (report.errors.length > 0) {
+        const list = report.errors.map(([name, err]) => `${name}: ${err}`).join(" ");
+        notify("error", `${plural(report.errors.length, "operation")} failed. ${list}`);
+      } else if (report.generated === 0) {
+        notify("info", "Nothing to generate: add an operation (and make sure it's enabled).");
+      } else {
+        notify("info", `Generated ${plural(report.generated, "toolpath")}.`);
+      }
+    },
+    [refresh, notify],
+  );
+
+  const operationById = useCallback(
+    (id: number) => view?.document.parts.flatMap((p) => p.operations).find((o) => o.id === id),
+    [view],
+  );
+
+  const deleteOperation = useCallback(
+    async (id: number) => {
+      await engine.deleteOperation(id);
+      setSelection((sel) => (sel.kind === "operation" && sel.id === id ? NOTHING : sel));
+      await refresh();
+    },
+    [refresh],
+  );
+
+  /** The right-click menu of an operation in the tree. */
+  const operationMenu = (id: number): MenuItem[] => {
+    const op = operationById(id);
+    if (!op) return [];
+    const shapes = selectedIds(selection);
+    return [
+      {
+        label: "Use selected shapes",
+        disabled: shapes.length === 0,
+        action: () =>
+          run(async () => {
+            await engine.setOperationShapes(id, shapes);
+            await refresh();
+            notify("info", `${op.name} now uses ${plural(shapes.length, "shape")}.`);
+          }),
+      },
+      { label: "Select its shapes", action: () => setSelection({ kind: "objects", ids: op.shape_ids }) },
+      {
+        label: op.enabled ? "Disable" : "Enable",
+        separatorBefore: true,
+        action: () => void setOperation({ ...op, enabled: !op.enabled }),
+      },
+      { label: "Generate toolpath", action: () => run(() => generateToolpaths([id])) },
+      { label: "Delete", separatorBefore: true, action: () => run(() => deleteOperation(id)) },
+    ];
+  };
+
   /** Deletes the selected objects, or the selected layer (with everything on it). */
   const deleteSelected = useCallback(async () => {
+    if (selection.kind === "operation") {
+      await deleteOperation(selection.id);
+      return;
+    }
     if (selection.kind === "layer") {
       const layer = view?.document.layers[selection.layer];
       if (!layer) return;
@@ -281,7 +444,7 @@ export default function App() {
     if (ids.length === 0) return;
     await engine.deleteObjects(ids);
     await refresh();
-  }, [selection, view, refresh]);
+  }, [selection, view, refresh, deleteOperation]);
 
   /** Adds a new empty layer, selects it and makes it the current layer. */
   const addLayer = useCallback(async () => {
@@ -348,6 +511,11 @@ export default function App() {
     [tryEdit],
   );
   const setGridSpacing = useCallback((mm: number) => tryEdit(() => engine.setGridSpacing(mm)), [tryEdit]);
+  const setOperation = useCallback((op: Operation) => tryEdit(() => engine.setOperation(op)), [tryEdit]);
+  const setOperationShapes = useCallback(
+    (id: number, shapeIds: number[]) => tryEdit(() => engine.setOperationShapes(id, shapeIds)),
+    [tryEdit],
+  );
 
   const undoRedo = useCallback(
     async (which: "undo" | "redo") => {
@@ -611,6 +779,19 @@ export default function App() {
     [addDrawPoint, applyTransform, refresh, run, setSpecial],
   );
 
+  const toggleCutWidth = () => {
+    const on = !showCutWidthRef.current;
+    showCutWidthRef.current = on;
+    setShowCutWidth(on);
+    if (on) engine.getCutWidths().then(setCutWidths, (err) => notify("error", String(err)));
+    else setCutWidths(EMPTY_CUT_WIDTHS);
+  };
+
+  const toggleToolpaths = () => {
+    setPlaying(false);
+    setShowToolpaths((v) => !v);
+  };
+
   const onAction = (name: string) => {
     const tool = TOOL_BUTTONS[name];
     if (tool) {
@@ -636,6 +817,18 @@ export default function App() {
         return run(deleteSelected);
       case "Zoom to fit":
         return setFitRequest((n) => n + 1);
+      case "Profile":
+        return run(addProfile);
+      case "Pocket":
+        return run(addPocket);
+      case "Drill":
+        return run(addDrill);
+      case "Generate toolpaths":
+        return run(() => generateToolpaths());
+      case "Show toolpaths":
+        return toggleToolpaths();
+      case "Show cut width":
+        return toggleCutWidth();
       default:
         notify("info", `${name} is not built yet.`);
     }
@@ -701,8 +894,12 @@ export default function App() {
     else if (d && key === "backspace") {
       const points = d.points.slice(0, -1);
       setDraft({ ...d, points, arcs: d.arcs.slice(0, Math.max(0, points.length - 1)) });
-    } else if (d?.tool === "Polyline" && !ctrl && (key === "a" || key === "l")) {
+    } else if (d?.tool === "Polyline" && d.points.length > 0 && !ctrl && !e.altKey && (key === "a" || key === "l")) {
+      // While a polyline is being drawn, A and L switch its next segment between arc and line.
       setDraft({ ...d, arc_next: key === "a" });
+    } else if (!ctrl && !e.altKey && TOOL_KEYS[key]) {
+      // Drawing tool shortcuts (L, A, C, R, P, full stop for points). The tool already in use carries on as it is.
+      if (d?.tool !== TOOL_KEYS[key]) setDraft(emptyDraft(TOOL_KEYS[key]));
     } else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
     else if (key === "delete") run(deleteSelected);
     else if (ctrl && key === "z" && !e.shiftKey) run(() => undoRedo("undo"));
@@ -730,6 +927,10 @@ export default function App() {
     });
 
   const selectedSet = useMemo(() => new Set(ids), [ids]);
+  const operationNames = useMemo(
+    () => new Map((view?.document.parts ?? []).flatMap((p) => p.operations.map((o) => [o.id, o.name] as const))),
+    [view],
+  );
   const onSelect = (sel: Selection) => {
     setSelection(sel);
     if (sel.kind === "layer" && layers[sel.layer]) setCurrentLayer(layers[sel.layer].name);
@@ -737,8 +938,9 @@ export default function App() {
 
   const disabled = new Set<string>();
   if (!view?.canUndo) disabled.add("Undo");
+  if (!showToolpaths) disabled.add("Show cut width");
   if (!view?.canRedo) disabled.add("Redo");
-  if (ids.length === 0 && selection.kind !== "layer") disabled.add("Delete");
+  if (ids.length === 0 && selection.kind !== "layer" && selection.kind !== "operation") disabled.add("Delete");
 
   const placing = useMemo<Placing | null>(
     () => (draft ? { kind: "draw", draft } : special),
@@ -751,7 +953,7 @@ export default function App() {
     const none = ids.length === 0;
     const later = (label: string): MenuItem => ({ label, disabled: true });
     const sep = (item: MenuItem): MenuItem => ({ ...item, separatorBefore: true });
-    const draw = (label: string): MenuItem => ({ label, action: () => onAction(label) });
+    const draw = (label: string): MenuItem => ({ label, shortcut: TOOL_KEY_LABELS[label], action: () => onAction(label) });
     return {
       later,
       sep,
@@ -759,6 +961,17 @@ export default function App() {
         { label: "Zoom to fit", action: () => setFitRequest((n) => n + 1) },
         { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
         { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
+        { label: "Show toolpaths", checked: showToolpaths, action: toggleToolpaths, separatorBefore: true },
+        { label: "Show cut width", checked: showCutWidth, disabled: !showToolpaths, action: toggleCutWidth },
+        {
+          label: "Toolpath playback",
+          checked: showPlaybackBar,
+          disabled: !showToolpaths,
+          action: () => {
+            setPlaying(false);
+            setShowPlaybackBar((v) => !v);
+          },
+        },
       ] as MenuItem[],
       draw: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw),
       transform: {
@@ -861,21 +1074,36 @@ export default function App() {
       {
         label: "Machining",
         items: [
-          c.later("Profile"),
-          c.later("Pocket"),
-          c.later("Drill"),
+          { label: "Profile", action: () => run(addProfile) },
+          { label: "Pocket", action: () => run(addPocket) },
+          { label: "Drill", action: () => run(addDrill) },
           c.sep(c.later("Tool library")),
-          c.sep(c.later("Generate toolpaths")),
+          c.sep({ label: "Generate toolpaths", action: () => run(() => generateToolpaths()) }),
           c.later("Produce G-code"),
         ],
       },
     ];
   };
 
+  // The playback, when toolpaths and the playback bar are shown and there is something to play.
+  const toolbarOn = useMemo(() => {
+    const on = new Set<string>();
+    if (showToolpaths) on.add("Show toolpaths");
+    if (showCutWidth) on.add("Show cut width");
+    return on;
+  }, [showToolpaths, showCutWidth]);
+
+  const playbackShown = showToolpaths && showPlaybackBar && playback && playback.steps.length > 0 ? playback : null;
+
   return (
     <div className="app">
       <MenuBar menus={menuBarItems()} open={barMenu} onOpen={setBarMenu} />
-      <Toolbar onAction={onAction} disabled={disabled} active={draft ? buttonForTool(draft.tool) : null} />
+      <Toolbar
+        onAction={onAction}
+        disabled={disabled}
+        active={draft ? buttonForTool(draft.tool) : null}
+        on={toolbarOn}
+      />
       <div className="side">
         <section className="panel tree-panel">
           <h2>Project</h2>
@@ -887,6 +1115,12 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             currentLayer={drawLayer}
             onAddLayer={addLayer}
+            operationStates={view?.operations ?? []}
+            operationMenu={operationMenu}
+            onRenameOperation={async (id, name) => {
+              const op = operationById(id);
+              return op ? setOperation({ ...op, name }) : false;
+            }}
             onDeleteLayer={(name) => run(() => deleteLayer(name))}
           />
         </section>
@@ -900,11 +1134,18 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             onSetShape={setShape}
             onSetGridSpacing={setGridSpacing}
+            onSetOperation={setOperation}
+            onSetOperationShapes={setOperationShapes}
+            operationStates={view?.operations ?? []}
           />
         </section>
       </div>
       <Viewport
         display={view?.display ?? null}
+        toolpaths={showToolpaths ? (view?.toolpaths ?? EMPTY_TOOLPATHS) : EMPTY_TOOLPATHS}
+        cutWidths={showToolpaths && showCutWidth ? cutWidths : EMPTY_CUT_WIDTHS}
+        playback={playbackShown}
+        playTime={playTime}
         selectedIds={selectedSet}
         fitRequest={fitRequest}
         gridSpacing={view?.document.grid_spacing ?? 10}
@@ -922,7 +1163,20 @@ export default function App() {
           setBarMenu(null);
           setMenu({ x, y });
         }}
-      />
+      >
+        {playbackShown && (
+          <PlaybackBar
+            playback={playbackShown}
+            time={playTime}
+            onTime={setPlayTime}
+            playing={playing}
+            onPlaying={setPlaying}
+            speed={speed}
+            onSpeed={setSpeed}
+            names={operationNames}
+          />
+        )}
+      </Viewport>
       {menu && <ContextMenu items={menuItems()} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {numbers && (
         <NumberDialog

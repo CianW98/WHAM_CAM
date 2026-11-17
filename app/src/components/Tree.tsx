@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Document, Layer, Shape } from "../engine";
+import type { Document, Layer, OperationState, Shape } from "../engine";
 import { selectedIds, selectObjects, type Selection } from "../selection";
 import ColorSwatch from "./ColorSwatch";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
@@ -23,6 +23,12 @@ interface Props {
   /** Adds a new empty layer (selected and made current); resolves to its name. */
   onAddLayer: () => Promise<string>;
   onDeleteLayer: (name: string) => void;
+  /** Toolpath state of each operation (for the out-of-date / error markers). */
+  operationStates: OperationState[];
+  /** The right-click menu for an operation. */
+  operationMenu: (id: number) => MenuItem[];
+  /** Resolves false if the new name was rejected. */
+  onRenameOperation: (id: number, name: string) => Promise<boolean>;
 }
 
 type ContextEvent = React.MouseEvent<HTMLElement>;
@@ -46,6 +52,85 @@ function Item({
         {label}
       </div>
       {children && <ul>{children}</ul>}
+    </li>
+  );
+}
+
+/**
+ * An operation in the tree. Click: select. Double-click (or Rename in its menu): rename in place
+ * (Enter or clicking away saves, Esc cancels).
+ */
+function OperationItem({
+  name,
+  enabled,
+  marker,
+  selected,
+  onClick,
+  onContextMenu,
+  onRename,
+  renameNow,
+  onRenameStarted,
+}: {
+  name: string;
+  enabled: boolean;
+  marker: ReactNode;
+  selected: boolean;
+  onClick: () => void;
+  onContextMenu: (e: ContextEvent) => void;
+  onRename: (name: string) => Promise<boolean>;
+  renameNow: boolean;
+  onRenameStarted: () => void;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  // Enter/Esc close the box, which can also fire a blur: only the first finish counts.
+  const finished = useRef(true);
+  const start = () => {
+    finished.current = false;
+    setEditing(name);
+  };
+  const finish = async (save: boolean) => {
+    if (finished.current || editing === null) return;
+    finished.current = true;
+    const newName = editing.trim();
+    setEditing(null);
+    if (save && newName !== "" && newName !== name) await onRename(newName);
+  };
+  useEffect(() => {
+    if (!renameNow) return;
+    start();
+    onRenameStarted();
+  }, [renameNow]);
+
+  return (
+    <li>
+      <div
+        className={`tree-item${selected ? " selected" : ""}`}
+        onClick={onClick}
+        onDoubleClick={start}
+        onContextMenu={onContextMenu}
+      >
+        {editing === null ? (
+          <span className={enabled ? "" : "muted"}>
+            {name}
+            {marker}
+          </span>
+        ) : (
+          <input
+            className="tree-rename"
+            value={editing}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setEditing(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onBlur={() => finish(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") finish(true);
+              if (e.key === "Escape") finish(false);
+            }}
+          />
+        )}
+      </div>
     </li>
   );
 }
@@ -152,11 +237,19 @@ export default function Tree({
   currentLayer,
   onAddLayer,
   onDeleteLayer,
+  operationStates,
+  operationMenu,
+  onRenameOperation,
 }: Props) {
   // The right-click menu: on a layer (its name) or on the Layers heading (null).
-  const [menu, setMenu] = useState<{ x: number; y: number; layer: string | null } | null>(null);
+  // The right-click menu: on a layer (its name), the Layers heading (null), or an operation.
+  const [menu, setMenu] = useState<
+    { x: number; y: number; layer: string | null } | { x: number; y: number; operation: number } | null
+  >(null);
   // A layer to start renaming in place.
   const [renaming, setRenaming] = useState<string | null>(null);
+  // An operation to start renaming in place (from its menu).
+  const [renamingOp, setRenamingOp] = useState<number | null>(null);
   // Esc closes the menu (in the capture phase, before the app's own Esc handling).
   useEffect(() => {
     if (!menu) return;
@@ -227,6 +320,30 @@ export default function Tree({
     return items;
   };
 
+  const openOperationMenu = (e: ContextEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, operation: id });
+  };
+
+  // Marker after an operation's name: out of date, or an error (with the message as a tooltip).
+  const opMarker = (id: number) => {
+    const st = operationStates.find((o) => o.id === id);
+    if (st?.status === "error")
+      return (
+        <span className="op-marker error" title={st.message ?? "Error"}>
+          !
+        </span>
+      );
+    if (st?.status === "outdated")
+      return (
+        <span className="op-marker" title="Out of date: press Generate toolpaths">
+          ⟳
+        </span>
+      );
+    return null;
+  };
+
   return (
     <>
     <ul className="tree">
@@ -276,13 +393,41 @@ export default function Tree({
               label={part.name}
               selected={is({ kind: "part", part: pi })}
               onClick={() => onSelect({ kind: "part", part: pi })}
-            />
+            >
+              {part.operations.length > 0 &&
+                part.operations.map((op) => (
+                  <OperationItem
+                    key={op.id}
+                    name={op.name}
+                    enabled={op.enabled}
+                    marker={opMarker(op.id)}
+                    selected={is({ kind: "operation", id: op.id })}
+                    onClick={() => onSelect({ kind: "operation", id: op.id })}
+                    onContextMenu={(e) => openOperationMenu(e, op.id)}
+                    onRename={(name) => onRenameOperation(op.id, name)}
+                    renameNow={renamingOp === op.id}
+                    onRenameStarted={() => setRenamingOp(null)}
+                  />
+                ))}
+            </Item>
           ))}
         </Item>
       </Item>
     </ul>
     {menu && (
-      <ContextMenu items={menuItems(menu.layer)} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+      <ContextMenu
+        items={
+          "operation" in menu
+            ? [
+                { label: "Rename", action: () => setRenamingOp(menu.operation) },
+                ...operationMenu(menu.operation).map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item)),
+              ]
+            : menuItems(menu.layer)
+        }
+        x={menu.x}
+        y={menu.y}
+        onClose={() => setMenu(null)}
+      />
     )}
     </>
   );

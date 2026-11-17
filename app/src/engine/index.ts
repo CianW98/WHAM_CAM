@@ -59,6 +59,127 @@ export interface Layer {
 
 export interface Part {
   name: string;
+  operations: Operation[];
+}
+
+// --- Operations (spec section 6) ----------------------------------------------------------------
+
+export type SpindleDirection = "CW" | "CCW" | "Off";
+/** Spindle CW: Conventional cuts inside walls clockwise, outside walls anticlockwise; Climb the reverse. */
+export type MillingDirection = "Conventional" | "Climb";
+export type CutOrdering = "DepthFirst" | "LevelFirst";
+export type StepoverFeed = "Plunge" | "Cut";
+
+/** Settings common to all operations. Lengths in mm, feeds in mm/min. */
+export interface CommonSettings {
+  tool_number: number;
+  tool_diameter: number;
+  stock_surface: number;
+  /** Null until set. */
+  target_depth: number | null;
+  depth_increment: number;
+  final_depth_increment: number;
+  clearance_plane: number;
+  fast_plunge_height: number;
+  cut_feedrate: number;
+  plunge_feedrate: number;
+  spindle_speed: number;
+  spindle_direction: SpindleDirection;
+  roughing_clearance: number;
+}
+
+export interface PocketSettings {
+  /** Fraction of the tool diameter. */
+  stepover: number;
+  stepover_feed: StepoverFeed;
+  milling_direction: MillingDirection;
+  cut_ordering: CutOrdering;
+}
+
+export type ProfileSide = "Inside" | "Outside" | "OnLine";
+
+export interface ProfileSettings {
+  side: ProfileSide;
+  milling_direction: MillingDirection;
+  cut_ordering: CutOrdering;
+}
+
+export type DrillMethod = "Standard" | "Peck" | "Spiral";
+
+export interface DrillSettings {
+  method: DrillMethod;
+  /** Z to rapid down to before feeding into a hole, and to go back to between pecks. */
+  retract_height: number;
+  /** Depth of each peck (Peck only). */
+  peck_distance: number;
+  /** Hole diameter (Spiral only; bigger than the tool) for point lists and arcs. Circles use their own. */
+  hole_diameter: number;
+  /** Direction round the hole (Spiral only). */
+  milling_direction: MillingDirection;
+}
+
+export type OperationKind =
+  | ({ type: "Profile" } & ProfileSettings)
+  | ({ type: "Pocket" } & PocketSettings)
+  | ({ type: "Drill" } & DrillSettings);
+
+export interface Operation {
+  id: number;
+  name: string;
+  enabled: boolean;
+  show_toolpath: boolean;
+  shape_ids: number[];
+  common: CommonSettings;
+  kind: OperationKind;
+}
+
+export interface OperationState {
+  id: number;
+  status: "none" | "ok" | "outdated" | "error";
+  message: string | null;
+  /** It machines open shapes: a Profile then only offers On line. */
+  has_open_shapes: boolean;
+}
+
+export type MoveKind = "Cut" | "Plunge" | "Rapid";
+
+export interface ToolpathDisplay {
+  operation_id: number;
+  runs: { kind: MoveKind; points: [number, number, number][] }[];
+}
+
+/** The band the cutter sweeps along one playback step, as flat triangles (empty if it doesn't cut). */
+export interface CutWidthStep {
+  /** x, y, z of each triangle corner, three corners per triangle. */
+  triangles: number[];
+  /** For each segment of the step's points, the triangle its strip starts at. */
+  segment_starts: number[];
+}
+
+/** One move of the tool playback (times in seconds, points in mm). */
+export interface PlaybackStep {
+  operation_id: number;
+  /** The move's number in its operation (1 = first), as in safety messages. */
+  move_number: number;
+  kind: MoveKind;
+  /** mm/min; null for rapids. */
+  feed: number | null;
+  tool_diameter: number;
+  points: [number, number, number][];
+  start_s: number;
+  duration_s: number;
+}
+
+/** Every shown toolpath one after another, for the tool playback. */
+export interface Playback {
+  steps: PlaybackStep[];
+  total_s: number;
+}
+
+export interface GenerateReport {
+  generated: number;
+  /** [operation name, error]. */
+  errors: [string, string][];
 }
 
 export interface Document {
@@ -98,6 +219,10 @@ export interface View {
   modified: boolean;
   /** The project file's name (e.g. "bracket.whamcam"), or null if never saved. */
   fileName: string | null;
+  /** Toolpath state of each operation. */
+  operations: OperationState[];
+  /** Toolpaths to draw. */
+  toolpaths: ToolpathDisplay[];
 }
 
 export interface DxfUnits {
@@ -197,6 +322,51 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
   return getCurrentWindow().onCloseRequested(async (event) => {
     if (!(await canClose())) event.preventDefault();
   });
+}
+
+// --- Operations ------------------------------------------------------------------------------
+
+/** Adds a Pocket of the given closed shapes. Returns its id. */
+/** Adds a Profile of the given shapes (Outside, or On line if any are open). Returns its id. */
+export function addProfile(shapeIds: number[]): Promise<number> {
+  return invoke<number>("add_profile", { shapeIds });
+}
+
+/** Adds a Drill of the given point lists, circles and arcs. Returns its id. */
+export function addDrill(shapeIds: number[]): Promise<number> {
+  return invoke<number>("add_drill", { shapeIds });
+}
+
+export function addPocket(shapeIds: number[]): Promise<number> {
+  return invoke<number>("add_pocket", { shapeIds });
+}
+
+/** Replaces an operation's settings (matched by id). */
+export function setOperation(op: Operation): Promise<void> {
+  return invoke<void>("set_operation", { op });
+}
+
+export function setOperationShapes(id: number, shapeIds: number[]): Promise<void> {
+  return invoke<void>("set_operation_shapes", { id, shapeIds });
+}
+
+export function deleteOperation(id: number): Promise<boolean> {
+  return invoke<boolean>("delete_operation", { id });
+}
+
+/** Generates toolpaths for the given operations (all enabled ones if empty). */
+export function generateToolpaths(ids: number[]): Promise<GenerateReport> {
+  return invoke<GenerateReport>("generate_toolpaths", { ids });
+}
+
+/** The cut width of each step of the playback (same steps, same order). */
+export function getCutWidths(): Promise<CutWidthStep[]> {
+  return invoke<CutWidthStep[]>("cut_widths");
+}
+
+/** The tool playback of the drawn toolpaths. */
+export function getPlayback(): Promise<Playback> {
+  return invoke<Playback>("toolpath_playback");
 }
 
 /** Starts a new, empty project. */

@@ -2,7 +2,23 @@
 // Values only change through the engine.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { DisplayData, Document, Layer, Point, Shape } from "../engine";
+import type {
+  CutOrdering,
+  DisplayData,
+  DrillMethod,
+  DrillSettings,
+  Document,
+  Layer,
+  MillingDirection,
+  Operation,
+  OperationKind,
+  OperationState,
+  PocketSettings,
+  Point,
+  ProfileSettings,
+  ProfileSide,
+  Shape,
+} from "../engine";
 import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
 import ColorSwatch from "./ColorSwatch";
@@ -107,6 +123,45 @@ function PointField({ value, onSave }: { value: Point; onSave: (p: Point) => Pro
 function BoolField({ value, onSave }: { value: boolean; onSave: (v: boolean) => void }) {
   return <input type="checkbox" checked={value} onChange={(e) => onSave(e.target.checked)} />;
 }
+
+/** A drop-down of fixed choices (value → label). */
+function ChoiceField<T extends string>({
+  value,
+  choices,
+  onSave,
+}: {
+  value: T;
+  choices: [T, string][];
+  onSave: (v: T) => void;
+}) {
+  return (
+    <select className="prop-input" value={value} onChange={(e) => onSave(e.target.value as T)}>
+      {choices.map(([v, label]) => (
+        <option key={v} value={v}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** A heading row splitting the grid into groups. */
+function GroupRow({ label }: { label: string }) {
+  return (
+    <tr className="props-group">
+      <th colSpan={2}>{label}</th>
+    </tr>
+  );
+}
+
+/** Reads a list of shape ids like "1, 2, 3" (commas and/or spaces). Null if not whole numbers. */
+function parseIds(text: string): number[] | null {
+  const parts = text.split(/[\s,;]+/).filter((p) => p !== "");
+  if (parts.length === 0 || !parts.every((p) => /^\d+$/.test(p))) return null;
+  return [...new Set(parts.map(Number))];
+}
+
+const parseNumber = (t: string) => (t.trim() !== "" && Number.isFinite(Number(t)) ? Number(t) : null);
 
 /** "(Collection)" with a … button that opens the points pop-up. */
 function CollectionField({ onOpen }: { onOpen: () => void }) {
@@ -283,6 +338,216 @@ function ShapeRows({
   }
 }
 
+// --- Operations -----------------------------------------------------------------------------
+
+function OperationRows({
+  op,
+  state,
+  onSet,
+  onSetShapes,
+}: {
+  op: Operation;
+  state: OperationState | undefined;
+  onSet: (op: Operation) => Promise<boolean>;
+  onSetShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
+}) {
+  const c = op.common;
+  const drill = op.kind.type === "Drill";
+  const common = (patch: Partial<Operation["common"]>) => onSet({ ...op, common: { ...c, ...patch } });
+  const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
+  return (
+    <>
+      <Row label="Name">
+        <TextField shown={op.name} parse={(t) => (t.trim() ? t.trim() : null)} onSave={(name) => onSet({ ...op, name })} />
+      </Row>
+      <Row label="Type">{op.kind.type}</Row>
+      <Row label="Enabled">
+        <BoolField value={op.enabled} onSave={(enabled) => void onSet({ ...op, enabled })} />
+      </Row>
+      <Row label="Show toolpath">
+        <BoolField value={op.show_toolpath} onSave={(show_toolpath) => void onSet({ ...op, show_toolpath })} />
+      </Row>
+      <Row label="Shapes">
+        <TextField
+          shown={op.shape_ids.join(", ")}
+          parse={parseIds}
+          onSave={(ids) => onSetShapes(op.id, ids)}
+        />
+      </Row>
+      {state?.message && (
+        <Row label={state.status === "outdated" ? "Last error" : "Error"}>
+          <span className="prop-error">{state.message}</span>
+        </Row>
+      )}
+      <GroupRow label="Common" />
+      <Row label="Tool number">
+        <TextField
+          shown={String(c.tool_number)}
+          parse={(t) => (/^\d+$/.test(t.trim()) ? Number(t) : null)}
+          onSave={(tool_number) => common({ tool_number })}
+        />
+      </Row>
+      <Row label="Tool diameter">{num(c.tool_diameter, (tool_diameter) => common({ tool_diameter }))}</Row>
+      <Row label="Stock surface">{num(c.stock_surface, (stock_surface) => common({ stock_surface }))}</Row>
+      <Row label="Target depth">
+        <TextField
+          shown={c.target_depth === null ? "" : String(Number(c.target_depth.toFixed(4)))}
+          parse={parseNumber}
+          onSave={(target_depth) => common({ target_depth })}
+        />
+      </Row>
+      {/* Drilling has no depth passes: Standard and Peck don't use these; Spiral uses the depth
+          increment as its depth per turn. */}
+      {(op.kind.type !== "Drill" || op.kind.method === "Spiral") && (
+        <Row label={drill ? "Depth per turn" : "Depth increment"}>
+          {num(c.depth_increment, (depth_increment) => common({ depth_increment }))}
+        </Row>
+      )}
+      {!drill && (
+        <Row label="Final depth increment">
+          {num(c.final_depth_increment, (final_depth_increment) => common({ final_depth_increment }))}
+        </Row>
+      )}
+      <Row label="Clearance plane">{num(c.clearance_plane, (clearance_plane) => common({ clearance_plane }))}</Row>
+      <Row label="Fast plunge height">
+        {num(c.fast_plunge_height, (fast_plunge_height) => common({ fast_plunge_height }))}
+      </Row>
+      <Row label="Cut feed rate">{num(c.cut_feedrate, (cut_feedrate) => common({ cut_feedrate }))}</Row>
+      <Row label="Plunge feed rate">{num(c.plunge_feedrate, (plunge_feedrate) => common({ plunge_feedrate }))}</Row>
+      <Row label="Spindle speed">{num(c.spindle_speed, (spindle_speed) => common({ spindle_speed }))}</Row>
+      <Row label="Spindle direction">
+        <ChoiceField
+          value={c.spindle_direction}
+          choices={[
+            ["CW", "CW"],
+            ["CCW", "CCW"],
+            ["Off", "Off"],
+          ]}
+          onSave={(spindle_direction) => void common({ spindle_direction })}
+        />
+      </Row>
+      {!drill && (
+        <Row label="Roughing clearance">
+          {num(c.roughing_clearance, (roughing_clearance) => common({ roughing_clearance }))}
+        </Row>
+      )}
+      <KindRows op={op} state={state} onSet={onSet} />
+    </>
+  );
+}
+
+const MILLING_DIRECTIONS: [MillingDirection, string][] = [
+  ["Conventional", "Conventional"],
+  ["Climb", "Climb"],
+];
+const CUT_ORDERINGS: [CutOrdering, string][] = [
+  ["DepthFirst", "Depth first"],
+  ["LevelFirst", "Level first"],
+];
+
+/** The settings of the operation's own type (Profile or Pocket). */
+function KindRows({
+  op,
+  state,
+  onSet,
+}: {
+  op: Operation;
+  state: OperationState | undefined;
+  onSet: (op: Operation) => Promise<boolean>;
+}) {
+  const k = op.kind;
+  const kind = (patch: Partial<ProfileSettings> | Partial<PocketSettings> | Partial<DrillSettings>) =>
+    onSet({ ...op, kind: { ...k, ...patch } as OperationKind });
+  const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
+  const direction = (
+    <Row label="Milling direction">
+      <ChoiceField
+        value={k.milling_direction}
+        choices={MILLING_DIRECTIONS}
+        onSave={(milling_direction) => void kind({ milling_direction })}
+      />
+    </Row>
+  );
+  const ordering = (value: CutOrdering) => (
+    <Row label="Cut ordering">
+      <ChoiceField value={value} choices={CUT_ORDERINGS} onSave={(cut_ordering) => void kind({ cut_ordering })} />
+    </Row>
+  );
+  switch (k.type) {
+    case "Profile": {
+      // Open shapes can only be cut On line, so that is all that's offered for them.
+      const open = state?.has_open_shapes ?? false;
+      const sides: [ProfileSide, string][] = open
+        ? [["OnLine", "On line"]]
+        : [
+            ["Outside", "Outside"],
+            ["Inside", "Inside"],
+            ["OnLine", "On line"],
+          ];
+      if (open && k.side !== "OnLine") sides.push([k.side, `${k.side} (open shapes need On line)`]);
+      return (
+        <>
+          <GroupRow label="Profile" />
+          <Row label="Side">
+            <ChoiceField value={k.side} choices={sides} onSave={(side) => void kind({ side })} />
+          </Row>
+          {direction}
+          {ordering(k.cut_ordering)}
+        </>
+      );
+    }
+    case "Drill":
+      return (
+        <>
+          <GroupRow label="Drill" />
+          <Row label="Method">
+            <ChoiceField<DrillMethod>
+              value={k.method}
+              choices={[
+                ["Standard", "Standard (straight plunge)"],
+                ["Peck", "Peck"],
+                ["Spiral", "Spiral"],
+              ]}
+              onSave={(method) => void kind({ method })}
+            />
+          </Row>
+          <Row label="Retract height">{num(k.retract_height, (retract_height) => kind({ retract_height }))}</Row>
+          {k.method === "Peck" && (
+            <Row label="Peck distance">{num(k.peck_distance, (peck_distance) => kind({ peck_distance }))}</Row>
+          )}
+          {k.method === "Spiral" && (
+            <>
+              {/* Circles are cut to their own diameter; this is for point lists and arcs. */}
+              <Row label="Hole diameter (points, arcs)">
+                {num(k.hole_diameter, (hole_diameter) => kind({ hole_diameter }))}
+              </Row>
+              {direction}
+            </>
+          )}
+        </>
+      );
+    case "Pocket":
+      return (
+        <>
+          <GroupRow label="Pocket" />
+          <Row label="Stepover">{num(k.stepover, (stepover) => kind({ stepover }))}</Row>
+          <Row label="Stepover feed rate">
+            <ChoiceField
+              value={k.stepover_feed}
+              choices={[
+                ["Plunge", "Plunge feed rate"],
+                ["Cut", "Cut feed rate"],
+              ]}
+              onSave={(stepover_feed) => void kind({ stepover_feed })}
+            />
+          </Row>
+          {direction}
+          {ordering(k.cut_ordering)}
+        </>
+      );
+  }
+}
+
 // --- Panel ----------------------------------------------------------------------------------
 
 interface Edits {
@@ -292,6 +557,11 @@ interface Edits {
   /** Resolves false if the engine refused the change. */
   onSetShape: (id: number, shape: Shape) => Promise<boolean>;
   onSetGridSpacing: (mm: number) => Promise<boolean>;
+  /** Resolves false if the engine refused the change. */
+  onSetOperation: (op: Operation) => Promise<boolean>;
+  /** Resolves false if the engine refused the shapes. */
+  onSetOperationShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
+  operationStates: OperationState[];
 }
 
 function LayerRows({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer } & Edits) {
@@ -364,6 +634,22 @@ function Content({
               {part.name}
             </Row>
           </>
+        </Grid>
+      ) : (
+        nothing
+      );
+    }
+    case "operation": {
+      const op = doc.parts.flatMap((p) => p.operations).find((o) => o.id === selection.id);
+      return op ? (
+        <Grid>
+          <OperationRows
+            key={op.id}
+            op={op}
+            state={edits.operationStates.find((s) => s.id === op.id)}
+            onSet={edits.onSetOperation}
+            onSetShapes={edits.onSetOperationShapes}
+          />
         </Grid>
       ) : (
         nothing

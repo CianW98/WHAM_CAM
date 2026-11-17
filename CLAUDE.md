@@ -85,6 +85,36 @@ user's device (no server-side processing). To keep this possible:
 - Before adding a Rust library to the engine, check it compiles for wasm32-unknown-unknown. Ask before adding one that doesn't.
 - CI builds the engine for WebAssembly on every push, so a break is caught straight away.
 
+## Libraries that shape toolpaths (e.g. cavalier_contours for offsetting)
+Agreed 2026-11-16 for any engine library whose output affects toolpaths. cavalier_contours does
+the offsetting (trialled on the `offsetting` branch, adopted and merged into `main` 2026-11-17).
+- **Pin the exact version** in `engine/Cargo.toml` (e.g. `"=0.9.0"`), not just via the lock file.
+  New releases are never picked up automatically, not even bug-fix releases.
+- **One adapter file.** Only one engine file (e.g. `engine/src/offset.rs`) calls the library. The
+  rest of the engine asks it for results in our own types. An update or a library swap touches
+  only that file.
+- **Every workaround lives in the adapter**, with a comment naming the library issue (e.g. arcs
+  over 180° split in two: cavalier_contours issue #15).
+- **Each workaround has two tests:**
+  - A **canary** that checks the library directly and passes while its problem still exists,
+    named after the issue.
+  - **Our own test** that checks the right answer through the adapter.
+  - When an update fixes the problem, the canary fails: the workaround can then be removed (or kept
+    if harmless).
+- **Updating** (only when the user asks):
+  1. Read the library's changelog.
+  2. Work on a branch.
+  3. Bump the pin and run everything: engine tests, canaries, the reference toolpath comparisons
+     and the safety checker.
+  4. Remove workarounds whose canaries now fail.
+  5. If any toolpath output changed, it counts as a toolpath logic change: the release notes get a
+     "G-code output changed" section, and the user re-checks in a simulator and with an air cut.
+  6. Merge when the user is happy.
+- **If the library stops being maintained:** its licence lets us keep our own patched copy and
+  point the engine at it (a Cargo `[patch]`). Ask before doing this.
+- **Library errors and crashes never crash WHAM_CAM.** The adapter turns a library panic into an
+  error message, and every resulting toolpath still goes through the safety checker.
+
 ## Commands
 Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeScript interface),
 `app/src-tauri/` (Tauri app layer, crate `wham_cam_app`). `app/src/engine/index.ts` is the only
@@ -104,6 +134,9 @@ interface file that talks to the engine.
 ## Workflow
 - Core v1 features are committed straight to `main` (user's decision, 2026-11-15). Use a branch
   for experimental or post-v1 work, and ask if unsure.
+- Trials of new libraries go on a branch (user's decision, 2026-11-16), e.g. `offsetting` for the
+  offsetting library: if the library doesn't work out, `main` never carried it. When the user is
+  happy, merge into `main` locally and push (no pull request needed). CI runs on every branch.
 - Commit small and often, with clear messages.
 - Never commit secrets. Keys and credentials go in `.env`, which is git-ignored.
 - Tasks are tracked in GitHub Issues. Use the `gh` CLI to read and update them.
@@ -147,7 +180,9 @@ Done:
 - DXF import: engine DXF reader (lines, arcs, circles, polylines, points, exact splines/ellipses,
   blocks), unit prompt for inch DXFs, click/box selection, delete, undo/redo.
 - Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree.
-- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`, git-ignored (this machine only).
+- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole top-level
+  `tests/` folder is git-ignored for now (this machine only), so the expected moves from the
+  references are written into the engine tests (`engine/tests/pocket.rs`, `profile.rs`, `drill.rs`).
 - Release 0.1.0 published (2026-11-15): DXF import, layers, selection, undo/redo. No G-code yet.
 - Release 0.2.0 published (2026-11-16): drawing tools, snapping, right-click menu, transforms,
   clipboard, PolyRectangle, points pop-up. No G-code yet.
@@ -176,10 +211,26 @@ Done:
 - Cleanup before toolpaths: the duplicated point/arc maths gathered into shared helpers in
   `geometry.rs` (no behaviour change; all tests pass).
 
+- Toolpaths (merged from the `offsetting` branch into `main`, released in 0.3.0, 2026-11-17):
+  cavalier_contours =0.9.0 adopted, only in `engine/src/offset.rs` (arcs over 180° split, canary
+  test for issue #15). Operations model (`operation.rs`), toolpath moves (`toolpath.rs`), safety
+  checker (`safety.rs`; rule 5 is "arcs never go up"), shared move building (`path.rs`).
+  - Pocket (`pocket.rs`): matches the reference Pocket example move for move. Stepovers over 0.5
+    can leave slivers in narrow parts (documented; fix on the roadmap).
+  - Profile (`profile.rs`): Inside/Outside/On line, open shapes On line only, no overlap,
+    nearest-next shape order, straight plunge; matches the reference Profile loop move for move
+    (its spiral lead-in is not in v1).
+  - Drill (`drill.rs`): Standard, Peck, Spiral (helix; circles cut to their own diameter; holes
+    over 2× the tool exit straight up from the wall), point lists and circle/arc centres,
+    nearest next; matches the reference Drill move for move.
+  - Generate toolpaths on the button with out-of-date markers; preview in 2D/3D; Show toolpaths
+    and Show cut width (shaded cutter band from the engine) toggles; tool playback (cutter in
+    2D/3D, times at the feed rates, rapids assumed 5000 mm/min).
+  - Operations renamed by double-click in the tree; drawing tool keys L, A, C, R, P and `.`.
+- Release 0.3.0 (2026-11-17): Profile, Pocket and Drill toolpaths with preview and playback. No
+  G-code yet.
+
 Next:
-- Discuss the offsetting library in depth (candidate: cavalier_contours) before doing anything.
-- Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
-  running on the toolpath moves (same rules later on the G-code). Answer the toolpath open
-  questions (spec section 9 and the (?) defaults) at that stage. Then tool library, then G-code.
+- The tool library (spec 5.5), then G-code output (spec 7) through the generic post-processor,
+  with the safety checker run on the G-code too and comparisons against `tests/reference/`.
 - Dimensions and more DXF features: later in v1 (user to list the DXF features).
-- Then the offsetting library (candidate: cavalier_contours) and toolpaths.

@@ -8,8 +8,9 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::State;
 use wham_engine::{
-    BoxMode, BreakReport, DisplayData, DisplayShape, Document, Draft, DxfInfo, ImportReport,
-    JoinReport, Point, Project, Shape, Snap, SnapOptions, TransformOp,
+    BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
+    GenerateReport, ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project,
+    Shape, Snap, SnapOptions, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -30,6 +31,10 @@ struct View {
     modified: bool,
     /// The project file's name (e.g. "bracket.whamcam"), or None if never saved.
     file_name: Option<String>,
+    /// Toolpath state of each operation (for the tree).
+    operations: Vec<OperationState>,
+    /// Toolpaths to draw.
+    toolpaths: Vec<ToolpathDisplay>,
 }
 
 fn view(p: &Project, file: Option<&Path>) -> View {
@@ -42,6 +47,8 @@ fn view(p: &Project, file: Option<&Path>) -> View {
         file_name: file
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned()),
+        operations: p.operation_states(),
+        toolpaths: p.toolpaths_display(),
     }
 }
 
@@ -259,6 +266,57 @@ fn break_at_intersections(ids: Vec<u32>, state: State<AppState>) -> BreakReport 
     state.0.lock().unwrap().break_at_intersections(&ids)
 }
 
+// --- Operations ---------------------------------------------------------------------------------
+
+#[tauri::command]
+fn add_pocket(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
+    state.0.lock().unwrap().add_pocket(&shape_ids)
+}
+
+#[tauri::command]
+fn add_drill(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
+    state.0.lock().unwrap().add_drill(&shape_ids)
+}
+
+#[tauri::command]
+fn add_profile(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
+    state.0.lock().unwrap().add_profile(&shape_ids)
+}
+
+#[tauri::command]
+fn set_operation(op: Operation, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_operation(op)
+}
+
+#[tauri::command]
+fn set_operation_shapes(
+    id: u32,
+    shape_ids: Vec<u32>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    state.0.lock().unwrap().set_operation_shapes(id, &shape_ids)
+}
+
+#[tauri::command]
+fn delete_operation(id: u32, state: State<AppState>) -> bool {
+    state.0.lock().unwrap().delete_operation(id)
+}
+
+#[tauri::command]
+fn generate_toolpaths(ids: Vec<u32>, state: State<AppState>) -> GenerateReport {
+    state.0.lock().unwrap().generate(&ids)
+}
+
+#[tauri::command]
+fn cut_widths(state: State<AppState>) -> Vec<CutWidthStep> {
+    state.0.lock().unwrap().cut_widths()
+}
+
+#[tauri::command]
+fn toolpath_playback(state: State<AppState>) -> Playback {
+    state.0.lock().unwrap().playback()
+}
+
 #[tauri::command]
 fn transform_preview(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Vec<DisplayShape> {
     state.0.lock().unwrap().transform_preview(&ids, op)
@@ -344,7 +402,16 @@ pub fn run() {
             join,
             explode,
             close_polylines,
-            break_at_intersections
+            break_at_intersections,
+            add_pocket,
+            add_profile,
+            add_drill,
+            set_operation,
+            set_operation_shapes,
+            delete_operation,
+            generate_toolpaths,
+            toolpath_playback,
+            cut_widths
         ])
         .run(tauri::generate_context!())
         .expect("error while running WHAM_CAM");

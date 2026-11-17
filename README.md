@@ -7,10 +7,18 @@ It keeps the common workflow quick and plain: one main screen with the drawing a
 object/operation tree and a properties panel, and every setting visible and editable.
 WHAM_CAM runs on Windows and Linux, works fully offline, and is not tied to any one machine or controller.
 
-**Status: early development.** WHAM_CAM can import DXF files, organise them into layers, draw
-lines, arcs, circles, rectangles, polylines and points with snapping, and move, rotate, scale,
-mirror, cut, copy and paste them. Toolpaths and G-code output are still being built, so it can't
-produce G-code yet.
+**Status: early development.** WHAM_CAM can:
+- import DXF files and organise them into layers;
+- draw lines, arcs, circles, rectangles, polylines and points with snapping, with one-key
+  shortcuts (L, A, C, R, P and `.`);
+- move, rotate, scale, mirror, cut, copy and paste;
+- join, explode, break at intersections and close polylines;
+- save and open projects (`.whamcam` files);
+- make **profile** (inside, outside, on line), **pocket** (with islands) and **drill**
+  (standard, peck, spiral) toolpaths, with every toolpath checked by a safety checker;
+- preview toolpaths in 2D and 3D, show the cutter width, and play the tool back along them.
+
+The tool library and G-code output are still being built, so it can't produce G-code yet.
 See `docs/spec.md` for the v1 plan and `docs/roadmap.md` for ideas beyond it.
 
 ## Download
@@ -28,6 +36,17 @@ For the engine's WebAssembly check: `rustup target add wasm32-unknown-unknown`
 - Setup: `cd app && npm install`
 - Run in development mode: `cd app && npm run tauri dev`
 - Engine tests: `cargo test -p wham_engine`
+
+- Lint: `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings`
+- Interface type check and build: `cd app && npm run build`
+
+## Built with
+
+- [Tauri](https://tauri.app) (desktop app), [React](https://react.dev) and TypeScript (interface)
+- [three.js](https://threejs.org) (drawing area, MIT licence)
+- [cavalier_contours](https://github.com/jbuckmccready/cavalier_contours) (offsetting for
+  toolpaths, MIT / Apache-2.0)
+- [serde](https://serde.rs) and serde_json (project files, MIT / Apache-2.0)
 
 ## Licence
 
