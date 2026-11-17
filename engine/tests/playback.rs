@@ -280,3 +280,34 @@ fn rapids_and_plunges_have_no_cut_width() {
     let widths = cut_width_steps(&playback(&[(&tp, 6.0)]));
     assert!(widths.iter().all(|w| w.triangles.is_empty()));
 }
+
+#[test]
+fn a_helix_descends_evenly_and_takes_its_true_length() {
+    // Half a turn of radius 5 going down 2 mm (spiral drilling).
+    let tp = Toolpath {
+        operation_id: 1,
+        moves: vec![
+            rapid(5.0, 0.0, 3.0),
+            feed(5.0, 0.0, 0.0, 300.0),
+            Move::Arc {
+                to: Point3::new(-5.0, 0.0, -2.0),
+                center_x: 0.0,
+                center_y: 0.0,
+                ccw: true,
+                feed: 600.0,
+            },
+            rapid(-5.0, 0.0, 3.0),
+        ],
+        limits: limits(),
+    };
+    let pb = playback(&[(&tp, 6.0)]);
+    let helix = &pb.steps[2];
+    let zs: Vec<f64> = helix.points.iter().map(|p| p[2]).collect();
+    assert!(
+        zs.windows(2).all(|w| w[1] < w[0]),
+        "goes down all the way: {zs:?}"
+    );
+    assert!(close(*zs.last().unwrap(), -2.0));
+    let length = (5.0 * PI).hypot(2.0);
+    assert!(close(helix.duration_s, length / 600.0 * 60.0));
+}

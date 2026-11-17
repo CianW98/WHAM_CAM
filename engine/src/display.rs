@@ -300,7 +300,14 @@ fn move_points(from: Point3, m: &Move) -> (MoveKind, Vec<[f64; 3]>) {
             let mut flat = Vec::new();
             push_arc(&mut flat, c, radius, a0, sweep);
             flat.pop(); // replaced by the exact end point
-            let mut pts: Vec<[f64; 3]> = flat.iter().skip(1).map(|p| [p[0], p[1], to.z]).collect();
+            // A helix (an arc that goes down as it turns) descends evenly along the arc.
+            let n = flat.len();
+            let mut pts: Vec<[f64; 3]> = flat
+                .iter()
+                .enumerate()
+                .skip(1)
+                .map(|(i, p)| [p[0], p[1], from.z + (to.z - from.z) * i as f64 / n as f64])
+                .collect();
             pts.push([to.x, to.y, to.z]);
             (MoveKind::Cut, pts)
         }
@@ -477,8 +484,9 @@ pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
                     ..
                 } => {
                     let (radius, _, sweep) = arc_of(from, to, Point::new(center_x, center_y), ccw);
+                    // True length, including any descent (a helix).
                     let length = if at.is_some() {
-                        radius * sweep.abs()
+                        (radius * sweep.abs()).hypot(to.z - from.z)
                     } else {
                         0.0
                     };

@@ -14,7 +14,8 @@ const EPS: f64 = 1e-6;
 /// 3. A rapid below the clearance plane may only go straight down (the final approach), and
 ///    must stop above the deepest cut so far (above the stock surface before any cut).
 /// 4. No move goes below the target depth.
-/// 5. Arcs stay at one height.
+/// 5. Arcs never go up. They may go down as they turn (a helix, e.g. spiral drilling), and rule
+///    4 still stops them going below the target depth.
 pub fn check(moves: &[Move], limits: &Limits) -> Vec<String> {
     let mut problems = Vec::new();
     let mut add = |i: usize, msg: String| problems.push(format!("Move {}: {msg}", i + 1));
@@ -65,9 +66,9 @@ pub fn check(moves: &[Move], limits: &Limits) -> Vec<String> {
             Move::Feed { .. } => {}
             Move::Arc { .. } => {
                 if let Some(from) = at
-                    && (to.z - from.z).abs() > EPS
+                    && to.z > from.z + EPS
                 {
-                    add(i, "an arc changes height.".into());
+                    add(i, "an arc goes up.".into());
                 }
             }
         }

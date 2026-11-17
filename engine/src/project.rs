@@ -12,10 +12,13 @@ use crate::display::{
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
+use crate::drill;
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::edit;
 use crate::geometry::{Point, Shape, Transform};
-use crate::operation::{Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide};
+use crate::operation::{
+    DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
+};
 use crate::path;
 use crate::pocket;
 use crate::profile;
@@ -708,11 +711,40 @@ impl Project {
             .collect()
     }
 
+    /// The hole positions of the shapes, with their ids.
+    fn drill_holes(&self, ids: &[u32]) -> Result<Vec<(u32, Vec<Point>)>, String> {
+        ids.iter()
+            .map(|&id| {
+                let shape = self
+                    .doc
+                    .objects()
+                    .find(|o| o.id == id)
+                    .map(|o| &o.shape)
+                    .ok_or_else(|| format!("Shape {id} no longer exists."))?;
+                Ok((id, drill::drill_points(id, shape)?))
+            })
+            .collect()
+    }
+
+    /// Adds a Drill of the given shapes (point lists, circles, arcs) to the first part, as one
+    /// undo step. Returns its id.
+    pub fn add_drill(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
+        if shape_ids.is_empty() {
+            return Err("Select the point lists, circles or arcs to drill first.".into());
+        }
+        self.add_operation(
+            shape_ids,
+            "Drill",
+            OperationKind::Drill(DrillSettings::default()),
+        )
+    }
+
     /// Checks the shapes suit an operation of this kind.
     fn check_shapes(&self, kind: &OperationKind, ids: &[u32]) -> Result<(), String> {
         match kind {
             OperationKind::Profile(_) => self.profile_paths(ids).map(|_| ()),
             OperationKind::Pocket(_) => self.outlines(ids).map(|_| ()),
+            OperationKind::Drill(_) => self.drill_holes(ids).map(|_| ()),
         }
     }
 
@@ -858,6 +890,10 @@ impl Project {
             OperationKind::Pocket(p) => {
                 let outlines = self.outlines(&op.shape_ids)?;
                 pocket::pocket_toolpath(op.id, &outlines, &op.common, p)?
+            }
+            OperationKind::Drill(d) => {
+                let holes = self.drill_holes(&op.shape_ids)?;
+                drill::drill_toolpath(op.id, &holes, &op.common, d)?
             }
         };
         let problems = safety::check(&tp.moves, &tp.limits);

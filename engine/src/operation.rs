@@ -1,4 +1,4 @@
-//! Machining operations and their settings (spec section 6): Profile and Pocket.
+//! Machining operations and their settings (spec section 6): Profile, Pocket and Drill.
 
 use serde::{Deserialize, Serialize};
 
@@ -127,11 +127,51 @@ impl Default for ProfileSettings {
     }
 }
 
+/// How each hole is drilled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DrillMethod {
+    /// Straight down to the target depth in one go, then up.
+    Standard,
+    /// Down in pecks of `peck_distance`, back up to the retract height after each to clear chips.
+    Peck,
+    /// A helix round the hole (hole bigger than the tool), `depth_increment` down per turn, then
+    /// a flat circle at the bottom.
+    Spiral,
+}
+
+/// Drill settings (spec 6.4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrillSettings {
+    pub method: DrillMethod,
+    /// Z the tool rapids down to before feeding into a hole, and goes back to between pecks.
+    /// Between the stock surface and the clearance plane.
+    pub retract_height: f64,
+    /// Depth of each peck (Peck only).
+    pub peck_distance: f64,
+    /// Diameter of the hole (Spiral only); more than the tool diameter.
+    pub hole_diameter: f64,
+    /// Direction round the hole (Spiral only). Conventional = clockwise (an inside wall).
+    pub milling_direction: MillingDirection,
+}
+
+impl Default for DrillSettings {
+    fn default() -> Self {
+        Self {
+            method: DrillMethod::Standard,
+            retract_height: 3.0,
+            peck_distance: 1.0,
+            hole_diameter: 10.0,
+            milling_direction: MillingDirection::Conventional,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum OperationKind {
     Profile(ProfileSettings),
     Pocket(PocketSettings),
+    Drill(DrillSettings),
 }
 
 impl OperationKind {
@@ -139,6 +179,7 @@ impl OperationKind {
         match self {
             OperationKind::Profile(_) => "Profile",
             OperationKind::Pocket(_) => "Pocket",
+            OperationKind::Drill(_) => "Drill",
         }
     }
 }
@@ -222,6 +263,29 @@ impl Operation {
                 p.stepover.is_finite() && p.stepover > 0.0 && p.stepover <= 1.0,
                 "The stepover must be more than 0 and at most 1 (a fraction of the tool diameter).",
             ),
+            OperationKind::Drill(d) => {
+                ok(
+                    [d.retract_height, d.peck_distance, d.hole_diameter]
+                        .iter()
+                        .all(|n| n.is_finite()),
+                    "Every setting must be a number.",
+                )?;
+                ok(
+                    d.retract_height > c.stock_surface && d.retract_height <= c.clearance_plane,
+                    "The retract height must be above the stock surface and not above the clearance plane.",
+                )?;
+                match d.method {
+                    DrillMethod::Standard => Ok(()),
+                    DrillMethod::Peck => ok(
+                        d.peck_distance > 0.0,
+                        "The peck distance must be more than 0.",
+                    ),
+                    DrillMethod::Spiral => ok(
+                        d.hole_diameter > c.tool_diameter,
+                        "For spiral drilling the hole diameter must be bigger than the tool diameter.",
+                    ),
+                }
+            }
         }
     }
 }

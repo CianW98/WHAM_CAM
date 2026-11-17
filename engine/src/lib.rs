@@ -7,6 +7,7 @@
 pub mod display;
 pub mod document;
 pub mod draw;
+pub mod drill;
 pub mod dxf;
 pub mod edit;
 pub mod geometry;

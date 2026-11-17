@@ -105,7 +105,7 @@ fn rule_4_never_below_target_depth() {
 }
 
 #[test]
-fn rule_5_arcs_stay_flat() {
+fn rule_5_arcs_never_go_up() {
     let p = broken(
         8,
         Move::Arc {
@@ -116,5 +116,30 @@ fn rule_5_arcs_stay_flat() {
             feed: 800.0,
         },
     );
-    assert!(p.iter().any(|m| m.contains("arc changes height")), "{p:?}");
+    assert!(p.iter().any(|m| m.contains("arc goes up")), "{p:?}");
+}
+
+#[test]
+fn rule_5_a_descending_arc_is_allowed_but_not_below_target() {
+    // From (0,0,-5)... use a level above: the arc at index 8 starts at (0,0,-5); make the plunge
+    // before it stop at -3 and let the arc descend to -5 (a helix).
+    let mut moves = safe();
+    moves[7] = feed(0.0, 0.0, -3.0);
+    assert!(
+        check(&moves, &LIMITS).is_empty(),
+        "{:?}",
+        check(&moves, &LIMITS)
+    );
+    moves[8] = Move::Arc {
+        to: Point3::new(10.0, 0.0, -6.0),
+        center_x: 5.0,
+        center_y: 0.0,
+        ccw: true,
+        feed: 800.0,
+    };
+    let p = check(&moves, &LIMITS);
+    assert!(
+        p.iter().any(|m| m.contains("below the target depth")),
+        "{p:?}"
+    );
 }

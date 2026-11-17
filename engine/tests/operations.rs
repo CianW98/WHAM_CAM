@@ -266,3 +266,62 @@ fn profile_generates_and_is_saved() {
     );
     assert_eq!(status(&proj, op), "error");
 }
+
+#[test]
+fn add_drill_takes_points_circles_and_arcs_and_checks_its_settings() {
+    use wham_engine::operation::DrillMethod;
+    let mut proj = Project::new();
+    let pts = proj
+        .add_shape(
+            "Default",
+            Shape::Points {
+                points: vec![Point::new(0.0, 0.0), Point::new(20.0, 0.0)],
+            },
+        )
+        .unwrap();
+    let circle = proj
+        .add_shape(
+            "Default",
+            Shape::Circle {
+                center: Point::new(40.0, 0.0),
+                radius: 3.0,
+            },
+        )
+        .unwrap();
+    let square_id = proj.add_shape("Default", square(0.0, 0.0, 10.0)).unwrap();
+    assert!(proj.add_drill(&[square_id]).is_err());
+    let op = proj.add_drill(&[pts, circle]).unwrap();
+    assert_eq!(proj.operation(op).unwrap().name, "Drill1");
+
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.target_depth = Some(-4.0);
+    proj.set_operation(o.clone()).unwrap();
+    assert_eq!(proj.generate(&[]).generated, 1);
+    assert_eq!(status(&proj, op), "ok");
+
+    // Spiral with a hole no bigger than the tool is refused when generating.
+    if let OperationKind::Drill(d) = &mut o.kind {
+        d.method = DrillMethod::Spiral;
+        d.hole_diameter = 6.0;
+    }
+    proj.set_operation(o.clone()).unwrap();
+    let report = proj.generate(&[]);
+    assert!(
+        report.errors[0].1.contains("hole diameter"),
+        "{:?}",
+        report.errors
+    );
+
+    // A retract height above the clearance plane is refused.
+    if let OperationKind::Drill(d) = &mut o.kind {
+        d.method = DrillMethod::Standard;
+        d.retract_height = 5.0;
+    }
+    proj.set_operation(o).unwrap();
+    let report = proj.generate(&[]);
+    assert!(
+        report.errors[0].1.contains("retract height"),
+        "{:?}",
+        report.errors
+    );
+}
