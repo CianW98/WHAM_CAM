@@ -48,6 +48,15 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Material removal simulation**: a block of stock carved away as the tool plays back, showing
   the finished part, gouges and leftover material (like CAMotics). v1 has tool playback only;
   until then use CAMotics or NC Viewer on the G-code (discussed 2026-11-16).
+- **Libraries: tools, styles and materials** (noted 2026-11-17).
+  - **Tool library** beyond the v1 basics (spec 5.5): more tool shapes (ball nose, V-bit, drill),
+    holders/lengths, sharing and importing tool sets.
+  - **Style library**: saved sets of operation settings ("CAM styles") to apply to an operation
+    in one go, e.g. "6 mm slot in plywood". Ties in with the CAM styles noted under Inches.
+  - **Material library**: materials (e.g. plywood, MDF, aluminium, acrylic) with suggested feeds,
+    speeds and depths per tool, so picking a tool and a material fills in sensible values.
+  - To be worked out together, keeping the "every setting visible" rule: a library only fills
+    in values, which stay editable on the operation.
 - **Predefined styles in the library** for common kinds of CNC work, e.g. PCB cutting, V-carving
   and other common uses. List to be filled in.
 

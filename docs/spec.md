@@ -1,9 +1,10 @@
 # WHAM_CAM v1 Specification
 
 Status: **v1 in progress.** DXF import, layers, drawing, selection, transforms, edit tools
-(sections 5.1–5.3, apart from SVG import and dimensions) and project files (5.8) are built.
-Pocket toolpaths with preview are built on the `offsetting` branch (5.4, 5.6, 6.3). Profile,
-Drill, the tool library and G-code are next; see the Status in CLAUDE.md. Items marked **(?)** need a decision from the user.
+(sections 5.1–5.3, apart from SVG import and dimensions), project files (5.8), and Profile,
+Pocket and Drill toolpaths with preview and playback (5.4, 5.6, 6.1–6.4) are built. The tool
+library (5.5) and G-code output (5.7, 7) are next; see the Status in CLAUDE.md. Items marked
+**(?)** need a decision from the user.
 
 ## 1. Purpose
 

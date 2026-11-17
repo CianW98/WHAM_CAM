@@ -86,8 +86,8 @@ user's device (no server-side processing). To keep this possible:
 - CI builds the engine for WebAssembly on every push, so a break is caught straight away.
 
 ## Libraries that shape toolpaths (e.g. cavalier_contours for offsetting)
-Agreed 2026-11-16 for any engine library whose output affects toolpaths. cavalier_contours is the
-candidate for offsetting, on trial on the `offsetting` branch (not yet adopted).
+Agreed 2026-11-16 for any engine library whose output affects toolpaths. cavalier_contours does
+the offsetting (trialled on the `offsetting` branch, adopted and merged into `main` 2026-11-17).
 - **Pin the exact version** in `engine/Cargo.toml` (e.g. `"=0.9.0"`), not just via the lock file.
   New releases are never picked up automatically, not even bug-fix releases.
 - **One adapter file.** Only one engine file (e.g. `engine/src/offset.rs`) calls the library. The
@@ -180,7 +180,9 @@ Done:
 - DXF import: engine DXF reader (lines, arcs, circles, polylines, points, exact splines/ellipses,
   blocks), unit prompt for inch DXFs, click/box selection, delete, undo/redo.
 - Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree.
-- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`, git-ignored (this machine only).
+- Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole top-level
+  `tests/` folder is git-ignored for now (this machine only), so the expected moves from the
+  references are written into the engine tests (`engine/tests/pocket.rs`, `profile.rs`, `drill.rs`).
 - Release 0.1.0 published (2026-11-15): DXF import, layers, selection, undo/redo. No G-code yet.
 - Release 0.2.0 published (2026-11-16): drawing tools, snapping, right-click menu, transforms,
   clipboard, PolyRectangle, points pop-up. No G-code yet.
@@ -209,24 +211,26 @@ Done:
 - Cleanup before toolpaths: the duplicated point/arc maths gathered into shared helpers in
   `geometry.rs` (no behaviour change; all tests pass).
 
-- On the `offsetting` branch (not merged yet): cavalier_contours =0.9.0 adopted for trial, only
-  in `engine/src/offset.rs` (arcs over 180° split, canary test for issue #15). Operations model
-  (`operation.rs`), toolpath moves (`toolpath.rs`), safety checker (`safety.rs`), Pocket
-  (`pocket.rs`, matches the reference Pocket example move for move), Generate toolpaths on the
-  button with out-of-date markers, toolpath preview in 2D/3D. Tool playback (bar along the bottom
-  of the drawing area, cutter in 2D/3D, times at the feed rates, rapids assumed 5000 mm/min) and a
-  Show toolpaths and Show cut width (shaded cutter band, from the engine) toggles in the toolbar. Profile (`profile.rs`, shared move building in `path.rs`):
-  Inside/Outside/On line, open shapes On line only, no overlap, nearest-next shape order, straight
-  plunge; matches the reference Profile loop move for move (its spiral lead-in is not in v1).
-  Drill (`drill.rs`): Standard, Peck, Spiral (helix; safety rule 5 now "arcs never go up"),
-  point lists and circle/arc centres, nearest next; matches the reference Drill move for move.
+- Toolpaths (merged from the `offsetting` branch into `main`, released in 0.3.0, 2026-11-17):
+  cavalier_contours =0.9.0 adopted, only in `engine/src/offset.rs` (arcs over 180° split, canary
+  test for issue #15). Operations model (`operation.rs`), toolpath moves (`toolpath.rs`), safety
+  checker (`safety.rs`; rule 5 is "arcs never go up"), shared move building (`path.rs`).
+  - Pocket (`pocket.rs`): matches the reference Pocket example move for move. Stepovers over 0.5
+    can leave slivers in narrow parts (documented; fix on the roadmap).
+  - Profile (`profile.rs`): Inside/Outside/On line, open shapes On line only, no overlap,
+    nearest-next shape order, straight plunge; matches the reference Profile loop move for move
+    (its spiral lead-in is not in v1).
+  - Drill (`drill.rs`): Standard, Peck, Spiral (helix; circles cut to their own diameter; holes
+    over 2× the tool exit straight up from the wall), point lists and circle/arc centres,
+    nearest next; matches the reference Drill move for move.
+  - Generate toolpaths on the button with out-of-date markers; preview in 2D/3D; Show toolpaths
+    and Show cut width (shaded cutter band from the engine) toggles; tool playback (cutter in
+    2D/3D, times at the feed rates, rapids assumed 5000 mm/min).
+  - Operations renamed by double-click in the tree; drawing tool keys L, A, C, R, P and `.`.
+- Release 0.3.0 (2026-11-17): Profile, Pocket and Drill toolpaths with preview and playback. No
+  G-code yet.
 
 Next:
-- User check of Pocket, Profile and tool playback on the `offsetting` branch; merge into `main`
-  when the user is happy.
-- Then the tool library, then G-code.
-- Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
-  running on the toolpath moves (same rules later on the G-code). Answer the toolpath open
-  questions (spec section 9 and the (?) defaults) at that stage. Then tool library, then G-code.
+- The tool library (spec 5.5), then G-code output (spec 7) through the generic post-processor,
+  with the safety checker run on the G-code too and comparisons against `tests/reference/`.
 - Dimensions and more DXF features: later in v1 (user to list the DXF features).
-- Then the offsetting library (candidate: cavalier_contours) and toolpaths.

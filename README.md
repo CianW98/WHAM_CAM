@@ -9,14 +9,16 @@ WHAM_CAM runs on Windows and Linux, works fully offline, and is not tied to any 
 
 **Status: early development.** WHAM_CAM can:
 - import DXF files and organise them into layers;
-- draw lines, arcs, circles, rectangles, polylines and points with snapping;
+- draw lines, arcs, circles, rectangles, polylines and points with snapping, with one-key
+  shortcuts (L, A, C, R, P and `.`);
 - move, rotate, scale, mirror, cut, copy and paste;
 - join, explode, break at intersections and close polylines;
 - save and open projects (`.whamcam` files);
-- make **pocket** toolpaths (with islands) and preview them in 2D and 3D.
+- make **profile** (inside, outside, on line), **pocket** (with islands) and **drill**
+  (standard, peck, spiral) toolpaths, with every toolpath checked by a safety checker;
+- preview toolpaths in 2D and 3D, show the cutter width, and play the tool back along them.
 
-Profile and drill operations, the tool library and G-code output are still being built, so it
-can't produce G-code yet.
+The tool library and G-code output are still being built, so it can't produce G-code yet.
 See `docs/spec.md` for the v1 plan and `docs/roadmap.md` for ideas beyond it.
 
 ## Download
