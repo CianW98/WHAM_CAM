@@ -376,7 +376,7 @@ Behaviour (built 2026-11-16, matches the reference Pocket example move for move)
 | Method | Standard (straight plunge), Peck, or Spiral | Standard | v1 |
 | Retract height | Z the tool rapids down to before feeding in, and goes back to between pecks. Above the stock surface, not above the clearance plane | 3 | v1 |
 | Peck distance | Depth of each peck (Peck only) | 1 | v1 |
-| Hole diameter | Spiral only; must be bigger than the tool | 10 | v1 |
+| Hole diameter | Spiral only, for point lists and arcs; must be bigger than the tool. Circles are cut to their own diameter | 10 | v1 |
 | Milling direction | Spiral only: Conventional (clockwise round the hole) / Climb | Conventional | v1 |
 | Depth per turn | Spiral only: the common Depth increment, shown under this name | 1 | v1 |
 | Dwell | Seconds at the bottom | 0 | later (needs a pause move; with G-code) |
@@ -391,7 +391,8 @@ move; the reference itself uses a canned cycle G81 with G98):
   the retract height to clear chips, rapid back down to fast plunge height above the last depth,
   and feed on.
 - **Spiral:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
-  centre. Rapid over the wall position, down to the retract height, feed to the stock surface,
+  centre. A circle is cut to its own diameter (user's decision, 2026-11-17); point lists and arcs
+  use the Hole diameter setting. A circle no bigger than the tool is refused with a message. Rapid over the wall position, down to the retract height, feed to the stock surface,
   then a helix down in equal turns no deeper than the depth per turn (at the cut feed rate), one
   flat full circle at the target depth to clean the floor, then feed to the hole centre (off the
   wall) and rapid straight up.

@@ -7,12 +7,32 @@ use crate::geometry::{Point, Shape, on_circle};
 use crate::operation::{CommonSettings, DrillMethod, DrillSettings, MillingDirection};
 use crate::toolpath::{Limits, Move, Point3, Toolpath};
 
-/// The hole positions a shape gives: every point of a point list, the centre of a circle or arc.
-pub fn drill_points(id: u32, shape: &Shape) -> Result<Vec<Point>, String> {
+/// One hole to drill.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Hole {
+    pub at: Point,
+    /// The hole's own diameter, for a circle: spiral drilling cuts it to this size. `None` (point
+    /// lists, arcs) uses the operation's Hole diameter setting.
+    pub diameter: Option<f64>,
+}
+
+/// The holes a shape gives: every point of a point list, the centre of a circle (with its
+/// diameter) or of an arc.
+pub fn drill_points(id: u32, shape: &Shape) -> Result<Vec<Hole>, String> {
+    let at = |p: Point| Hole {
+        at: p,
+        diameter: None,
+    };
     match shape {
-        Shape::Points { points } if !points.is_empty() => Ok(points.clone()),
+        Shape::Points { points } if !points.is_empty() => {
+            Ok(points.iter().map(|p| at(*p)).collect())
+        }
         Shape::Points { .. } => Err(format!("Shape {id} is an empty point list.")),
-        Shape::Circle { center, .. } | Shape::Arc { center, .. } => Ok(vec![*center]),
+        Shape::Circle { center, radius } => Ok(vec![Hole {
+            at: *center,
+            diameter: Some(2.0 * radius),
+        }]),
+        Shape::Arc { center, .. } => Ok(vec![at(*center)]),
         _ => Err(format!(
             "Shape {id} is a {}: drilling uses point lists, circles and arcs (their centres).",
             shape.type_name()
@@ -48,12 +68,16 @@ impl Moves {
 /// messages), in the order listed. Errors are plain-English messages.
 pub fn drill_toolpath(
     operation_id: u32,
-    holes: &[(u32, Vec<Point>)],
+    holes: &[(u32, Vec<Hole>)],
     c: &CommonSettings,
     d: &DrillSettings,
 ) -> Result<Toolpath, String> {
     let target = c.target_depth.ok_or("Set the target depth.")?;
-    let mut left: Vec<Point> = holes.iter().flat_map(|(_, p)| p.iter().copied()).collect();
+    // Each hole with the shape it came from (for messages).
+    let mut left: Vec<(u32, Hole)> = holes
+        .iter()
+        .flat_map(|(id, hs)| hs.iter().map(move |h| (*id, *h)))
+        .collect();
     if left.is_empty() {
         return Err(
             "The drill has no holes. Select point lists, circles or arcs and use Use selected shapes."
@@ -61,19 +85,35 @@ pub fn drill_toolpath(
         );
     }
     // The first listed hole, then always the nearest hole not yet drilled.
-    let mut order = Vec::with_capacity(left.len());
-    let mut here = left.remove(0);
-    order.push(here);
+    if d.method == DrillMethod::Spiral {
+        for (id, h) in &left {
+            let dia = h.diameter.unwrap_or(d.hole_diameter);
+            if dia <= c.tool_diameter {
+                return Err(match h.diameter {
+                    Some(_) => format!(
+                        "Circle {id} ({dia} mm) is not bigger than the tool, so it can't be spiral drilled."
+                    ),
+                    None => "For spiral drilling the hole diameter must be bigger than the tool diameter."
+                        .into(),
+                });
+            }
+        }
+    }
+    let mut order: Vec<Hole> = Vec::with_capacity(left.len());
+    let first = left.remove(0).1;
+    let mut here = first.at;
+    order.push(first);
     while !left.is_empty() {
         let mut best = (0, f64::INFINITY);
-        for (i, p) in left.iter().enumerate() {
-            let dist = p.distance_to(here);
+        for (i, (_, p)) in left.iter().enumerate() {
+            let dist = p.at.distance_to(here);
             if dist < best.1 - 1e-9 {
                 best = (i, dist);
             }
         }
-        here = left.remove(best.0);
-        order.push(here);
+        let next = left.remove(best.0).1;
+        here = next.at;
+        order.push(next);
     }
 
     let clear = c.clearance_plane;
@@ -82,7 +122,8 @@ pub fn drill_toolpath(
         moves: Vec::new(),
         at: None,
     };
-    for h in order {
+    for hole in order {
+        let h = hole.at;
         // Across at the clearance plane, then down to the retract height and into the hole.
         match d.method {
             DrillMethod::Standard => {
@@ -115,7 +156,10 @@ pub fn drill_toolpath(
                     m.rapid(h.x, h.y, retract); // out of the hole to clear chips
                 }
             }
-            DrillMethod::Spiral => spiral(&mut m, h, target, c, d),
+            DrillMethod::Spiral => {
+                let dia = hole.diameter.unwrap_or(d.hole_diameter);
+                spiral(&mut m, h, dia, target, c, d);
+            }
         }
         // Straight up out of the hole (a spiral ends at the hole centre, off the wall).
         m.rapid(h.x, h.y, clear);
@@ -135,8 +179,15 @@ pub fn drill_toolpath(
 /// A spiral hole at `h`: from the wall position, feed down to the stock surface, helix down by
 /// at most the depth increment per turn to the target, one flat circle at the bottom, then feed
 /// to the centre (off the wall) ready to go up. Ends at the centre, at the target depth.
-fn spiral(m: &mut Moves, h: Point, target: f64, c: &CommonSettings, d: &DrillSettings) {
-    let path_r = (d.hole_diameter - c.tool_diameter) / 2.0;
+fn spiral(
+    m: &mut Moves,
+    h: Point,
+    hole_diameter: f64,
+    target: f64,
+    c: &CommonSettings,
+    d: &DrillSettings,
+) {
+    let path_r = (hole_diameter - c.tool_diameter) / 2.0;
     let ccw = d.milling_direction == MillingDirection::Climb;
     let start = Point::new(h.x + path_r, h.y);
     m.rapid(start.x, start.y, c.clearance_plane);

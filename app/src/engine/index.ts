@@ -112,7 +112,7 @@ export interface DrillSettings {
   retract_height: number;
   /** Depth of each peck (Peck only). */
   peck_distance: number;
-  /** Hole diameter (Spiral only; bigger than the tool). */
+  /** Hole diameter (Spiral only; bigger than the tool) for point lists and arcs. Circles use their own. */
   hole_diameter: number;
   /** Direction round the hole (Spiral only). */
   milling_direction: MillingDirection;

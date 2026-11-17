@@ -517,7 +517,10 @@ function KindRows({
           )}
           {k.method === "Spiral" && (
             <>
-              <Row label="Hole diameter">{num(k.hole_diameter, (hole_diameter) => kind({ hole_diameter }))}</Row>
+              {/* Circles are cut to their own diameter; this is for point lists and arcs. */}
+              <Row label="Hole diameter (points, arcs)">
+                {num(k.hole_diameter, (hole_diameter) => kind({ hole_diameter }))}
+              </Row>
               {direction}
             </>
           )}

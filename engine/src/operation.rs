@@ -148,7 +148,8 @@ pub struct DrillSettings {
     pub retract_height: f64,
     /// Depth of each peck (Peck only).
     pub peck_distance: f64,
-    /// Diameter of the hole (Spiral only); more than the tool diameter.
+    /// Diameter of the hole (Spiral only) for point lists and arcs; more than the tool diameter.
+    /// Circles are cut to their own diameter.
     pub hole_diameter: f64,
     /// Direction round the hole (Spiral only). Conventional = clockwise (an inside wall).
     pub milling_direction: MillingDirection,
@@ -280,9 +281,10 @@ impl Operation {
                         d.peck_distance > 0.0,
                         "The peck distance must be more than 0.",
                     ),
+                    // Checked per hole when generating: circles use their own diameter.
                     DrillMethod::Spiral => ok(
-                        d.hole_diameter > c.tool_diameter,
-                        "For spiral drilling the hole diameter must be bigger than the tool diameter.",
+                        d.hole_diameter > 0.0,
+                        "The hole diameter must be more than 0.",
                     ),
                 }
             }

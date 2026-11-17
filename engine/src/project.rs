@@ -712,7 +712,7 @@ impl Project {
     }
 
     /// The hole positions of the shapes, with their ids.
-    fn drill_holes(&self, ids: &[u32]) -> Result<Vec<(u32, Vec<Point>)>, String> {
+    fn drill_holes(&self, ids: &[u32]) -> Result<Vec<(u32, Vec<drill::Hole>)>, String> {
         ids.iter()
             .map(|&id| {
                 let shape = self
