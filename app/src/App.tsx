@@ -50,8 +50,22 @@ const TOOL_BUTTONS: Record<string, DrawTool> = {
   Point: "Points",
 };
 /** One-key shortcuts for the drawing tools (no Ctrl/Alt). */
-const TOOL_KEYS: Record<string, DrawTool> = { l: "Line", a: "Arc", c: "Circle", r: "Rectangle", p: "Polyline" };
-const TOOL_KEY_LABELS: Record<string, string> = { Line: "L", Arc: "A", Circle: "C", Rectangle: "R", Polyline: "P" };
+const TOOL_KEYS: Record<string, DrawTool> = {
+  l: "Line",
+  a: "Arc",
+  c: "Circle",
+  r: "Rectangle",
+  p: "Polyline",
+  ".": "Points",
+};
+const TOOL_KEY_LABELS: Record<string, string> = {
+  Line: "L",
+  Arc: "A",
+  Circle: "C",
+  Rectangle: "R",
+  Polyline: "P",
+  Point: ".",
+};
 
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
 
@@ -884,7 +898,7 @@ export default function App() {
       // While a polyline is being drawn, A and L switch its next segment between arc and line.
       setDraft({ ...d, arc_next: key === "a" });
     } else if (!ctrl && !e.altKey && TOOL_KEYS[key]) {
-      // Drawing tool shortcuts (L, A, C, R, P). The tool already in use carries on as it is.
+      // Drawing tool shortcuts (L, A, C, R, P, full stop for points). The tool already in use carries on as it is.
       if (d?.tool !== TOOL_KEYS[key]) setDraft(emptyDraft(TOOL_KEYS[key]));
     } else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
     else if (key === "delete") run(deleteSelected);
