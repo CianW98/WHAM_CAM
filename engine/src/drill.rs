@@ -161,8 +161,9 @@ pub fn drill_toolpath(
                 spiral(&mut m, h, dia, target, c, d);
             }
         }
-        // Straight up out of the hole (a spiral ends at the hole centre, off the wall).
-        m.rapid(h.x, h.y, clear);
+        // Straight up out of the hole, from wherever the tool is (a spiral may end at the wall).
+        let end = m.at.map_or(h, |a| Point::new(a.x, a.y));
+        m.rapid(end.x, end.y, clear);
     }
 
     Ok(Toolpath {
@@ -177,8 +178,11 @@ pub fn drill_toolpath(
 }
 
 /// A spiral hole at `h`: from the wall position, feed down to the stock surface, helix down by
-/// at most the depth increment per turn to the target, one flat circle at the bottom, then feed
-/// to the centre (off the wall) ready to go up. Ends at the centre, at the target depth.
+/// at most the depth increment per turn to the target, then one flat circle at the bottom.
+/// If the tool has cleared the centre (hole no more than twice the tool diameter) it then feeds
+/// to the centre, off the wall, ready to go up. A bigger hole leaves an uncut core in the middle,
+/// so the tool stays at the wall and goes straight up from there (moving inward would run into
+/// the core).
 fn spiral(
     m: &mut Moves,
     h: Point,
@@ -225,5 +229,8 @@ fn spiral(
     // Flat bottom: one full circle at the target depth.
     half(m, 0, target);
     half(m, 1, target);
-    m.feed(h.x, h.y, target, c.cut_feedrate);
+    let centre_cleared = path_r <= c.tool_diameter / 2.0 + 1e-9;
+    if centre_cleared {
+        m.feed(h.x, h.y, target, c.cut_feedrate);
+    }
 }

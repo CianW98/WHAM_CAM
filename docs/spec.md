@@ -394,8 +394,12 @@ move; the reference itself uses a canned cycle G81 with G98):
   centre. A circle is cut to its own diameter (user's decision, 2026-11-17); point lists and arcs
   use the Hole diameter setting. A circle no bigger than the tool is refused with a message. Rapid over the wall position, down to the retract height, feed to the stock surface,
   then a helix down in equal turns no deeper than the depth per turn (at the cut feed rate), one
-  flat full circle at the target depth to clean the floor, then feed to the hole centre (off the
-  wall) and rapid straight up.
+  flat full circle at the target depth to clean the floor. Then:
+  - hole no more than twice the tool diameter (the centre is cleared): feed to the hole centre,
+    off the wall, and rapid straight up;
+  - bigger hole: a core of material is left in the middle, so the tool must not move inward at
+    the bottom (it would run into the core). It rapids straight up from the wall (user's decision,
+    2026-11-17). Clearing the core is not done; use a Pocket for that.
 - Depth increment (except as Spiral's depth per turn), final depth increment and roughing
   clearance don't apply to drilling and are hidden for Drill.
 
