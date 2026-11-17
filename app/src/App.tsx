@@ -337,6 +337,19 @@ export default function App() {
     notify("info", "Profile added. Set its target depth in Properties, then Generate toolpaths.");
   }, [selection, refresh, notify]);
 
+  /** Drill: adds a Drill of the selected point lists, circles and arcs and selects it. */
+  const addDrill = useCallback(async () => {
+    const shapes = selectedIds(selection);
+    if (shapes.length === 0) {
+      notify("info", "Select the point lists, circles or arcs to drill first.");
+      return;
+    }
+    const id = await engine.addDrill(shapes);
+    await refresh();
+    setSelection({ kind: "operation", id });
+    notify("info", "Drill added. Set its target depth in Properties, then Generate toolpaths.");
+  }, [selection, refresh, notify]);
+
   /** Generate toolpaths: for the given operations, or all enabled ones. */
   const generateToolpaths = useCallback(
     async (ids: number[] = []) => {
@@ -790,6 +803,8 @@ export default function App() {
         return run(addProfile);
       case "Pocket":
         return run(addPocket);
+      case "Drill":
+        return run(addDrill);
       case "Generate toolpaths":
         return run(() => generateToolpaths());
       case "Show toolpaths":
@@ -1039,7 +1054,7 @@ export default function App() {
         items: [
           { label: "Profile", action: () => run(addProfile) },
           { label: "Pocket", action: () => run(addPocket) },
-          c.later("Drill"),
+          { label: "Drill", action: () => run(addDrill) },
           c.sep(c.later("Tool library")),
           c.sep({ label: "Generate toolpaths", action: () => run(() => generateToolpaths()) }),
           c.later("Produce G-code"),

@@ -372,13 +372,34 @@ Behaviour (built 2026-11-16, matches the reference Pocket example move for move)
 
 | Setting | Meaning | Default | v1 |
 |---|---|---|---|
-| Points | Point lists, or circle centres | — | v1 |
-| Peck distance | 0 = single plunge | 0 | v1 |
-| Retract height | Z between pecks / holes | 3 | v1 |
-| Dwell | Seconds at bottom | 0 | v1 |
-| Drilling method | Each hole written out in full: rapid to retract height, feed down (pecking if set), back up | Full moves | v1 |
+| Points | Point lists (every point), circle centres and arc centres | — | v1 |
+| Method | Standard (straight plunge), Peck, or Spiral | Standard | v1 |
+| Retract height | Z the tool rapids down to before feeding in, and goes back to between pecks. Above the stock surface, not above the clearance plane | 3 | v1 |
+| Peck distance | Depth of each peck (Peck only) | 1 | v1 |
+| Hole diameter | Spiral only; must be bigger than the tool | 10 | v1 |
+| Milling direction | Spiral only: Conventional (clockwise round the hole) / Climb | Conventional | v1 |
+| Depth per turn | Spiral only: the common Depth increment, shown under this name | 1 | v1 |
+| Dwell | Seconds at the bottom | 0 | later (needs a pause move; with G-code) |
 
-The exact G-code format for drilling is decided with the machine-specific post-processors.
+Decided and built 2026-11-16 (matches the reference Drill example, written out in full, move for
+move; the reference itself uses a canned cycle G81 with G98):
+- **Hole order:** the first listed hole, then always the nearest hole not yet drilled.
+- **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
+- **Standard:** rapid over the hole at clearance, rapid down to the retract height (if lower),
+  feed to the target depth at the plunge feed rate, rapid back up to clearance.
+- **Peck:** as Standard, but feed down one peck distance at a time; after each peck, rapid up to
+  the retract height to clear chips, rapid back down to fast plunge height above the last depth,
+  and feed on.
+- **Spiral:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
+  centre. Rapid over the wall position, down to the retract height, feed to the stock surface,
+  then a helix down in equal turns no deeper than the depth per turn (at the cut feed rate), one
+  flat full circle at the target depth to clean the floor, then feed to the hole centre (off the
+  wall) and rapid straight up.
+- Depth increment (except as Spiral's depth per turn), final depth increment and roughing
+  clearance don't apply to drilling and are hidden for Drill.
+
+The exact G-code format for drilling (written out in full, or canned cycles) is decided with the
+post-processors.
 
 ## 7. G-code output
 
@@ -397,6 +418,9 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   a rapid straight down to just above the material or the previous cut level, then a feed move down.
 - No horizontal rapid below the clearance plane.
 - The program starts and ends at the clearance plane.
+- Nothing goes below the target depth.
+- Arcs never go up. They may go down as they turn (a helix, e.g. spiral drilling); changed from
+  "arcs stay flat" when spiral drilling was added (user's decision, 2026-11-16).
 
 ## 8. Testing
 

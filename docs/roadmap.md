@@ -10,8 +10,8 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Inches**, together with CAM styles/templates and workspaces. v1 is mm only.
 - **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate. The reference
   Profile example uses a spiral (ramp) lead-in at 15°: plunge to the stock surface, then ramp down
-  along the profile to the cut depth. That needs sloped arcs (helical G2/G3), so safety rule 5
-  ("arcs stay flat") must change with it.
+  along the profile to the cut depth. It needs sloped arcs (helical G2/G3), which the safety checker
+  now allows going down (added for spiral drilling, 2026-11-16).
 - **Holding tabs.**
 - **PolyRectangle corner radius** (rounded corners as true arcs, at most half the shorter side).
   Left out of v1 (decided 2026-11-16); the PolyRectangle has Lower Left, Width, Height, Rotation.
@@ -30,6 +30,8 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   (with the offsetting library) and add a ring or a centre-line cut only there, instead of the
   current whole-ring check. Maybe also a warning in Properties for stepovers over 0.5. Changes
   toolpath output, so it needs tests and a simulator re-check.
+- **Drill dwell** (seconds at the bottom of a hole). Needs a pause move through the safety
+  checker, preview and playback; add it with G-code output.
 - **Pocketing splines and ellipses**, by converting them to arcs within a tolerance. v1 refuses
   them with a message.
 

@@ -218,11 +218,13 @@ Done:
   Show toolpaths and Show cut width (shaded cutter band, from the engine) toggles in the toolbar. Profile (`profile.rs`, shared move building in `path.rs`):
   Inside/Outside/On line, open shapes On line only, no overlap, nearest-next shape order, straight
   plunge; matches the reference Profile loop move for move (its spiral lead-in is not in v1).
+  Drill (`drill.rs`): Standard, Peck, Spiral (helix; safety rule 5 now "arcs never go up"),
+  point lists and circle/arc centres, nearest next; matches the reference Drill move for move.
 
 Next:
 - User check of Pocket, Profile and tool playback on the `offsetting` branch; merge into `main`
   when the user is happy.
-- Then Drill, the tool library, then G-code.
+- Then the tool library, then G-code.
 - Toolpaths before G-code: profile, pocket, drill shown in the preview, with the safety checker
   running on the toolpath moves (same rules later on the G-code). Answer the toolpath open
   questions (spec section 9 and the (?) defaults) at that stage. Then tool library, then G-code.

@@ -104,7 +104,24 @@ export interface ProfileSettings {
   cut_ordering: CutOrdering;
 }
 
-export type OperationKind = ({ type: "Profile" } & ProfileSettings) | ({ type: "Pocket" } & PocketSettings);
+export type DrillMethod = "Standard" | "Peck" | "Spiral";
+
+export interface DrillSettings {
+  method: DrillMethod;
+  /** Z to rapid down to before feeding into a hole, and to go back to between pecks. */
+  retract_height: number;
+  /** Depth of each peck (Peck only). */
+  peck_distance: number;
+  /** Hole diameter (Spiral only; bigger than the tool). */
+  hole_diameter: number;
+  /** Direction round the hole (Spiral only). */
+  milling_direction: MillingDirection;
+}
+
+export type OperationKind =
+  | ({ type: "Profile" } & ProfileSettings)
+  | ({ type: "Pocket" } & PocketSettings)
+  | ({ type: "Drill" } & DrillSettings);
 
 export interface Operation {
   id: number;
@@ -313,6 +330,11 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
 /** Adds a Profile of the given shapes (Outside, or On line if any are open). Returns its id. */
 export function addProfile(shapeIds: number[]): Promise<number> {
   return invoke<number>("add_profile", { shapeIds });
+}
+
+/** Adds a Drill of the given point lists, circles and arcs. Returns its id. */
+export function addDrill(shapeIds: number[]): Promise<number> {
+  return invoke<number>("add_drill", { shapeIds });
 }
 
 export function addPocket(shapeIds: number[]): Promise<number> {

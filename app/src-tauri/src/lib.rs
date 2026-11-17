@@ -274,6 +274,11 @@ fn add_pocket(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String
 }
 
 #[tauri::command]
+fn add_drill(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
+    state.0.lock().unwrap().add_drill(&shape_ids)
+}
+
+#[tauri::command]
 fn add_profile(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
     state.0.lock().unwrap().add_profile(&shape_ids)
 }
@@ -400,6 +405,7 @@ pub fn run() {
             break_at_intersections,
             add_pocket,
             add_profile,
+            add_drill,
             set_operation,
             set_operation_shapes,
             delete_operation,

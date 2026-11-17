@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   CutOrdering,
   DisplayData,
+  DrillMethod,
+  DrillSettings,
   Document,
   Layer,
   MillingDirection,
@@ -350,6 +352,7 @@ function OperationRows({
   onSetShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
 }) {
   const c = op.common;
+  const drill = op.kind.type === "Drill";
   const common = (patch: Partial<Operation["common"]>) => onSet({ ...op, common: { ...c, ...patch } });
   const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
   return (
@@ -393,10 +396,18 @@ function OperationRows({
           onSave={(target_depth) => common({ target_depth })}
         />
       </Row>
-      <Row label="Depth increment">{num(c.depth_increment, (depth_increment) => common({ depth_increment }))}</Row>
-      <Row label="Final depth increment">
-        {num(c.final_depth_increment, (final_depth_increment) => common({ final_depth_increment }))}
-      </Row>
+      {/* Drilling has no depth passes: Standard and Peck don't use these; Spiral uses the depth
+          increment as its depth per turn. */}
+      {(op.kind.type !== "Drill" || op.kind.method === "Spiral") && (
+        <Row label={drill ? "Depth per turn" : "Depth increment"}>
+          {num(c.depth_increment, (depth_increment) => common({ depth_increment }))}
+        </Row>
+      )}
+      {!drill && (
+        <Row label="Final depth increment">
+          {num(c.final_depth_increment, (final_depth_increment) => common({ final_depth_increment }))}
+        </Row>
+      )}
       <Row label="Clearance plane">{num(c.clearance_plane, (clearance_plane) => common({ clearance_plane }))}</Row>
       <Row label="Fast plunge height">
         {num(c.fast_plunge_height, (fast_plunge_height) => common({ fast_plunge_height }))}
@@ -415,9 +426,11 @@ function OperationRows({
           onSave={(spindle_direction) => void common({ spindle_direction })}
         />
       </Row>
-      <Row label="Roughing clearance">
-        {num(c.roughing_clearance, (roughing_clearance) => common({ roughing_clearance }))}
-      </Row>
+      {!drill && (
+        <Row label="Roughing clearance">
+          {num(c.roughing_clearance, (roughing_clearance) => common({ roughing_clearance }))}
+        </Row>
+      )}
       <KindRows op={op} state={state} onSet={onSet} />
     </>
   );
@@ -443,7 +456,7 @@ function KindRows({
   onSet: (op: Operation) => Promise<boolean>;
 }) {
   const k = op.kind;
-  const kind = (patch: Partial<ProfileSettings> | Partial<PocketSettings>) =>
+  const kind = (patch: Partial<ProfileSettings> | Partial<PocketSettings> | Partial<DrillSettings>) =>
     onSet({ ...op, kind: { ...k, ...patch } as OperationKind });
   const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
   const direction = (
@@ -455,9 +468,9 @@ function KindRows({
       />
     </Row>
   );
-  const ordering = (
+  const ordering = (value: CutOrdering) => (
     <Row label="Cut ordering">
-      <ChoiceField value={k.cut_ordering} choices={CUT_ORDERINGS} onSave={(cut_ordering) => void kind({ cut_ordering })} />
+      <ChoiceField value={value} choices={CUT_ORDERINGS} onSave={(cut_ordering) => void kind({ cut_ordering })} />
     </Row>
   );
   switch (k.type) {
@@ -479,10 +492,37 @@ function KindRows({
             <ChoiceField value={k.side} choices={sides} onSave={(side) => void kind({ side })} />
           </Row>
           {direction}
-          {ordering}
+          {ordering(k.cut_ordering)}
         </>
       );
     }
+    case "Drill":
+      return (
+        <>
+          <GroupRow label="Drill" />
+          <Row label="Method">
+            <ChoiceField<DrillMethod>
+              value={k.method}
+              choices={[
+                ["Standard", "Standard (straight plunge)"],
+                ["Peck", "Peck"],
+                ["Spiral", "Spiral"],
+              ]}
+              onSave={(method) => void kind({ method })}
+            />
+          </Row>
+          <Row label="Retract height">{num(k.retract_height, (retract_height) => kind({ retract_height }))}</Row>
+          {k.method === "Peck" && (
+            <Row label="Peck distance">{num(k.peck_distance, (peck_distance) => kind({ peck_distance }))}</Row>
+          )}
+          {k.method === "Spiral" && (
+            <>
+              <Row label="Hole diameter">{num(k.hole_diameter, (hole_diameter) => kind({ hole_diameter }))}</Row>
+              {direction}
+            </>
+          )}
+        </>
+      );
     case "Pocket":
       return (
         <>
@@ -499,7 +539,7 @@ function KindRows({
             />
           </Row>
           {direction}
-          {ordering}
+          {ordering(k.cut_ordering)}
         </>
       );
   }
