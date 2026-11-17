@@ -227,7 +227,7 @@ Done:
     and Show cut width (shaded cutter band from the engine) toggles; tool playback (cutter in
     2D/3D, times at the feed rates, rapids assumed 5000 mm/min).
   - Operations renamed by double-click in the tree; drawing tool keys L, A, C, R, P and `.`.
-- Release 0.3.0 (2026-11-17): Profile, Pocket and Drill toolpaths with preview and playback. No
+- Release 0.3.0 published (2026-11-17): Profile, Pocket and Drill toolpaths with preview and playback. No
   G-code yet.
 
 Next:
