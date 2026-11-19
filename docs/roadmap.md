@@ -23,7 +23,9 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   down to fast plunge height and feeds down, as in the reference. The user wants to work on this
   later (2026-11-16), e.g. staying down when the next level starts where the last ended.
 - **Machine settings**, including the real rapid rate, so the tool playback's run time is accurate.
-  v1 assumes 5000 mm/min for rapids (decided 2026-11-16).
+  v1 assumes 5000 mm/min for rapids (decided 2026-11-16). They belong to the computer, so they go
+  in the Setup tab (which is global: decided 2026-11-19), probably with the machine-specific
+  post-processors.
 - **Pocket: full clearing at stepovers over 0.5.** Above 0.5 × tool diameter, narrow parts of a
   pocket can keep an uncut sliver down the middle (spec 6.3, found 2026-11-16 at 0.7 on a complex
   pocket; 0.5 clears it). Fix idea: after each ring, work out what is still uncut area by area
@@ -49,8 +51,10 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   the finished part, gouges and leftover material (like CAMotics). v1 has tool playback only;
   until then use CAMotics or NC Viewer on the G-code (discussed 2026-11-16).
 - **Libraries: tools, styles and materials** (noted 2026-11-17).
-  - **Tool library** beyond the v1 basics (spec 5.5): toolpaths for the other tool shapes (ball nose, V-bit, drill: v1 can record them but only cuts with flat end mills),
-    holders/lengths, sharing and importing tool sets.
+  - **Tool library** beyond the v1 basics (spec 5.5): holders/lengths, sharing and importing
+    tool sets (e.g. export/import of the tooling file).
+  - **Feeds and speeds are not on tools** (decided 2026-11-19): they depend on the tool *and* the
+    material, so they come with the material library (tool + material → feeds and speeds).
   - **Style library**: saved sets of operation settings ("CAM styles") to apply to an operation
     in one go, e.g. "6 mm slot in plywood". Ties in with the CAM styles noted under Inches.
   - **Material library**: materials (e.g. plywood, MDF, aluminium, acrylic) with suggested feeds,
@@ -59,6 +63,22 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
     in values, which stay editable on the operation.
 - **Predefined styles in the library** for common kinds of CNC work, e.g. PCB cutting, V-carving
   and other common uses. List to be filled in.
+
+## Other cutters (noted 2026-11-19)
+
+v1 records ball nose, V-bit and drill tools in the master tool list and libraries, but only end
+mills (flat end) can be picked for an operation: the toolpaths assume a flat cutter. Getting the
+others working:
+- **Ball nose**: profile and pocket depths mean the tip; the 3D preview and cut width should
+  show the round end. Mostly useful with 3D work (see below), or for fillets and grooves.
+- **V-bit**: V-carving and chamfering (depth follows the width), and engraving on a line. A new
+  operation type with its own settings; the cut width depends on depth.
+- **Drill**: drilling holes with a real drill (Standard and Peck only, no spiral/helix), with the
+  point length taken into account for through holes. Drills would then get a **point angle**
+  setting (the tool picture draws 118° for now); they have no flute type or helix angle in v1
+  (user's decision, 2026-11-19).
+- **More flute types**, e.g. compression (upcut at the tip, downcut above) for sheet goods.
+- Each one changes toolpath output: tests, the safety checker and a simulator/air-cut check.
 
 ## Maybe / needs thought
 

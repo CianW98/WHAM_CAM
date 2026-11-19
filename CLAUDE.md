@@ -52,7 +52,7 @@ N.B. This program drives a real machine. A bug can crash the spindle, break tool
 2. Basic 2D drawing: lines, arcs, circles, rectangles, polylines.
 3. Basic dimensioning, transforming, joining and splitting of geometry, aligned to a grid
 4. Operations: profile (inside / outside / on line), pocket, drill
-5. Tool library: diameter, flutes, feeds and speeds
+5. Tool library: master tool list and tool libraries (feeds and speeds stay on the operation in v1)
 6. Toolpath preview
 7. G-code output through a post processor
 8. Save and open project files
@@ -230,14 +230,30 @@ Done:
 - Release 0.3.0 published (2026-11-17): Profile, Pocket and Drill toolpaths with preview and playback. No
   G-code yet.
 
-- Tooling (spec 5.5, decided 2026-11-19): master tool list and tool libraries per computer
-  (`engine/src/tooling.rs`; file `tooling.json` in the app's settings folder, read/written by the
-  app layer), left panel tabs Project | Setup. Tools follow the Machining tree: Machining
-  (library + tool) → part (tool override) → operation (own library tool or typed in), resolved
-  by the engine before generating (`Project::resolve`); picked tools are copied into the project. Tools hold no feeds/speeds
-  (material-dependent: materials library later). Only flat end mills can be used in v1.
+- Tooling (spec 5.5, decided 2026-11-19), released in 0.4.0:
+  - Master tool list and tool libraries belong to the computer (`engine/src/tooling.rs`; file
+    `tooling.json` in the app's settings folder, read/written by the app layer). Tools: end type,
+    flute type + helix angle (not drills), diameters, lengths, automatic names, live side view.
+    Tools hold no feeds/speeds (material-dependent: materials library later). Only end mills
+    (flat end) can cut in v1.
+  - Left panel tabs Project | Setup. **The Setup tab is global**: it configures computer-wide
+    things only, never changes a project and shows no project information.
+  - Tools follow the Machining tree: Machining (library + tool) → part (tool override) →
+    operation (Custom tool, or a library tool), resolved by the engine before generating
+    (`Project::resolve`). Every picked tool is copied into the project.
+  - One tool number = one cutter: custom tools avoid library numbers and other tools' numbers;
+    Generate refuses clashes and compares each tool with the library on this computer (warns if
+    the project's library isn't on this computer).
+  - 3D playback cutter modelled from the real tool outline (`Tool::profile`).
 
-Next:
-- G-code output (spec 7) through the generic post-processor (tool numbers from the library),
-  with the safety checker run on the G-code too and comparisons against `tests/reference/`.
-- Dimensions and more DXF features: later in v1 (user to list the DXF features).
+Next: **G-code output and the generic post-processor, built together** (spec 5.7, 7; open
+questions in spec 9 to settle with the user first):
+- The engine turns each toolpath (already safety-checked) into G-code through the generic
+  post-processor: header with the WHAM_CAM version, per-operation comments (name, tool, depths),
+  tool numbers from the tooling, arcs as arcs.
+- The safety checker also reads the G-code text back; known-good outputs go in reference tests.
+- File saving in the app layer (Machining menu → Produce G-code, already in the menu greyed out).
+- This is toolpath/G-code logic: the user checks output in CAMotics or NC Viewer and with an air
+  cut before cutting material.
+
+Later in v1: dimensions and more DXF features (user to list the DXF features).

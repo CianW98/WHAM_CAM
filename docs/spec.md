@@ -2,9 +2,9 @@
 
 Status: **v1 in progress.** DXF import, layers, drawing, selection, transforms, edit tools
 (sections 5.1–5.3, apart from SVG import and dimensions), project files (5.8), and Profile,
-Pocket and Drill toolpaths with preview and playback (5.4, 5.6, 6.1–6.4) are built. The tool
-library (5.5) and G-code output (5.7, 7) are next; see the Status in CLAUDE.md. Items marked
-**(?)** need a decision from the user.
+Pocket and Drill toolpaths with preview and playback (5.4, 5.6, 6.1–6.4) and tooling (5.5) are
+built. G-code output and the generic post-processor (5.7, 7) are next, built together; their open
+questions are in section 9. Items marked **(?)** need a decision from the user.
 
 ## 1. Purpose
 
@@ -326,8 +326,12 @@ Decided with the user 2026-11-19.
   - Material removal simulation is not in v1 (see the roadmap).
 
 ### 5.7 G-code output
-Standard, widely compatible G-code through one generic post-processor (section 7).
-Machine-specific post-processors, each with its own settings panel per machine type, come later.
+Standard, widely compatible G-code through one generic post-processor (section 7), built together
+with G-code output: the toolpath moves become G-code text only through the post-processor, so a
+machine-specific one can replace it later without touching the toolpaths. Machine-specific
+post-processors, each with its own settings panel per machine type, come later.
+- Machining menu → **Produce G-code** (already in the menu, greyed out until built).
+- The tool number of each operation comes from its tool (5.5): one number is one cutter.
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
@@ -360,17 +364,18 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 |---|---|---|---|
 | Name | Operation name, written as a G-code comment | Profile1, Pocket1… | v1 |
 | Enabled | Include in G-code output | true | v1 |
-| Tool number | Tool from library | 0 | v1 |
-| Tool diameter | mm | from tool | v1 |
+| Tool | Use part/Machining tool, Custom tool, or a library tool (5.5) | use part/Machining tool | v1 |
+| Tool number | From the tool (editable for a Custom tool) | from tool | v1 |
+| Tool diameter | mm, from the tool (editable for a Custom tool) | from tool | v1 |
 | Stock surface | Z of top of material | 0 | v1 |
 | Target depth | Final Z (negative = into material) | — (must be set) | v1 |
-| Depth increment | Max depth per pass | from tool | v1 |
+| Depth increment | Max depth per pass | 1 | v1 |
 | Final depth increment | Size of the last pass (0 = equal passes) | 0 | v1 |
 | Clearance plane | Z for rapids between cuts | 3 | v1 |
 | Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down | 1 | v1 |
-| Cut feedrate | mm/min | from tool | v1 |
-| Plunge feedrate | mm/min | from tool | v1 |
-| Spindle speed | RPM | from tool | v1 |
+| Cut feedrate | mm/min (later from tool + material, see roadmap) | 800 | v1 |
+| Plunge feedrate | mm/min | 300 | v1 |
+| Spindle speed | RPM | 10000 | v1 |
 | Spindle direction | CW / CCW / Off | CW | v1 |
 | Roughing clearance | Stock left on the wall (negative = overcut) | 0 | v1 |
 | Custom header/footer | Extra G-code before/after this operation | empty | later |
@@ -520,8 +525,22 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 9. Open questions
 
-None at the moment. Answered 2026-11-16: fast plunge height is a setting, default 1 mm (6.1).
-Profile has no overlap setting (user's decision, 2026-11-16).
+To settle with the user before building G-code output (noted 2026-11-19):
+- **(?) Tool changes** in the generic post: `T3 M6` (tool changers), or a comment plus a pause
+  (`M0`) for a manual change, or both? Many hobby controllers don't accept `M6`.
+- **(?) What one G-code file holds**: the whole job, one file per part, or one per tool?
+- **(?) Program start and end**: e.g. `G21 G90 G17`, spindle on (`M3 S…`) before the first cut,
+  any dwell for the spindle to spin up, `M5` and `M30` at the end, and whether to park at a set
+  position at the end.
+- **(?) Arc format**: centre offsets (`I J`, recommended: exact, no ambiguity) or radius (`R`).
+- **(?) Number format and file extension**: decimal places (3 suggested), `.nc`, `.gcode`,
+  `.tap`, ...
+- **(?) Where known-good G-code lives**: section 8 says checked outputs go in `tests/reference/`,
+  but the top-level `tests/` folder is git-ignored (this machine only). They could go in
+  `engine/tests/reference/` (committed, checked by CI) instead.
+
+Answered 2026-11-16: fast plunge height is a setting, default 1 mm (6.1). Profile has no overlap
+setting (user's decision, 2026-11-16).
 
 ## 10. Out of scope for v1
 
