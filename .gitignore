@@ -3,7 +3,7 @@
 
 # The top-level tests folder (reference examples, saved test projects, library checks): kept on
 # this machine only for now. The engine's own tests in engine/tests/ are still tracked.
-tests/
+/tests/
 
 # Build output (for when the app exists)
 target/
