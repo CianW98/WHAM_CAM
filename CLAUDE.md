@@ -245,6 +245,8 @@ Done:
     Generate refuses clashes and compares each tool with the library on this computer (warns if
     the project's library isn't on this computer).
   - 3D playback cutter modelled from the real tool outline (`Tool::profile`).
+- Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
+  Machining tree, tool number checks, real 3D cutter). No G-code yet.
 
 Next: **G-code output and the generic post-processor, built together** (spec 5.7, 7; open
 questions in spec 9 to settle with the user first):

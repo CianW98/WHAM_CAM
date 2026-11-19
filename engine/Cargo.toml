@@ -1,6 +1,6 @@
 [package]
 name = "wham_engine"
-version = "0.3.0"
+version = "0.4.0"
 description = "WHAM_CAM CAM engine: geometry, toolpaths and G-code. No UI, no file system."
 edition.workspace = true
 license.workspace = true
