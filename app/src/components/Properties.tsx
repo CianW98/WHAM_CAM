@@ -385,7 +385,7 @@ function ToolPicker({
           else if (v !== "kept") void onPick(op.id, Number(v));
         }}
       >
-        <option value="typed">(typed in below)</option>
+        <option value="typed">{library === null ? "No library selected" : !lib ? `"${library}" not on this computer` : "(typed in below)"}</option>
         {c.tool !== null && !match && <option value="kept">{toolText(c.tool_number, c.tool)} – kept in project</option>}
         {entries.map((e) => (
           <option key={e.number} value={String(e.number)} disabled={e.tool.end_type !== "Flat"}>
@@ -394,11 +394,7 @@ function ToolPicker({
           </option>
         ))}
       </select>
-      {library === null ? (
-        <div className="muted prop-note">Choose a tool library for the project (Machining menu or Project properties).</div>
-      ) : !lib ? (
-        <div className="prop-error">Tool library "{library}" isn't on this computer.</div>
-      ) : changed ? (
+      {lib && changed ? (
         <div className="muted prop-note">T{c.tool_number} has changed in the library: pick it again to update.</div>
       ) : null}
     </>
@@ -661,7 +657,7 @@ function LibraryChoice({ doc, tooling, onSet }: { doc: Document; tooling: Toolin
         value={active ?? ""}
         onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}
       >
-        <option value="">(none)</option>
+        <option value="">No library selected</option>
         {missing && <option value={active!}>{active} – not on this computer</option>}
         {tooling.libraries.map((l) => (
           <option key={l.name} value={l.name}>
@@ -669,11 +665,6 @@ function LibraryChoice({ doc, tooling, onSet }: { doc: Document; tooling: Toolin
           </option>
         ))}
       </select>
-      {missing && (
-        <div className="prop-error">
-          This computer has no tool library "{active}". Operations keep their tools; pick another library to change them.
-        </div>
-      )}
     </>
   );
 }
@@ -852,6 +843,14 @@ function Content({
               <LibraryChoice doc={doc} tooling={edits.tooling} onSet={(n) => void edits.onSetActiveLibrary(n)} />
             </Row>
           </>
+        </Grid>
+      );
+    case "machining":
+      return (
+        <Grid>
+          <Row label="Tool library">
+            <LibraryChoice doc={doc} tooling={edits.tooling} onSet={(n) => void edits.onSetActiveLibrary(n)} />
+          </Row>
         </Grid>
       );
     case "part": {

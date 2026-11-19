@@ -250,8 +250,8 @@ Decided with the user 2026-11-19.
   edit). Right-click Tool libraries → New library; right-click a library → Rename, Use in this
   project, Delete library. Selecting a library shows its numbered tools in Properties, where tools
   are added from the master list, renumbered or taken out.
-- **Active library**: each project chooses one (Machining → Tool library, Project properties, or
-  the library's right-click menu); saved in the project file by name.
+- **Active library**: each project chooses one (Machining menu → Tool library, the Machining
+  item's Properties, Project properties, or the library's right-click menu); saved in the project file by name.
 - **Picking a tool**: an operation's Tool drop-down lists the active library's tools. Picking one
   copies its tool number and diameter into the operation, plus a copy of the tool kept in the
   project, so the project opens and cuts the same on a computer with different tooling. Typing a

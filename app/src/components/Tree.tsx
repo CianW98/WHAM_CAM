@@ -386,7 +386,11 @@ export default function Tree({
             </LayerItem>
           ))}
         </Item>
-        <Item label="Machining">
+        <Item
+          label="Machining"
+          selected={is({ kind: "machining" })}
+          onClick={() => onSelect({ kind: "machining" })}
+        >
           {doc.parts.map((part, pi) => (
             <Item
               key={part.name}

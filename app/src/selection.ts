@@ -8,6 +8,8 @@ export type Selection =
   | { kind: "project" }
   | { kind: "layer"; layer: number }
   | { kind: "part"; part: number }
+  /** The Machining heading in the tree. */
+  | { kind: "machining" }
   | { kind: "operation"; id: number }
   /** A tool library (Setup tab), by name. */
   | { kind: "library"; name: string };
