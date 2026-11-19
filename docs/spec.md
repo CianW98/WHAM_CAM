@@ -247,8 +247,15 @@ Decided with the user 2026-11-19.
   never overwritten.
 - **Left panel tabs**: *Project* (the tree) and *Setup* (Master tool list, Tool libraries).
   Clicking Master tool list opens its window (Add tool / Edit / Delete; double-click a row to
-  edit). Right-click Tool libraries → New library; right-click a library → Rename, Delete library. Selecting a library shows its numbered tools in Properties, where tools
-  are added from the master list, renumbered or taken out.
+  edit). Right-click Tool libraries → New library; right-click a library → Rename, Delete
+  library. Selecting a library shows its numbered tools in Properties, where tools are added
+  from the master list, renumbered or taken out.
+- **The Setup tab is global, not project-specific** (decided 2026-11-19): it holds what belongs
+  to the computer and is shared by every project (now the master tool list and tool libraries;
+  later e.g. machine settings and the materials library). It is only for configuring things at
+  that level: nothing in it changes the open project, and project choices (such as which library
+  a project uses) are made in the Project tab. The only project information it shows is the ✓
+  marking the open project's library, for display only.
 - **Active library**: each project chooses one in the Machining item's Properties (also the
   Machining menu → Tool library); saved in the project file by name. The Setup tab marks it ✓.
 - **Tools follow the Machining tree** (decided 2026-11-19):
