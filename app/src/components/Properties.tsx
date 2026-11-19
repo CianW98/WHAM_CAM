@@ -797,8 +797,6 @@ interface Edits {
   onSetMachiningTool: (number: number | null) => Promise<boolean>;
   onSetPartTool: (part: number, number: number | null) => Promise<boolean>;
   onSetActiveLibrary: (name: string | null) => Promise<boolean>;
-  /** The open project's active library. */
-  activeLibrary: string | null;
   /** Resolves false if the rename was rejected. */
   onRenameLibrary: (oldName: string, newName: string) => Promise<boolean>;
   onAddLibraryTool: (library: string, toolId: number, number: number) => Promise<boolean>;
@@ -852,12 +850,6 @@ function LibraryRows({ name, edits }: { name: string; edits: Edits }) {
             shown={lib.name}
             parse={(t) => (t.trim() ? t : null)}
             onSave={(n) => edits.onRenameLibrary(lib.name, n)}
-          />
-        </Row>
-        <Row label="Use in this project">
-          <BoolField
-            value={edits.activeLibrary === lib.name}
-            onSave={(on) => void edits.onSetActiveLibrary(on ? lib.name : null)}
           />
         </Row>
       </Grid>

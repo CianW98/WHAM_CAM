@@ -8,7 +8,7 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 
 interface Props {
   tooling: Tooling | null;
-  /** The open project's active library. */
+  /** The open project's active library (marked ✓; chosen in Machining properties). */
   activeLibrary: string | null;
   selection: Selection;
   onSelect: (sel: Selection) => void;
@@ -18,7 +18,6 @@ interface Props {
   /** Resolves false if the new name was rejected. */
   onRenameLibrary: (oldName: string, newName: string) => Promise<boolean>;
   onDeleteLibrary: (name: string) => void;
-  onSetActiveLibrary: (name: string | null) => void;
 }
 
 /** A library row: click selects, double-click renames in place (Enter saves, Esc cancels). */
@@ -109,7 +108,6 @@ export default function SetupTree({
   onAddLibrary,
   onRenameLibrary,
   onDeleteLibrary,
-  onSetActiveLibrary,
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; library: string | null } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -142,14 +140,8 @@ export default function SetupTree({
   const menuItems = (library: string | null): MenuItem[] => {
     const items: MenuItem[] = [{ label: "New library", action: () => void newLibrary() }];
     if (library !== null) {
-      const active = library === activeLibrary;
       items.push(
         { label: "Rename", action: () => setRenaming(library) },
-        {
-          label: "Use in this project",
-          checked: active,
-          action: () => onSetActiveLibrary(active ? null : library),
-        },
         { label: "Delete library", separatorBefore: true, action: () => onDeleteLibrary(library) },
       );
     }

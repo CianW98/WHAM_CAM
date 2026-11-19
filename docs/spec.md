@@ -247,12 +247,10 @@ Decided with the user 2026-11-19.
   never overwritten.
 - **Left panel tabs**: *Project* (the tree) and *Setup* (Master tool list, Tool libraries).
   Clicking Master tool list opens its window (Add tool / Edit / Delete; double-click a row to
-  edit). Right-click Tool libraries → New library; right-click a library → Rename, Use in this
-  project, Delete library. Selecting a library shows its numbered tools in Properties, where tools
+  edit). Right-click Tool libraries → New library; right-click a library → Rename, Delete library. Selecting a library shows its numbered tools in Properties, where tools
   are added from the master list, renumbered or taken out.
 - **Active library**: each project chooses one in the Machining item's Properties (also the
-  Machining menu → Tool library, or the library's right-click menu in Setup); saved in the
-  project file by name.
+  Machining menu → Tool library); saved in the project file by name. The Setup tab marks it ✓.
 - **Tools follow the Machining tree** (decided 2026-11-19):
   - *Machining* Properties: Tool library and **Tool** (from that library).
   - *Part* Properties: **Tool**, "Use Machining tool" by default, or a library tool to override

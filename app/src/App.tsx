@@ -1249,7 +1249,6 @@ export default function App() {
               onAddLibrary={addLibrary}
               onRenameLibrary={renameLibrary}
               onDeleteLibrary={(name) => void deleteLibrary(name)}
-              onSetActiveLibrary={(name) => void setActiveLibrary(name)}
             />
           ) : (
           <Tree
@@ -1284,7 +1283,6 @@ export default function App() {
             onSetOperationShapes={setOperationShapes}
             operationStates={view?.operations ?? []}
             tooling={view?.tooling ?? EMPTY_TOOLING}
-            activeLibrary={view?.document.active_library ?? null}
             onPickTool={pickTool}
             onSetMachiningTool={(n) => tryEdit(() => engine.setMachiningTool(n))}
             onSetPartTool={(part, n) => tryEdit(() => engine.setPartTool(part, n))}
