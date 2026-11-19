@@ -320,8 +320,8 @@ fn set_part_tool(
 enum OperationTool {
     /// The part's tool, or Machining's.
     Inherit,
-    /// Its own number and diameter, typed in.
-    Typed,
+    /// Its own tool with values set in the operation.
+    Custom,
     /// Its own tool: this number from the active library.
     Library(u32),
 }
@@ -336,7 +336,7 @@ fn set_operation_tool(
     let mut project = state.0.lock().unwrap();
     let setting = match tool {
         OperationTool::Inherit => ToolSetting::Inherit,
-        OperationTool::Typed => ToolSetting::Typed,
+        OperationTool::Custom => ToolSetting::Custom,
         OperationTool::Library(n) => ToolSetting::Library(library_pick(&project, &tooling, n)?),
     };
     project.set_operation_tool(id, setting)

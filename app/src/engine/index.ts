@@ -82,9 +82,9 @@ export type StepoverFeed = "Plunge" | "Cut";
 export interface CommonSettings {
   tool_number: number;
   tool_diameter: number;
-  /** Use the part's tool, or Machining's (the three tool fields are then ignored). */
-  inherit_tool: boolean;
-  /** Own tool picked from a library (a copy kept in the project); null = typed in. */
+  /** Inherit = the part's tool, or Machining's (the tool fields are then ignored). */
+  tool_source: "Inherit" | "Library" | "Custom";
+  /** Own tool (Library: a copy kept in the project; Custom: the operation's own values). */
   tool: Tool | null;
   stock_surface: number;
   /** Null until set. */
@@ -155,7 +155,7 @@ export interface OperationState {
   tool_from: "operation" | "part" | "machining" | "none";
   tool_number: number | null;
   tool_diameter: number | null;
-  /** The library tool's name (null when typed in, or none). */
+  /** The tool's name (null for none). */
   tool_name: string | null;
 }
 
@@ -475,8 +475,8 @@ export function setActiveLibrary(name: string | null): Promise<void> {
   return invoke<void>("set_active_library", { name });
 }
 
-/** How an operation gets its tool: from its part/Machining, typed in, or a library tool number. */
-export type OperationTool = "Inherit" | "Typed" | { Library: number };
+/** How an operation gets its tool: from its part/Machining, a custom tool, or a library tool number. */
+export type OperationTool = "Inherit" | "Custom" | { Library: number };
 
 /** Sets how an operation gets its tool. An undo step. */
 export function setOperationTool(id: number, tool: OperationTool): Promise<void> {

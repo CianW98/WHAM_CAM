@@ -36,8 +36,16 @@ pub enum StepoverFeed {
     Cut,
 }
 
-fn yes() -> bool {
-    true
+/// Where an operation's tool comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ToolSource {
+    /// The part's tool, or the Machining tool if the part has none (new operations).
+    #[default]
+    Inherit,
+    /// Its own tool, picked from the active tool library.
+    Library,
+    /// Its own tool with values set in the operation (not from a library).
+    Custom,
 }
 
 /// Settings common to all operations (spec 6.1). Lengths in mm, feeds in mm/min.
@@ -45,15 +53,14 @@ fn yes() -> bool {
 pub struct CommonSettings {
     pub tool_number: u32,
     pub tool_diameter: f64,
-    /// Use the part's tool, or the Machining tool if the part has none (the default for new
-    /// operations). The three tool fields here are then ignored; the project fills them in
-    /// before generating. False = the operation's own tool, below.
-    #[serde(default = "yes")]
-    pub inherit_tool: bool,
-    /// The operation's own tool, picked from a tool library (a copy, so the project keeps it on
-    /// a computer with different tooling). None with `inherit_tool` false = tool number and
-    /// diameter typed in directly. Only `tool_number` and `tool_diameter` are used for
-    /// toolpaths.
+    /// Where the tool comes from. For `Inherit` the project fills in the tool fields before
+    /// generating; for `Library` and `Custom`, `tool` holds the operation's own tool and
+    /// `tool_diameter` follows its diameter.
+    #[serde(default)]
+    pub tool_source: ToolSource,
+    /// The operation's own tool (`Library`: a copy of the library tool, so the project keeps it
+    /// on a computer with different tooling; `Custom`: the user's own values). Only
+    /// `tool_number` and `tool_diameter` are used for toolpaths.
     #[serde(default)]
     pub tool: Option<Tool>,
     /// Z of the top of the material.
@@ -81,7 +88,7 @@ impl Default for CommonSettings {
         Self {
             tool_number: 0,
             tool_diameter: 6.0,
-            inherit_tool: true,
+            tool_source: ToolSource::Inherit,
             tool: None,
             stock_surface: 0.0,
             target_depth: None,
@@ -244,6 +251,11 @@ impl Operation {
             c.tool_diameter > 0.0,
             "The tool diameter must be more than 0.",
         )?;
+        if c.tool_source == ToolSource::Custom
+            && let Some(tool) = &c.tool
+        {
+            tool.validate()?;
+        }
         if let Some(tool) = &c.tool {
             ok(
                 tool.end_type == EndType::Flat,

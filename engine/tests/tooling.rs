@@ -1,6 +1,7 @@
 //! Tooling: the master tool list, tool libraries, the tooling file, and picking a library tool
 //! for an operation.
 
+use wham_engine::operation::ToolSource;
 use wham_engine::tooling::{from_text, to_text};
 use wham_engine::*;
 
@@ -484,7 +485,10 @@ fn cut_with(proj: &Project) -> f64 {
 #[test]
 fn new_operations_follow_the_tree_and_need_a_tool() {
     let (mut proj, op) = project_with_pocket();
-    assert!(proj.operation(op).unwrap().common.inherit_tool);
+    assert_eq!(
+        proj.operation(op).unwrap().common.tool_source,
+        ToolSource::Inherit
+    );
     let st = state(&proj, op);
     assert_eq!(st.tool_from, "none");
     assert_eq!(st.tool_number, None);
@@ -517,20 +521,20 @@ fn machining_tool_then_part_tool_then_operation_tool() {
     proj.generate(&[]);
     assert_eq!(cut_with(&proj), 3.0);
 
-    // The operation overrides both: typed 4 mm, T9.
-    proj.set_operation_tool(op, ToolSetting::Typed).unwrap();
+    // The operation overrides both with a custom tool: 4 mm, T9.
+    proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
     let st = state(&proj, op);
     assert_eq!(
         (st.tool_from.as_str(), st.tool_number, st.tool_diameter),
         ("operation", Some(7), Some(3.0)),
-        "Typed starts from the tool in use"
+        "Custom starts from the tool in use"
     );
-    assert_eq!(st.status, "ok", "switching to Typed changes nothing yet");
-    assert_eq!(st.tool_name, None);
+    assert_eq!(st.status, "ok", "switching to Custom changes nothing yet");
     let mut o = proj.operation(op).unwrap().clone();
     o.common.tool_number = 9;
-    o.common.tool_diameter = 4.0;
+    o.common.tool.as_mut().unwrap().diameter = 4.0;
     proj.set_operation(o).unwrap();
+    assert_eq!(proj.operation(op).unwrap().common.tool_diameter, 4.0);
     proj.generate(&[]);
     assert_eq!(cut_with(&proj), 4.0);
     // A Machining or part change doesn't touch an operation with its own tool.
@@ -564,7 +568,7 @@ fn picking_a_library_tool_for_an_operation() {
     proj.set_operation_tool(op, ToolSetting::Library(picked(1)))
         .unwrap();
     let c = &proj.operation(op).unwrap().common;
-    assert!(!c.inherit_tool);
+    assert_eq!(c.tool_source, ToolSource::Library);
     assert_eq!((c.tool_number, c.tool_diameter), (1, 6.0));
     assert_eq!(c.tool.as_ref(), Some(&picked(1).tool));
     let st = state(&proj, op);
@@ -572,7 +576,10 @@ fn picking_a_library_tool_for_an_operation() {
     assert_eq!(st.tool_name.as_deref(), Some("6mm 2F"));
     // One undo step.
     proj.undo();
-    assert!(proj.operation(op).unwrap().common.inherit_tool);
+    assert_eq!(
+        proj.operation(op).unwrap().common.tool_source,
+        ToolSource::Inherit
+    );
 }
 
 #[test]
@@ -596,7 +603,7 @@ fn a_non_end_mill_in_a_project_file_fails_to_generate() {
     // E.g. a hand-edited file: the engine still refuses to cut with it.
     let (mut proj, op) = project_with_pocket();
     let mut o = proj.operation(op).unwrap().clone();
-    o.common.inherit_tool = false;
+    o.common.tool_source = ToolSource::Library;
     o.common.tool = Some(tool("6mm ball", EndType::Ball, 6.0));
     proj.set_operation(o).unwrap();
     let report = proj.generate(&[op]);
@@ -605,22 +612,53 @@ fn a_non_end_mill_in_a_project_file_fails_to_generate() {
 }
 
 #[test]
-fn typing_a_different_diameter_drops_the_tool_copy() {
+fn custom_tool_has_all_tool_values() {
     let (mut proj, op) = project_with_pocket();
-    proj.set_operation_tool(op, ToolSetting::Library(picked(1)))
-        .unwrap();
-    // Changing something else keeps the tool.
+    // Nothing to start from: a new 6 mm end mill, T1.
+    proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
+    let c = &proj.operation(op).unwrap().common;
+    assert_eq!(c.tool_source, ToolSource::Custom);
+    assert_eq!((c.tool_number, c.tool_diameter), (1, 6.0));
+    assert_eq!(
+        c.tool.as_ref().unwrap().name,
+        "6mm 2F Spiral End Mill, 20mm flute"
+    );
+
+    // Every value can be changed; the automatic name and the diameter follow.
     let mut o = proj.operation(op).unwrap().clone();
-    o.common.cut_feedrate = 1500.0;
-    proj.set_operation(o).unwrap();
-    assert!(proj.operation(op).unwrap().common.tool.is_some());
-    // Typing a new diameter drops it (number and diameter stay as typed).
-    let mut o = proj.operation(op).unwrap().clone();
-    o.common.tool_diameter = 5.0;
+    let t = o.common.tool.as_mut().unwrap();
+    t.diameter = 3.175;
+    t.flutes = 1;
+    t.flute_type = FluteType::Downcut;
+    t.helix_angle = 25.0;
+    t.shank_diameter = Some(6.0);
     proj.set_operation(o).unwrap();
     let c = &proj.operation(op).unwrap().common;
-    assert!(c.tool.is_none() && !c.inherit_tool);
-    assert_eq!((c.tool_number, c.tool_diameter), (1, 5.0));
+    assert_eq!(c.tool_diameter, 3.175);
+    let t = c.tool.as_ref().unwrap();
+    assert_eq!(t.name, "3.175mm 1F Downcut End Mill, 20mm flute");
+    assert_eq!((t.helix_angle, t.shank()), (25.0, 6.0));
+
+    // Values that don't make sense are refused, as in the tool list.
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.tool.as_mut().unwrap().flute_length = 500.0;
+    assert!(
+        proj.set_operation(o)
+            .unwrap_err()
+            .contains("overall length")
+    );
+}
+
+#[test]
+fn custom_non_end_mill_is_refused_when_generating() {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.tool.as_mut().unwrap().end_type = EndType::Ball;
+    proj.set_operation(o).unwrap();
+    let report = proj.generate(&[op]);
+    assert_eq!(report.generated, 0);
+    assert!(report.errors[0].1.contains("end mills only"));
 }
 
 #[test]

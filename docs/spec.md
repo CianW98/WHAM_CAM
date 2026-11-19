@@ -257,11 +257,14 @@ Decided with the user 2026-11-19.
   - *Machining* Properties: Tool library and **Tool** (from that library).
   - *Part* Properties: **Tool**, "Use Machining tool" by default, or a library tool to override
     it for the part's operations. No library choice of its own.
-  - *Operation* Tool box: "Use part tool" / "Use Machining tool" (the default for new
-    operations), "Typed in below" (own tool number and diameter), or a library tool.
-  - While an operation follows the tree, its Tool number and Tool diameter are shown greyed out.
-    Choosing "Typed in below" starts from the tool it was using. Typing a different diameter
-    over a library tool makes it "typed in".
+  - *Operation* Tool box, in this order: **Custom tool**, "Use part tool" / "Use Machining
+    tool" (the default for new operations), then the library's tools.
+  - **Custom tool** shows every tool setting from the Add tool window below the Tool box (tool
+    number, name with Automatic name, end type, flute type, helix angle, diameter, shank
+    diameter, flutes, flute length, overall length), starting from the tool the operation was
+    using. They are checked like a tool in the master list. Non-end-mill end types are greyed
+    out in v1.
+  - With any other choice, the Tool number and Tool diameter are shown greyed out.
   - The engine works out each operation's tool (own, else part's, else Machining's) before
     generating; the toolpath maths is unchanged. Changing a Machining or part tool marks the
     operations following it out of date (only the tool number and diameter count).

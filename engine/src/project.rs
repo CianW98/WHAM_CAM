@@ -18,6 +18,7 @@ use crate::edit;
 use crate::geometry::{Point, Shape, Transform};
 use crate::operation::{
     DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
+    ToolSource,
 };
 use crate::path;
 use crate::pocket;
@@ -85,13 +86,13 @@ pub struct OperationState {
     /// True if it machines any open shapes (lines, arcs, open polylines): a Profile then only
     /// offers On line.
     pub has_open_shapes: bool,
-    /// Where its tool comes from: "operation" (its own: library or typed), "part", "machining",
+    /// Where its tool comes from: "operation" (its own: library or custom), "part", "machining",
     /// or "none" (follows the tree but no tool is set there).
     pub tool_from: String,
     /// The tool it uses (None for "none").
     pub tool_number: Option<u32>,
     pub tool_diameter: Option<f64>,
-    /// The library tool's name (None when typed in, or "none").
+    /// The tool's name (None for "none").
     pub tool_name: Option<String>,
 }
 
@@ -102,8 +103,8 @@ pub enum ToolSetting {
     Inherit,
     /// Its own tool from a tool library.
     Library(PickedTool),
-    /// Its own tool number and diameter, typed in.
-    Typed,
+    /// Its own tool with values set in the operation, starting from the tool it was using.
+    Custom,
 }
 
 /// The message when an operation follows the tree but no tool is set there.
@@ -864,22 +865,31 @@ impl Project {
             return Err(e);
         }
         let mut op = op;
-        // A diameter typed over the library tool's means the tool is no longer that tool.
-        if !op.common.inherit_tool
-            && op
+        if op.common.tool_source != ToolSource::Inherit {
+            let tool = op
                 .common
                 .tool
-                .as_ref()
-                .is_some_and(|t| t.diameter != op.common.tool_diameter)
-        {
-            op.common.tool = None;
+                .take()
+                .ok_or("The operation's tool is missing.")?;
+            // A custom tool's name follows its values (unless typed), and its values must
+            // make sense, like a tool in the master list.
+            let tool = if op.common.tool_source == ToolSource::Custom {
+                let tool = tool.named();
+                tool.validate()?;
+                tool
+            } else {
+                tool
+            };
+            op.common.tool_diameter = tool.diameter;
+            op.common.tool = Some(tool);
         }
         self.edit(|doc| doc.parts[pi].operations[oi] = op);
         Ok(())
     }
 
-    /// Sets how an operation gets its tool, as one undo step. Switching to Typed starts from
-    /// the tool it was using, so nothing changes until a value is typed.
+    /// Sets how an operation gets its tool, as one undo step. Switching to Custom starts from
+    /// the tool it was using (or a new 6 mm end mill if it had none), so nothing changes until
+    /// a value is changed.
     pub fn set_operation_tool(&mut self, id: u32, setting: ToolSetting) -> Result<(), String> {
         let (pi, oi) = self
             .find_operation(id)
@@ -887,24 +897,26 @@ impl Project {
         if let ToolSetting::Library(p) = &setting {
             p.check_usable()?;
         }
-        let current = self.resolve(pi, &self.doc.parts[pi].operations[oi]).ok();
+        let (_, current) = self.tool_source(pi, &self.doc.parts[pi].operations[oi]);
         self.edit(|doc| {
             let c = &mut doc.parts[pi].operations[oi].common;
             match setting {
-                ToolSetting::Inherit => c.inherit_tool = true,
+                ToolSetting::Inherit => c.tool_source = ToolSource::Inherit,
                 ToolSetting::Library(p) => {
-                    c.inherit_tool = false;
+                    c.tool_source = ToolSource::Library;
                     c.tool_number = p.number;
                     c.tool_diameter = p.tool.diameter;
                     c.tool = Some(p.tool);
                 }
-                ToolSetting::Typed => {
-                    if let Some(r) = current {
-                        c.tool_number = r.common.tool_number;
-                        c.tool_diameter = r.common.tool_diameter;
-                    }
-                    c.inherit_tool = false;
-                    c.tool = None;
+                ToolSetting::Custom => {
+                    let p = current.unwrap_or(PickedTool {
+                        number: 1,
+                        tool: Tool::new_default(),
+                    });
+                    c.tool_source = ToolSource::Custom;
+                    c.tool_number = p.number;
+                    c.tool_diameter = p.tool.diameter;
+                    c.tool = Some(p.tool);
                 }
             }
         });
@@ -935,14 +947,10 @@ impl Project {
     /// Where an operation in part `pi` gets its tool, and the tool (None = no tool set).
     fn tool_source(&self, pi: usize, op: &Operation) -> (&'static str, Option<PickedTool>) {
         let c = &op.common;
-        if !c.inherit_tool {
-            let tool = c.tool.clone().unwrap_or_else(|| Tool {
-                diameter: c.tool_diameter,
-                ..Tool::new_default()
-            });
+        if c.tool_source != ToolSource::Inherit {
             return (
                 "operation",
-                Some(PickedTool {
+                c.tool.clone().map(|tool| PickedTool {
                     number: c.tool_number,
                     tool,
                 }),
@@ -960,9 +968,6 @@ impl Project {
     /// The operation with the tool it really uses filled in (from its part or Machining when it
     /// follows the tree), ready to generate. Errors if it follows the tree and no tool is set.
     fn resolve(&self, pi: usize, op: &Operation) -> Result<Operation, String> {
-        if !op.common.inherit_tool {
-            return Ok(op.clone());
-        }
         let (_, picked) = self.tool_source(pi, op);
         let picked = picked.ok_or(NO_TOOL)?;
         let mut op = op.clone();
@@ -979,7 +984,7 @@ impl Project {
     fn generated_from(&self, pi: usize, op: &Operation) -> Operation {
         match self.resolve(pi, op) {
             Ok(mut r) => {
-                r.common.inherit_tool = false;
+                r.common.tool_source = ToolSource::Custom;
                 r.common.tool = None;
                 r
             }
@@ -1141,7 +1146,6 @@ impl Project {
                         || matches!(shape, Shape::Polyline(pl) if !pl.closed)
                 });
                 let (tool_from, picked) = self.tool_source(pi, op);
-                let typed = tool_from == "operation" && op.common.tool.is_none();
                 OperationState {
                     id: op.id,
                     status: status.into(),
@@ -1150,7 +1154,7 @@ impl Project {
                     tool_from: tool_from.into(),
                     tool_number: picked.as_ref().map(|p| p.number),
                     tool_diameter: picked.as_ref().map(|p| p.tool.diameter),
-                    tool_name: picked.filter(|_| !typed).map(|p| p.tool.name),
+                    tool_name: picked.map(|p| p.tool.name),
                 }
             })
             .collect()

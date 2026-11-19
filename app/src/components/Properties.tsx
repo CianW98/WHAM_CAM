@@ -8,6 +8,8 @@ import type {
   DrillMethod,
   DrillSettings,
   Document,
+  EndType,
+  FluteType,
   Layer,
   MillingDirection,
   Operation,
@@ -27,7 +29,7 @@ import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
 import ColorSwatch from "./ColorSwatch";
 import PointsDialog, { type PointsEdit } from "./PointsDialog";
-import { endTypeLabel } from "./ToolListDialog";
+import { END_TYPES, FLUTE_TYPES, endTypeLabel } from "./ToolListDialog";
 
 /** Numbers as the engine sent them, rounded for display with trailing zeros trimmed. */
 const num = (n: number) => String(Number(n.toFixed(4)));
@@ -362,29 +364,28 @@ function libraryEntries(tooling: Tooling, library: string | null) {
 }
 
 /**
- * A Tool drop-down: `first` is the top choice (e.g. "Use Machining tool …"), `extra` more fixed
- * choices, then the active library's tools. `current` is the picked library tool (number and
- * copy), or null when the top or an extra choice is in use (`value` says which). A picked tool
+ * A Tool drop-down: the `fixed` choices first (e.g. "Custom tool", "Use Machining tool …"), then
+ * the active library's tools. `current` is the picked library tool (number and copy), or null
+ * when a fixed choice is in use (`value` says which). A picked tool
  * no longer matching the library is still shown, as kept in the project. Only end mills can
  * be picked in v1.
  */
 function ToolSelect({
   tooling,
   library,
-  first,
-  extra = [],
+  fixed,
   value,
   current,
   onPick,
 }: {
   tooling: Tooling;
   library: string | null;
-  first: string;
-  extra?: [string, string][];
-  /** "first", one of the extra keys, or "library". */
+  /** [key, label] of the choices above the library tools. */
+  fixed: [string, string][];
+  /** One of the fixed keys, or "library". */
   value: string;
   current: { number: number; tool: Tool } | null;
-  /** "first", an extra key, or a tool number. */
+  /** A fixed key, or a tool number. */
   onPick: (choice: string | number) => void;
 }) {
   const { lib, entries } = libraryEntries(tooling, library);
@@ -405,8 +406,7 @@ function ToolSelect({
           onPick(/^\d+$/.test(v) ? Number(v) : v);
         }}
       >
-        <option value="first">{first}</option>
-        {extra.map(([k, label]) => (
+        {fixed.map(([k, label]) => (
           <option key={k} value={k}>
             {label}
           </option>
@@ -450,7 +450,7 @@ function LevelToolSelect({
     <ToolSelect
       tooling={tooling}
       library={doc.active_library}
-      first={first}
+      fixed={[["first", first]]}
       value={picked ? "library" : "first"}
       current={picked}
       onPick={(c) => onPick(typeof c === "number" ? c : null)}
@@ -458,7 +458,7 @@ function LevelToolSelect({
   );
 }
 
-/** The operation's Tool drop-down: follow the part/Machining tool, typed in, or a library tool. */
+/** The operation's Tool drop-down: a custom tool, the part/Machining tool, or a library tool. */
 function OperationToolSelect({
   op,
   doc,
@@ -472,24 +472,91 @@ function OperationToolSelect({
 }) {
   const c = op.common;
   const part = doc.parts.find((p) => p.operations.some((o) => o.id === op.id));
-  const inherited = part?.tool ? `Use part tool (${pickedText(part.tool)})` : doc.machining_tool
-    ? `Use Machining tool (${pickedText(doc.machining_tool)})`
-    : doc.active_library === null
-      ? "No library selected"
-      : "No tool selected";
-  const value = c.inherit_tool ? "first" : c.tool === null ? "typed" : "library";
+  const inherited = part?.tool
+    ? `Use part tool (${pickedText(part.tool)})`
+    : doc.machining_tool
+      ? `Use Machining tool (${pickedText(doc.machining_tool)})`
+      : doc.active_library === null
+        ? "No library selected"
+        : "No tool selected";
+  const value = c.tool_source === "Inherit" ? "inherit" : c.tool_source === "Custom" ? "custom" : "library";
   return (
     <ToolSelect
       tooling={tooling}
       library={doc.active_library}
-      first={inherited}
-      extra={[["typed", "Typed in below"]]}
+      fixed={[
+        ["custom", "Custom tool"],
+        ["inherit", inherited],
+      ]}
       value={value}
-      current={!c.inherit_tool && c.tool ? { number: c.tool_number, tool: c.tool } : null}
+      current={c.tool_source === "Library" && c.tool ? { number: c.tool_number, tool: c.tool } : null}
       onPick={(choice) =>
-        void onPick(op.id, choice === "first" ? "Inherit" : choice === "typed" ? "Typed" : { Library: choice as number })
+        void onPick(op.id, choice === "inherit" ? "Inherit" : choice === "custom" ? "Custom" : { Library: choice as number })
       }
     />
+  );
+}
+
+/** A custom tool's settings (the same as the Add tool window), edited in place. */
+function CustomToolRows({ op, onSet }: { op: Operation; onSet: (op: Operation) => Promise<boolean> }) {
+  const c = op.common;
+  const t = c.tool;
+  if (!t) return null;
+  const set = (patch: Partial<Tool>) => onSet({ ...op, common: { ...c, tool: { ...t, ...patch } } });
+  const n = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
+  const whole = (text: string) => (/^\d+$/.test(text.trim()) ? Number(text) : null);
+  return (
+    <>
+      <Row label="Tool number">
+        <TextField
+          shown={String(c.tool_number)}
+          parse={whole}
+          onSave={(tool_number) => onSet({ ...op, common: { ...c, tool_number } })}
+        />
+      </Row>
+      <Row label="Tool name">
+        <TextField
+          shown={t.name}
+          parse={(text) => (text.trim() ? text.trim() : null)}
+          onSave={(name) => set({ name, auto_name: false })}
+        />
+      </Row>
+      <Row label="Automatic name">
+        <BoolField value={t.auto_name} onSave={(auto_name) => void set({ auto_name })} />
+      </Row>
+      <Row label="End type">
+        <select className="prop-input" value={t.end_type} onChange={(e) => void set({ end_type: e.target.value as EndType })}>
+          {END_TYPES.map(([v, label]) => (
+            <option key={v} value={v} disabled={v !== "Flat"}>
+              {label}
+              {v !== "Flat" ? " – not supported in v1" : ""}
+            </option>
+          ))}
+        </select>
+      </Row>
+      {t.end_type !== "Drill" && (
+        <Row label="Flute type">
+          <ChoiceField<FluteType> value={t.flute_type} choices={FLUTE_TYPES} onSave={(flute_type) => void set({ flute_type })} />
+        </Row>
+      )}
+      {t.flute_type !== "Straight" && t.end_type !== "Drill" && (
+        <Row label="Helix angle (°)">{n(t.helix_angle, (helix_angle) => set({ helix_angle }))}</Row>
+      )}
+      {t.end_type === "VBit" && <Row label="V angle (°)">{n(t.v_angle, (v_angle) => set({ v_angle }))}</Row>}
+      <Row label="Diameter">{n(t.diameter, (diameter) => set({ diameter }))}</Row>
+      <Row label="Shank diameter">
+        <TextField
+          shown={t.shank_diameter === null ? "" : String(Number(t.shank_diameter.toFixed(4)))}
+          parse={(text) => (text.trim() === "" ? "same" : parseNumber(text))}
+          onSave={(v) => set({ shank_diameter: v === "same" ? null : (v as number) })}
+        />
+      </Row>
+      <Row label="Flutes">
+        <TextField shown={String(t.flutes)} parse={whole} onSave={(flutes) => set({ flutes })} />
+      </Row>
+      <Row label="Flute length">{n(t.flute_length, (flute_length) => set({ flute_length }))}</Row>
+      <Row label="Overall length">{n(t.overall_length, (overall_length) => set({ overall_length }))}</Row>
+    </>
   );
 }
 
@@ -542,26 +609,17 @@ function OperationRows({
       <Row label="Tool">
         <OperationToolSelect op={op} doc={doc} tooling={tooling} onPick={onPickTool} />
       </Row>
-      {c.inherit_tool ? (
+      {c.tool_source === "Custom" ? (
+        <CustomToolRows op={op} onSet={onSet} />
+      ) : (
         <>
-          {/* Following the part or Machining tool: shown, not editable here. */}
+          {/* From the library, the part or Machining: shown, not editable here. */}
           <Row label="Tool number">
             <span className="muted">{state?.tool_number ?? "–"}</span>
           </Row>
           <Row label="Tool diameter">
             <span className="muted">{state?.tool_diameter != null ? String(Number(state.tool_diameter.toFixed(4))) : "–"}</span>
           </Row>
-        </>
-      ) : (
-        <>
-          <Row label="Tool number">
-            <TextField
-              shown={String(c.tool_number)}
-              parse={(t) => (/^\d+$/.test(t.trim()) ? Number(t) : null)}
-              onSave={(tool_number) => common({ tool_number })}
-            />
-          </Row>
-          <Row label="Tool diameter">{num(c.tool_diameter, (tool_diameter) => common({ tool_diameter }))}</Row>
         </>
       )}
       <Row label="Stock surface">{num(c.stock_surface, (stock_surface) => common({ stock_surface }))}</Row>
