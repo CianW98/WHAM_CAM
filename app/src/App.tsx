@@ -384,6 +384,7 @@ export default function App() {
     async (ids: number[] = []) => {
       const report = await engine.generateToolpaths(ids);
       await refresh();
+      for (const w of report.warnings) notify("warning", w);
       if (report.errors.length > 0) {
         const list = report.errors.map(([name, err]) => `${name}: ${err}`).join(" ");
         notify("error", `${plural(report.errors.length, "operation")} failed. ${list}`);

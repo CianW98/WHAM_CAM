@@ -275,6 +275,13 @@ Decided with the user 2026-11-19.
     number another, different tool in the project uses. Switching to Custom tool gives the first
     free number. Generate toolpaths checks again across every enabled operation and refuses any
     whose number clashes (the library may have changed since).
+  - **Checked against the library on this computer** (decided 2026-11-19): Generate toolpaths
+    compares each operation's tool with the same number in the project's tool library on the
+    computer it runs on (what is in that machine's tool changer). A different cutter under that
+    number is refused: "T3 in the tool library "Mill" on this computer is a different tool (…).
+    Pick it again from the library." If the project's library isn't on this computer, it still
+    generates, with a warning (amber pop-up, stays until closed) that tool numbers couldn't be
+    checked against it.
   - With any other choice, the Tool number and Tool diameter are shown greyed out.
   - The engine works out each operation's tool (own, else part's, else Machining's) before
     generating; the toolpath maths is unchanged. Changing a Machining or part tool marks the

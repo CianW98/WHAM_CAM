@@ -118,6 +118,8 @@ pub struct GenerateReport {
     pub generated: usize,
     /// (operation name, error) for each operation that failed.
     pub errors: Vec<(String, String)>,
+    /// Things to know that didn't stop generating (e.g. the library isn't on this computer).
+    pub warnings: Vec<String>,
 }
 
 /// A generated toolpath (or its error), with what it was made from.
@@ -147,10 +149,10 @@ pub struct Project {
     display: DisplayData,
     /// Copied shapes with the layer each came from. Not part of the document or of undo.
     clipboard: Vec<(String, Shape)>,
-    /// Tool numbers of the active tool library on this computer (set by the app). Custom tools
-    /// can't use them: on a tool changer that number is the library tool's pocket. Not part of
-    /// the document.
-    library_numbers: Vec<u32>,
+    /// The tools of the project's tool library on this computer, by number (set by the app):
+    /// what is in the machine's tool changer. None = the project names a library that isn't on
+    /// this computer, so it can't be checked against. Not part of the document.
+    library_tools: Option<Vec<PickedTool>>,
     /// The document as last saved or opened, to tell whether there are unsaved changes.
     saved: Document,
     /// Generated toolpaths by operation id. Not part of the document: regenerated on request.
@@ -174,7 +176,7 @@ impl Project {
             redo: Vec::new(),
             display,
             clipboard: Vec::new(),
-            library_numbers: Vec::new(),
+            library_tools: Some(Vec::new()),
             toolpaths: BTreeMap::new(),
         }
     }
@@ -941,10 +943,20 @@ impl Project {
         Ok(())
     }
 
-    /// Tells the project the tool numbers of the active library on this computer (the app
-    /// calls this before edits and generating). Custom tools can't use them.
-    pub fn set_library_numbers(&mut self, numbers: Vec<u32>) {
-        self.library_numbers = numbers;
+    /// Tells the project the tools of its tool library on this computer (the app calls this
+    /// before edits and generating): empty if the project has no library chosen, None if it
+    /// names one that isn't on this computer. Tool numbers are checked against them.
+    pub fn set_library_tools(&mut self, tools: Option<Vec<PickedTool>>) {
+        self.library_tools = tools;
+    }
+
+    /// Tool numbers of the library on this computer (none if it isn't here).
+    fn library_numbers(&self) -> Vec<u32> {
+        self.library_tools
+            .iter()
+            .flatten()
+            .map(|p| p.number)
+            .collect()
     }
 
     /// Every tool the project names with a number, except operation `except`'s own tool:
@@ -973,9 +985,8 @@ impl Project {
     /// project, for a new custom tool on operation `id`.
     fn free_tool_number(&self, id: u32) -> u32 {
         let used: HashSet<u32> = self
-            .library_numbers
-            .iter()
-            .copied()
+            .library_numbers()
+            .into_iter()
             .chain(self.project_tools(id).iter().map(|p| p.number))
             .collect();
         (1..).find(|n| !used.contains(n)).expect("a free number")
@@ -986,7 +997,7 @@ impl Project {
     fn check_custom_number(&self, op: &Operation) -> Result<(), String> {
         let c = &op.common;
         let n = c.tool_number;
-        if self.library_numbers.contains(&n) {
+        if self.library_numbers().contains(&n) {
             return Err(format!(
                 "T{n} is a tool in the tool library. Give the custom tool a number that isn't in the library."
             ));
@@ -1003,6 +1014,26 @@ impl Project {
             ));
         }
         Ok(())
+    }
+
+    /// If the tool an operation uses has a number that the library on this computer gives to a
+    /// different cutter, the message saying so: the machine would load the library's cutter.
+    fn differs_from_library(&self, pi: usize, op: &Operation) -> Option<String> {
+        let (_, mine) = self.tool_source(pi, op);
+        let mine = mine?;
+        let lib = self
+            .library_tools
+            .iter()
+            .flatten()
+            .find(|p| p.number == mine.number)?;
+        if lib.tool.same_cutter(&mine.tool) {
+            return None;
+        }
+        let name = self.doc.active_library.as_deref().unwrap_or("");
+        Some(format!(
+            "T{} in the tool library \"{name}\" on this computer is a different tool ({}). Pick it again from the library.",
+            mine.number, lib.tool.name
+        ))
     }
 
     /// Sets the Machining tool (None = none) as one undo step.
@@ -1165,7 +1196,15 @@ impl Project {
         let mut report = GenerateReport {
             generated: 0,
             errors: Vec::new(),
+            warnings: Vec::new(),
         };
+        if self.library_tools.is_none()
+            && let Some(name) = &self.doc.active_library
+        {
+            report.warnings.push(format!(
+                "Tool library \"{name}\" isn't on this computer: tool numbers couldn't be checked against it."
+            ));
+        }
         // One tool number must mean one tool across the whole job (every enabled operation,
         // as in the G-code): the machine loads tools by number.
         let job: Vec<(u32, PickedTool)> = self
@@ -1193,15 +1232,18 @@ impl Project {
                     })
             })
             .collect();
+        let library_numbers = self.library_numbers();
         for (pi, op) in ops {
             // Generated with the tool it really uses (its own, the part's or Machining's).
             let custom_in_library = op.common.tool_source == ToolSource::Custom
-                && self.library_numbers.contains(&op.common.tool_number);
+                && library_numbers.contains(&op.common.tool_number);
             let result = if custom_in_library {
                 Err(format!(
                     "T{} is a tool in the tool library. Give the custom tool a number that isn't in the library.",
                     op.common.tool_number
                 ))
+            } else if let Some(e) = self.differs_from_library(pi, &op) {
+                Err(e)
             } else if let Some(e) = clashes.get(&op.id) {
                 Err(e.clone())
             } else {

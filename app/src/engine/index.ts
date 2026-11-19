@@ -209,6 +209,8 @@ export interface GenerateReport {
   generated: number;
   /** [operation name, error]. */
   errors: [string, string][];
+  /** Things to know that didn't stop generating (e.g. the tool library isn't on this computer). */
+  warnings: string[];
 }
 
 export interface Document {

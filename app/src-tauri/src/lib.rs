@@ -564,24 +564,27 @@ fn set_operation(
     project.set_operation(op)
 }
 
-/// Tells the project the active library's tool numbers on this computer (custom tools can't
-/// use them).
+/// Tells the project the tools of its library on this computer, so tool numbers can be checked
+/// against them (empty if no library is chosen; None if it isn't on this computer).
 fn tell_library_numbers(project: &mut Project, tooling: &State<ToolingState>) {
-    let numbers = project
-        .document()
-        .active_library
-        .as_deref()
-        .and_then(|name| {
-            tooling
-                .0
-                .lock()
-                .unwrap()
-                .tooling
-                .library(name)
-                .map(|l| l.tools.iter().map(|t| t.number).collect())
-        })
-        .unwrap_or_default();
-    project.set_library_numbers(numbers);
+    let tools = match project.document().active_library.as_deref() {
+        None => Some(Vec::new()),
+        Some(name) => {
+            let tooling = &tooling.0.lock().unwrap().tooling;
+            tooling.library(name).map(|lib| {
+                lib.tools
+                    .iter()
+                    .filter_map(|e| {
+                        Some(PickedTool {
+                            number: e.number,
+                            tool: tooling.tool(e.tool_id)?.clone(),
+                        })
+                    })
+                    .collect()
+            })
+        }
+    };
+    project.set_library_tools(tools);
 }
 
 #[tauri::command]

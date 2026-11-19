@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 
-type Kind = "info" | "error";
+type Kind = "info" | "warning" | "error";
 interface Note {
   id: number;
   kind: Kind;
@@ -10,7 +10,7 @@ type Notify = (kind: Kind, text: string) => void;
 
 const NotifyContext = createContext<Notify>(() => {});
 
-/** Show a pop-up message. Info messages fade out; errors stay until closed. */
+/** Show a pop-up message. Info messages fade out; warnings and errors stay until closed. */
 export function useNotify(): Notify {
   return useContext(NotifyContext);
 }
@@ -39,7 +39,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="notifications">
         {notes.map((n) => (
-          <div key={n.id} className={`note note-${n.kind}`} role={n.kind === "error" ? "alert" : "status"}>
+          <div key={n.id} className={`note note-${n.kind}`} role={n.kind === "info" ? "status" : "alert"}>
             <span>{n.text}</span>
             <button className="note-close" onClick={() => dismiss(n.id)} aria-label="Dismiss">
               ×

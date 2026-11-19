@@ -301,6 +301,10 @@ button:hover {
   border-left-color: #d03030;
   background: #fff1f1;
 }
+.note-warning {
+  border-left-color: #e0a020;
+  background: #fff8e6;
+}
 .note span {
   flex: 1;
 }

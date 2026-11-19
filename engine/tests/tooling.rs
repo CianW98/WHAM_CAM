@@ -702,7 +702,7 @@ fn set_custom_number(proj: &mut Project, op: u32, n: u32) -> Result<(), String> 
 #[test]
 fn custom_tools_avoid_library_numbers() {
     let (mut proj, op) = project_with_pocket();
-    proj.set_library_numbers(vec![1, 2, 5]);
+    proj.set_library_tools(Some(vec![picked(1), picked(2), picked(5)]));
     proj.set_machining_tool(Some(picked(1))).unwrap();
     proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
     assert_eq!(
@@ -739,7 +739,7 @@ fn unrelated_edits_are_not_blocked_by_a_number_clash() {
     let (mut proj, op) = project_with_pocket();
     proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
     // The library later gets a T1.
-    proj.set_library_numbers(vec![1]);
+    proj.set_library_tools(Some(vec![picked(1)]));
     let mut o = proj.operation(op).unwrap().clone();
     o.name = "Renamed".into();
     proj.set_operation(o).unwrap();
@@ -856,4 +856,70 @@ fn playback_carries_each_operations_real_tool() {
     );
     assert_eq!(bp.last().unwrap().y, 75.0);
     assert_eq!(tool(b).flute_length, 20.0);
+}
+
+// --- Checking the project's tools against the library on this computer -----------------------------
+
+/// A project with one pocket using library tool T1 (6 mm), library "Mill" chosen.
+fn project_using_t1() -> (Project, u32) {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_active_library(Some("Mill".into()));
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    (proj, op)
+}
+
+#[test]
+fn same_tool_in_the_library_generates() {
+    let (mut proj, _) = project_using_t1();
+    proj.set_library_tools(Some(vec![picked(1)]));
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 1, "{:?}", report.errors);
+    assert!(report.warnings.is_empty());
+}
+
+#[test]
+fn a_different_tool_under_that_number_in_the_library_is_refused() {
+    // E.g. another computer whose "Mill" has a 3 mm cutter as T1, or T1 changed since picking.
+    let (mut proj, _) = project_using_t1();
+    proj.set_library_tools(Some(vec![PickedTool {
+        number: 1,
+        ..picked(7)
+    }]));
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 0);
+    let err = &report.errors[0].1;
+    assert!(
+        err.contains("T1 in the tool library \"Mill\" on this computer is a different tool"),
+        "{err}"
+    );
+    assert!(err.contains("Pick it again"), "{err}");
+}
+
+#[test]
+fn a_tool_number_not_in_the_library_is_fine() {
+    let (mut proj, _) = project_using_t1();
+    proj.set_library_tools(Some(vec![picked(5)]));
+    assert_eq!(proj.generate(&[]).generated, 1);
+}
+
+#[test]
+fn missing_library_warns_but_still_generates() {
+    let (mut proj, _) = project_using_t1();
+    proj.set_library_tools(None);
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 1);
+    assert_eq!(
+        report.warnings,
+        vec!["Tool library \"Mill\" isn't on this computer: tool numbers couldn't be checked against it.".to_string()]
+    );
+}
+
+#[test]
+fn no_library_chosen_gives_no_warning() {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
+    proj.set_library_tools(Some(Vec::new()));
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 1);
+    assert!(report.warnings.is_empty());
 }
