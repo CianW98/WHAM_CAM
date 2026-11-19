@@ -3,12 +3,26 @@
 use wham_engine::operation::{OperationKind, ProfileSide};
 use wham_engine::*;
 
+/// A new project with a 6 mm end mill (T1) as the Machining tool, which new operations use.
+fn project() -> Project {
+    let mut proj = Project::new();
+    proj.set_machining_tool(Some(PickedTool {
+        number: 1,
+        tool: Tool {
+            diameter: 6.0,
+            ..Tool::new_default()
+        },
+    }))
+    .unwrap();
+    proj
+}
+
 fn square(x0: f64, y0: f64, size: f64) -> Shape {
     Shape::rectangle(Point::new(x0, y0), size, size, 0.0)
 }
 
 fn project_with_pocket() -> (Project, u32, u32) {
-    let mut proj = Project::new();
+    let mut proj = project();
     let shape = proj.add_shape("Default", square(0.0, 0.0, 50.0)).unwrap();
     let op = proj.add_pocket(&[shape]).unwrap();
     (proj, shape, op)
@@ -39,7 +53,7 @@ fn add_pocket_names_it_and_undo_removes_it() {
 
 #[test]
 fn shapes_that_cant_be_pocketed_are_refused() {
-    let mut proj = Project::new();
+    let mut proj = project();
     let line = proj
         .add_shape(
             "Default",
@@ -94,7 +108,7 @@ fn changes_mark_the_toolpath_out_of_date() {
     assert_eq!(status(&proj, op), "ok");
 
     // So does a setting.
-    o.common.tool_diameter = 3.0;
+    o.common.cut_feedrate = 1234.0;
     proj.set_operation(o).unwrap();
     assert_eq!(status(&proj, op), "outdated");
 
@@ -183,7 +197,7 @@ fn operation_shapes_can_be_changed_and_bad_ones_are_refused() {
 
 #[test]
 fn add_profile_defaults_to_outside_or_on_line_for_open_shapes() {
-    let mut proj = Project::new();
+    let mut proj = project();
     let closed = proj.add_shape("Default", square(0.0, 0.0, 50.0)).unwrap();
     let line = proj
         .add_shape(
@@ -229,7 +243,7 @@ fn add_profile_defaults_to_outside_or_on_line_for_open_shapes() {
 
 #[test]
 fn profile_generates_and_is_saved() {
-    let mut proj = Project::new();
+    let mut proj = project();
     let shape = proj.add_shape("Default", square(0.0, 0.0, 50.0)).unwrap();
     let op = proj.add_profile(&[shape]).unwrap();
     let mut o = proj.operation(op).unwrap().clone();
@@ -270,7 +284,7 @@ fn profile_generates_and_is_saved() {
 #[test]
 fn add_drill_takes_points_circles_and_arcs_and_checks_its_settings() {
     use wham_engine::operation::DrillMethod;
-    let mut proj = Project::new();
+    let mut proj = project();
     let pts = proj
         .add_shape(
             "Default",

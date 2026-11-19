@@ -232,8 +232,9 @@ Done:
 
 - Tooling (spec 5.5, decided 2026-11-19): master tool list and tool libraries per computer
   (`engine/src/tooling.rs`; file `tooling.json` in the app's settings folder, read/written by the
-  app layer), left panel tabs Project | Setup, project's active library, operation Tool drop-down
-  copying number + diameter + a copy of the tool into the project. Tools hold no feeds/speeds
+  app layer), left panel tabs Project | Setup. Tools follow the Machining tree: Machining
+  (library + tool) → part (tool override) → operation (own library tool or typed in), resolved
+  by the engine before generating (`Project::resolve`); picked tools are copied into the project. Tools hold no feeds/speeds
   (material-dependent: materials library later). Only flat end mills can be used in v1.
 
 Next:

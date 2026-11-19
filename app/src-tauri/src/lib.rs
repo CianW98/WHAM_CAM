@@ -9,8 +9,9 @@ use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
-    GenerateReport, ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project,
-    Shape, Snap, SnapOptions, Tool, ToolDrawing, Tooling, ToolpathDisplay, TransformOp,
+    GenerateReport, ImportReport, JoinReport, Operation, OperationState, PickedTool, Playback,
+    Point, Project, Shape, Snap, SnapOptions, Tool, ToolDrawing, ToolSetting, Tooling,
+    ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -261,32 +262,84 @@ fn set_active_library(name: Option<String>, state: State<AppState>) {
     state.0.lock().unwrap().set_active_library(name);
 }
 
-/// Gives an operation tool `number` from the project's active library (None = keep the
-/// typed-in number and diameter, without a library tool).
+/// Tool `number` from the project's active library on this computer, as a copy for the project.
+fn library_pick(
+    project: &Project,
+    tooling: &State<ToolingState>,
+    number: u32,
+) -> Result<PickedTool, String> {
+    let library = project
+        .document()
+        .active_library
+        .clone()
+        .ok_or("Choose a tool library first (Machining properties).")?;
+    let tooling = tooling.0.lock().unwrap();
+    let tool = tooling
+        .tooling
+        .library_tool(&library, number)
+        .ok_or_else(|| {
+            format!("There is no tool {number} in the tool library \"{library}\" on this computer.")
+        })?;
+    Ok(PickedTool {
+        number,
+        tool: tool.clone(),
+    })
+}
+
+/// Sets the Machining tool to tool `number` of the active library (None = none).
 #[tauri::command]
-fn set_operation_tool(
-    id: u32,
+fn set_machining_tool(
     number: Option<u32>,
     state: State<AppState>,
     tooling: State<ToolingState>,
 ) -> Result<(), String> {
     let mut project = state.0.lock().unwrap();
-    let tool = match number {
-        None => None,
-        Some(n) => {
-            let library = project
-                .document()
-                .active_library
-                .clone()
-                .ok_or("Choose a tool library for the project first (Machining menu).")?;
-            let tooling = tooling.0.lock().unwrap();
-            let tool = tooling.tooling.library_tool(&library, n).ok_or_else(|| {
-                format!("There is no tool {n} in the tool library \"{library}\" on this computer.")
-            })?;
-            Some((n, tool.clone()))
-        }
+    let pick = number
+        .map(|n| library_pick(&project, &tooling, n))
+        .transpose()?;
+    project.set_machining_tool(pick)
+}
+
+/// Sets part `part`'s own tool to tool `number` of the active library (None = use Machining's).
+#[tauri::command]
+fn set_part_tool(
+    part: usize,
+    number: Option<u32>,
+    state: State<AppState>,
+    tooling: State<ToolingState>,
+) -> Result<(), String> {
+    let mut project = state.0.lock().unwrap();
+    let pick = number
+        .map(|n| library_pick(&project, &tooling, n))
+        .transpose()?;
+    project.set_part_tool(part, pick)
+}
+
+/// How an operation gets its tool, as the interface sends it.
+#[derive(serde::Deserialize)]
+enum OperationTool {
+    /// The part's tool, or Machining's.
+    Inherit,
+    /// Its own number and diameter, typed in.
+    Typed,
+    /// Its own tool: this number from the active library.
+    Library(u32),
+}
+
+#[tauri::command]
+fn set_operation_tool(
+    id: u32,
+    tool: OperationTool,
+    state: State<AppState>,
+    tooling: State<ToolingState>,
+) -> Result<(), String> {
+    let mut project = state.0.lock().unwrap();
+    let setting = match tool {
+        OperationTool::Inherit => ToolSetting::Inherit,
+        OperationTool::Typed => ToolSetting::Typed,
+        OperationTool::Library(n) => ToolSetting::Library(library_pick(&project, &tooling, n)?),
     };
-    project.set_operation_tool(id, tool)
+    project.set_operation_tool(id, setting)
 }
 
 // --- Project files ------------------------------------------------------------------------------
@@ -606,6 +659,8 @@ pub fn run() {
             remove_library_tool,
             set_active_library,
             set_operation_tool,
+            set_machining_tool,
+            set_part_tool,
             new_project,
             open_project,
             save_project,

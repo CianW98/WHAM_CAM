@@ -24,7 +24,7 @@ use crate::pocket;
 use crate::profile;
 use crate::project_file;
 use crate::safety;
-use crate::tooling::{EndType, Tool};
+use crate::tooling::{PickedTool, Tool};
 use crate::toolpath::Toolpath;
 use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
 
@@ -85,7 +85,30 @@ pub struct OperationState {
     /// True if it machines any open shapes (lines, arcs, open polylines): a Profile then only
     /// offers On line.
     pub has_open_shapes: bool,
+    /// Where its tool comes from: "operation" (its own: library or typed), "part", "machining",
+    /// or "none" (follows the tree but no tool is set there).
+    pub tool_from: String,
+    /// The tool it uses (None for "none").
+    pub tool_number: Option<u32>,
+    pub tool_diameter: Option<f64>,
+    /// The library tool's name (None when typed in, or "none").
+    pub tool_name: Option<String>,
 }
+
+/// How an operation gets its tool (for [`Project::set_operation_tool`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ToolSetting {
+    /// Use the part's tool, or the Machining tool.
+    Inherit,
+    /// Its own tool from a tool library.
+    Library(PickedTool),
+    /// Its own tool number and diameter, typed in.
+    Typed,
+}
+
+/// The message when an operation follows the tree but no tool is set there.
+pub const NO_TOOL: &str =
+    "No tool selected. Choose a tool for Machining, the part, or the operation.";
 
 /// Result of Generate toolpaths, for the pop-up message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -817,6 +840,7 @@ impl Project {
             if doc.parts.is_empty() {
                 doc.parts.push(crate::document::Part {
                     name: "Part1".into(),
+                    tool: None,
                     operations: Vec::new(),
                 });
             }
@@ -841,11 +865,12 @@ impl Project {
         }
         let mut op = op;
         // A diameter typed over the library tool's means the tool is no longer that tool.
-        if op
-            .common
-            .tool
-            .as_ref()
-            .is_some_and(|t| t.diameter != op.common.tool_diameter)
+        if !op.common.inherit_tool
+            && op
+                .common
+                .tool
+                .as_ref()
+                .is_some_and(|t| t.diameter != op.common.tool_diameter)
         {
             op.common.tool = None;
         }
@@ -853,35 +878,113 @@ impl Project {
         Ok(())
     }
 
-    /// Gives an operation a tool from a tool library as one undo step: its tool number and
-    /// diameter, plus a copy of the tool kept in the project. `None` keeps the number and
-    /// diameter but drops the copy (values typed in directly). Only end mills can be
-    /// used in v1.
-    pub fn set_operation_tool(&mut self, id: u32, tool: Option<(u32, Tool)>) -> Result<(), String> {
+    /// Sets how an operation gets its tool, as one undo step. Switching to Typed starts from
+    /// the tool it was using, so nothing changes until a value is typed.
+    pub fn set_operation_tool(&mut self, id: u32, setting: ToolSetting) -> Result<(), String> {
         let (pi, oi) = self
             .find_operation(id)
             .ok_or_else(|| format!("There is no operation with id {id}."))?;
-        if let Some((_, t)) = &tool
-            && t.end_type != EndType::Flat
-        {
-            return Err(format!(
-                "{} is a {}: v1 toolpaths are for end mills only.",
-                t.name,
-                t.end_type.label()
-            ));
+        if let ToolSetting::Library(p) = &setting {
+            p.check_usable()?;
         }
+        let current = self.resolve(pi, &self.doc.parts[pi].operations[oi]).ok();
         self.edit(|doc| {
             let c = &mut doc.parts[pi].operations[oi].common;
-            match tool {
-                Some((number, t)) => {
-                    c.tool_number = number;
-                    c.tool_diameter = t.diameter;
-                    c.tool = Some(t);
+            match setting {
+                ToolSetting::Inherit => c.inherit_tool = true,
+                ToolSetting::Library(p) => {
+                    c.inherit_tool = false;
+                    c.tool_number = p.number;
+                    c.tool_diameter = p.tool.diameter;
+                    c.tool = Some(p.tool);
                 }
-                None => c.tool = None,
+                ToolSetting::Typed => {
+                    if let Some(r) = current {
+                        c.tool_number = r.common.tool_number;
+                        c.tool_diameter = r.common.tool_diameter;
+                    }
+                    c.inherit_tool = false;
+                    c.tool = None;
+                }
             }
         });
         Ok(())
+    }
+
+    /// Sets the Machining tool (None = none) as one undo step.
+    pub fn set_machining_tool(&mut self, tool: Option<PickedTool>) -> Result<(), String> {
+        if let Some(p) = &tool {
+            p.check_usable()?;
+        }
+        self.edit(|doc| doc.machining_tool = tool);
+        Ok(())
+    }
+
+    /// Sets a part's own tool (None = use the Machining tool) as one undo step.
+    pub fn set_part_tool(&mut self, part: usize, tool: Option<PickedTool>) -> Result<(), String> {
+        if part >= self.doc.parts.len() {
+            return Err(format!("There is no part {part}."));
+        }
+        if let Some(p) = &tool {
+            p.check_usable()?;
+        }
+        self.edit(|doc| doc.parts[part].tool = tool);
+        Ok(())
+    }
+
+    /// Where an operation in part `pi` gets its tool, and the tool (None = no tool set).
+    fn tool_source(&self, pi: usize, op: &Operation) -> (&'static str, Option<PickedTool>) {
+        let c = &op.common;
+        if !c.inherit_tool {
+            let tool = c.tool.clone().unwrap_or_else(|| Tool {
+                diameter: c.tool_diameter,
+                ..Tool::new_default()
+            });
+            return (
+                "operation",
+                Some(PickedTool {
+                    number: c.tool_number,
+                    tool,
+                }),
+            );
+        }
+        if let Some(p) = &self.doc.parts[pi].tool {
+            return ("part", Some(p.clone()));
+        }
+        match &self.doc.machining_tool {
+            Some(p) => ("machining", Some(p.clone())),
+            None => ("none", None),
+        }
+    }
+
+    /// The operation with the tool it really uses filled in (from its part or Machining when it
+    /// follows the tree), ready to generate. Errors if it follows the tree and no tool is set.
+    fn resolve(&self, pi: usize, op: &Operation) -> Result<Operation, String> {
+        if !op.common.inherit_tool {
+            return Ok(op.clone());
+        }
+        let (_, picked) = self.tool_source(pi, op);
+        let picked = picked.ok_or(NO_TOOL)?;
+        let mut op = op.clone();
+        op.common.tool_number = picked.number;
+        op.common.tool_diameter = picked.tool.diameter;
+        op.common.tool = Some(picked.tool);
+        Ok(op)
+    }
+
+    /// What an operation's toolpath is made from, to tell when it is out of date: the resolved
+    /// operation (so a changed Machining or part tool counts), or the operation as it is if no
+    /// tool is set. Where the tool came from doesn't count, only its number and diameter: the
+    /// toolpath is the same whichever level gave them.
+    fn generated_from(&self, pi: usize, op: &Operation) -> Operation {
+        match self.resolve(pi, op) {
+            Ok(mut r) => {
+                r.common.inherit_tool = false;
+                r.common.tool = None;
+                r
+            }
+            Err(_) => op.clone(),
+        }
     }
 
     /// Sets the project's active tool library (by name; None = none) as one undo step.
@@ -970,35 +1073,40 @@ impl Project {
 
     /// Generates the toolpaths of the given operations (all enabled ones if `ids` is empty).
     pub fn generate(&mut self, ids: &[u32]) -> GenerateReport {
-        let ops: Vec<Operation> = self
+        let ops: Vec<(usize, Operation)> = self
             .doc
             .parts
             .iter()
-            .flat_map(|p| &p.operations)
-            .filter(|o| {
+            .enumerate()
+            .flat_map(|(pi, p)| p.operations.iter().map(move |o| (pi, o)))
+            .filter(|(_, o)| {
                 if ids.is_empty() {
                     o.enabled
                 } else {
                     ids.contains(&o.id)
                 }
             })
-            .cloned()
+            .map(|(pi, o)| (pi, o.clone()))
             .collect();
         let mut report = GenerateReport {
             generated: 0,
             errors: Vec::new(),
         };
-        for op in ops {
-            let result = self.make_toolpath(&op);
+        for (pi, op) in ops {
+            // Generated with the tool it really uses (its own, the part's or Machining's).
+            let result = self
+                .resolve(pi, &op)
+                .and_then(|resolved| self.make_toolpath(&resolved));
             match &result {
                 Ok(_) => report.generated += 1,
                 Err(e) => report.errors.push((op.name.clone(), e.clone())),
             }
             let shapes = self.current_shapes(&op);
+            let operation = self.generated_from(pi, &op);
             self.toolpaths.insert(
                 op.id,
                 Generated {
-                    operation: op,
+                    operation,
                     shapes,
                     result,
                 },
@@ -1012,12 +1120,14 @@ impl Project {
         self.doc
             .parts
             .iter()
-            .flat_map(|p| &p.operations)
-            .map(|op| {
+            .enumerate()
+            .flat_map(|(pi, p)| p.operations.iter().map(move |o| (pi, o)))
+            .map(|(pi, op)| {
                 let (status, message) = match self.toolpaths.get(&op.id) {
                     None => ("none", None),
                     Some(g) => {
-                        let current = g.operation == *op && g.shapes == self.current_shapes(op);
+                        let current = g.operation == self.generated_from(pi, op)
+                            && g.shapes == self.current_shapes(op);
                         match (&g.result, current) {
                             (Ok(_), true) => ("ok", None),
                             (Err(e), true) => ("error", Some(e.clone())),
@@ -1030,11 +1140,17 @@ impl Project {
                     matches!(shape, Shape::Line { .. } | Shape::Arc { .. })
                         || matches!(shape, Shape::Polyline(pl) if !pl.closed)
                 });
+                let (tool_from, picked) = self.tool_source(pi, op);
+                let typed = tool_from == "operation" && op.common.tool.is_none();
                 OperationState {
                     id: op.id,
                     status: status.into(),
                     message,
                     has_open_shapes,
+                    tool_from: tool_from.into(),
+                    tool_number: picked.as_ref().map(|p| p.number),
+                    tool_diameter: picked.as_ref().map(|p| p.tool.diameter),
+                    tool_name: picked.filter(|_| !typed).map(|p| p.tool.name),
                 }
             })
             .collect()

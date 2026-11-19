@@ -33,8 +33,10 @@ pub use dxf::{DxfDrawing, DxfError, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};
 pub use operation::Operation;
 pub use project::{
-    BoxMode, BreakReport, DxfInfo, GenerateReport, ImportReport, JoinReport, OperationState,
-    Project,
+    BoxMode, BreakReport, DxfInfo, GenerateReport, ImportReport, JoinReport, NO_TOOL,
+    OperationState, Project, ToolSetting,
 };
-pub use tooling::{EndType, FluteType, LibraryTool, Tool, ToolDrawing, ToolLibrary, Tooling};
+pub use tooling::{
+    EndType, FluteType, LibraryTool, PickedTool, Tool, ToolDrawing, ToolLibrary, Tooling,
+};
 pub use transform::{TransformOp, shape_bounds};

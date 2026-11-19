@@ -36,14 +36,24 @@ pub enum StepoverFeed {
     Cut,
 }
 
+fn yes() -> bool {
+    true
+}
+
 /// Settings common to all operations (spec 6.1). Lengths in mm, feeds in mm/min.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommonSettings {
     pub tool_number: u32,
     pub tool_diameter: f64,
-    /// A copy of the tool picked from a tool library, so the project keeps it on a computer
-    /// with different tooling. None = tool number and diameter typed in directly. Only
-    /// `tool_number` and `tool_diameter` are used for toolpaths.
+    /// Use the part's tool, or the Machining tool if the part has none (the default for new
+    /// operations). The three tool fields here are then ignored; the project fills them in
+    /// before generating. False = the operation's own tool, below.
+    #[serde(default = "yes")]
+    pub inherit_tool: bool,
+    /// The operation's own tool, picked from a tool library (a copy, so the project keeps it on
+    /// a computer with different tooling). None with `inherit_tool` false = tool number and
+    /// diameter typed in directly. Only `tool_number` and `tool_diameter` are used for
+    /// toolpaths.
     #[serde(default)]
     pub tool: Option<Tool>,
     /// Z of the top of the material.
@@ -71,6 +81,7 @@ impl Default for CommonSettings {
         Self {
             tool_number: 0,
             tool_diameter: 6.0,
+            inherit_tool: true,
             tool: None,
             stock_surface: 0.0,
             target_depth: None,

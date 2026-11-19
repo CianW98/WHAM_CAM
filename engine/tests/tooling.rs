@@ -441,7 +441,7 @@ fn damaged_tooling_files_are_refused() {
     assert!(from_text(&to_text(&bad)).is_err());
 }
 
-// --- Operations -------------------------------------------------------------------------------
+// --- Operations: the tool comes from the operation, its part, or Machining ----------------------
 
 fn project_with_pocket() -> (Project, u32) {
     let mut proj = Project::new();
@@ -452,42 +452,151 @@ fn project_with_pocket() -> (Project, u32) {
         )
         .unwrap();
     let op = proj.add_pocket(&[shape]).unwrap();
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.target_depth = Some(-1.0);
+    proj.set_operation(o).unwrap();
     (proj, op)
 }
 
-#[test]
-fn picking_a_tool_copies_number_diameter_and_tool() {
+/// Tool `number` from the sample library "Mill" (T1 = 6 mm end mill, T5 = 6 mm ball), or the
+/// 3 mm end mill as `number` for any other number.
+fn picked(number: u32) -> PickedTool {
     let t = sample();
+    let tool = match number {
+        1 | 5 => t.library_tool("Mill", number).unwrap().clone(),
+        _ => t.tool(2).unwrap().clone(),
+    };
+    PickedTool { number, tool }
+}
+
+fn state(proj: &Project, op: u32) -> OperationState {
+    proj.operation_states()
+        .into_iter()
+        .find(|s| s.id == op)
+        .unwrap()
+}
+
+/// The tool diameter the operation's toolpath was made with (from the playback).
+fn cut_with(proj: &Project) -> f64 {
+    proj.playback().steps[0].tool_diameter
+}
+
+#[test]
+fn new_operations_follow_the_tree_and_need_a_tool() {
     let (mut proj, op) = project_with_pocket();
-    let picked = t.library_tool("Mill", 1).unwrap().clone();
-    proj.set_operation_tool(op, Some((1, picked.clone())))
+    assert!(proj.operation(op).unwrap().common.inherit_tool);
+    let st = state(&proj, op);
+    assert_eq!(st.tool_from, "none");
+    assert_eq!(st.tool_number, None);
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 0);
+    assert_eq!(report.errors[0].1, NO_TOOL);
+}
+
+#[test]
+fn machining_tool_then_part_tool_then_operation_tool() {
+    let (mut proj, op) = project_with_pocket();
+    // Machining: T1, 6 mm.
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    let st = state(&proj, op);
+    assert_eq!(
+        (st.tool_from.as_str(), st.tool_number, st.tool_diameter),
+        ("machining", Some(1), Some(6.0))
+    );
+    assert_eq!(proj.generate(&[]).generated, 1);
+    assert_eq!(cut_with(&proj), 6.0);
+
+    // The part overrides it: T7, 3 mm. The toolpath is now out of date.
+    proj.set_part_tool(0, Some(picked(7))).unwrap();
+    let st = state(&proj, op);
+    assert_eq!(
+        (st.tool_from.as_str(), st.tool_number, st.tool_diameter),
+        ("part", Some(7), Some(3.0))
+    );
+    assert_eq!(st.status, "outdated");
+    proj.generate(&[]);
+    assert_eq!(cut_with(&proj), 3.0);
+
+    // The operation overrides both: typed 4 mm, T9.
+    proj.set_operation_tool(op, ToolSetting::Typed).unwrap();
+    let st = state(&proj, op);
+    assert_eq!(
+        (st.tool_from.as_str(), st.tool_number, st.tool_diameter),
+        ("operation", Some(7), Some(3.0)),
+        "Typed starts from the tool in use"
+    );
+    assert_eq!(st.status, "ok", "switching to Typed changes nothing yet");
+    assert_eq!(st.tool_name, None);
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.tool_number = 9;
+    o.common.tool_diameter = 4.0;
+    proj.set_operation(o).unwrap();
+    proj.generate(&[]);
+    assert_eq!(cut_with(&proj), 4.0);
+    // A Machining or part change doesn't touch an operation with its own tool.
+    proj.set_part_tool(0, None).unwrap();
+    assert_eq!(state(&proj, op).status, "ok");
+
+    // Back to following the tree: the part has none now, so Machining's T1.
+    proj.set_operation_tool(op, ToolSetting::Inherit).unwrap();
+    let st = state(&proj, op);
+    assert_eq!(
+        (st.tool_from.as_str(), st.tool_number),
+        ("machining", Some(1))
+    );
+    assert_eq!(st.status, "outdated");
+}
+
+#[test]
+fn values_typed_on_a_following_operation_are_ignored() {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.tool_diameter = 20.0;
+    proj.set_operation(o).unwrap();
+    proj.generate(&[]);
+    assert_eq!(cut_with(&proj), 6.0);
+}
+
+#[test]
+fn picking_a_library_tool_for_an_operation() {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_operation_tool(op, ToolSetting::Library(picked(1)))
         .unwrap();
     let c = &proj.operation(op).unwrap().common;
-    assert_eq!(c.tool_number, 1);
-    assert_eq!(c.tool_diameter, 6.0);
-    assert_eq!(c.tool.as_ref(), Some(&picked));
+    assert!(!c.inherit_tool);
+    assert_eq!((c.tool_number, c.tool_diameter), (1, 6.0));
+    assert_eq!(c.tool.as_ref(), Some(&picked(1).tool));
+    let st = state(&proj, op);
+    assert_eq!(st.tool_from, "operation");
+    assert_eq!(st.tool_name.as_deref(), Some("6mm 2F"));
     // One undo step.
     proj.undo();
-    assert!(proj.operation(op).unwrap().common.tool.is_none());
+    assert!(proj.operation(op).unwrap().common.inherit_tool);
 }
 
 #[test]
-fn only_flat_end_mills_can_be_picked() {
-    let t = sample();
+fn only_end_mills_can_be_picked_anywhere() {
     let (mut proj, op) = project_with_pocket();
-    let ball = t.library_tool("Mill", 5).unwrap().clone();
-    let err = proj.set_operation_tool(op, Some((5, ball))).unwrap_err();
-    assert!(err.contains("end mills only"), "{err}");
-    assert!(proj.operation(op).unwrap().common.tool.is_none());
-    assert!(!proj.can_undo() || proj.operation(op).unwrap().common.tool_number == 0);
+    let ball = picked(5);
+    for err in [
+        proj.set_machining_tool(Some(ball.clone())).unwrap_err(),
+        proj.set_part_tool(0, Some(ball.clone())).unwrap_err(),
+        proj.set_operation_tool(op, ToolSetting::Library(ball.clone()))
+            .unwrap_err(),
+    ] {
+        assert!(err.contains("end mills only"), "{err}");
+    }
+    assert!(!proj.can_undo() || proj.document().machining_tool.is_none());
+    assert!(proj.set_part_tool(3, Some(picked(1))).is_err(), "no part 3");
 }
 
 #[test]
-fn a_non_flat_tool_in_a_project_file_fails_to_generate() {
+fn a_non_end_mill_in_a_project_file_fails_to_generate() {
     // E.g. a hand-edited file: the engine still refuses to cut with it.
     let (mut proj, op) = project_with_pocket();
     let mut o = proj.operation(op).unwrap().clone();
-    o.common.target_depth = Some(-1.0);
+    o.common.inherit_tool = false;
     o.common.tool = Some(tool("6mm ball", EndType::Ball, 6.0));
     proj.set_operation(o).unwrap();
     let report = proj.generate(&[op]);
@@ -497,9 +606,8 @@ fn a_non_flat_tool_in_a_project_file_fails_to_generate() {
 
 #[test]
 fn typing_a_different_diameter_drops_the_tool_copy() {
-    let t = sample();
     let (mut proj, op) = project_with_pocket();
-    proj.set_operation_tool(op, Some((1, t.library_tool("Mill", 1).unwrap().clone())))
+    proj.set_operation_tool(op, ToolSetting::Library(picked(1)))
         .unwrap();
     // Changing something else keeps the tool.
     let mut o = proj.operation(op).unwrap().clone();
@@ -511,55 +619,25 @@ fn typing_a_different_diameter_drops_the_tool_copy() {
     o.common.tool_diameter = 5.0;
     proj.set_operation(o).unwrap();
     let c = &proj.operation(op).unwrap().common;
-    assert!(c.tool.is_none());
+    assert!(c.tool.is_none() && !c.inherit_tool);
     assert_eq!((c.tool_number, c.tool_diameter), (1, 5.0));
 }
 
 #[test]
-fn clearing_the_tool_keeps_number_and_diameter() {
-    let t = sample();
-    let (mut proj, op) = project_with_pocket();
-    proj.set_operation_tool(op, Some((1, t.library_tool("Mill", 1).unwrap().clone())))
-        .unwrap();
-    proj.set_operation_tool(op, None).unwrap();
-    let c = &proj.operation(op).unwrap().common;
-    assert!(c.tool.is_none());
-    assert_eq!((c.tool_number, c.tool_diameter), (1, 6.0));
-}
-
-#[test]
-fn tool_copy_and_active_library_are_saved_in_the_project() {
-    let t = sample();
+fn tools_at_every_level_are_saved_in_the_project() {
     let (mut proj, op) = project_with_pocket();
     proj.set_active_library(Some("Mill".into()));
-    proj.set_operation_tool(op, Some((1, t.library_tool("Mill", 1).unwrap().clone())))
-        .unwrap();
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    proj.set_part_tool(0, Some(picked(7))).unwrap();
     let text = proj.save_text("test");
     // Opened on "another computer": no tooling needed.
     let mut other = Project::new();
     other.open(&text, "test").unwrap();
-    assert_eq!(other.document().active_library.as_deref(), Some("Mill"));
-    let c = &other.operation(op).unwrap().common;
-    assert_eq!(c.tool.as_ref().unwrap().name, "6mm 2F");
-    assert_eq!((c.tool_number, c.tool_diameter), (1, 6.0));
-}
-
-#[test]
-fn older_project_files_open_without_tool_fields() {
-    let (mut proj, op) = project_with_pocket();
-    let mut file: serde_json::Value = serde_json::from_str(&proj.save_text("old")).unwrap();
-    let doc = file["document"].as_object_mut().unwrap();
-    doc.remove("active_library");
-    doc["parts"][0]["operations"][0]["common"]
-        .as_object_mut()
-        .unwrap()
-        .remove("tool");
-    let old = file.to_string();
-    assert!(!old.contains("active_library") && !old.contains("\"tool\""));
-    let mut p = Project::new();
-    p.open(&old, "old").unwrap();
-    assert!(p.document().active_library.is_none());
-    assert!(p.operation(op).unwrap().common.tool.is_none());
+    let doc = other.document();
+    assert_eq!(doc.active_library.as_deref(), Some("Mill"));
+    assert_eq!(doc.machining_tool.as_ref(), Some(&picked(1)));
+    assert_eq!(doc.parts[0].tool.as_ref(), Some(&picked(7)));
+    assert_eq!(state(&other, op).tool_diameter, Some(3.0));
 }
 
 #[test]

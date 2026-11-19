@@ -59,7 +59,15 @@ export interface Layer {
 
 export interface Part {
   name: string;
+  /** The part's own tool; null = use the Machining tool. */
+  tool: PickedTool | null;
   operations: Operation[];
+}
+
+/** A tool picked from a library: its number there and a copy of the tool (kept in the project). */
+export interface PickedTool {
+  number: number;
+  tool: Tool;
 }
 
 // --- Operations (spec section 6) ----------------------------------------------------------------
@@ -74,7 +82,9 @@ export type StepoverFeed = "Plunge" | "Cut";
 export interface CommonSettings {
   tool_number: number;
   tool_diameter: number;
-  /** Copy of the tool picked from a library (kept in the project); null = values typed in. */
+  /** Use the part's tool, or Machining's (the three tool fields are then ignored). */
+  inherit_tool: boolean;
+  /** Own tool picked from a library (a copy kept in the project); null = typed in. */
   tool: Tool | null;
   stock_surface: number;
   /** Null until set. */
@@ -141,6 +151,12 @@ export interface OperationState {
   message: string | null;
   /** It machines open shapes: a Profile then only offers On line. */
   has_open_shapes: boolean;
+  /** Where its tool comes from; "none" = follows the tree but no tool is set there. */
+  tool_from: "operation" | "part" | "machining" | "none";
+  tool_number: number | null;
+  tool_diameter: number | null;
+  /** The library tool's name (null when typed in, or none). */
+  tool_name: string | null;
 }
 
 export type MoveKind = "Cut" | "Plunge" | "Rapid";
@@ -192,6 +208,8 @@ export interface Document {
   grid_spacing: number;
   /** Name of the tool library operations pick tools from; null = not chosen. */
   active_library: string | null;
+  /** The tool every part and operation uses unless it has its own; null = none. */
+  machining_tool: PickedTool | null;
 }
 
 // --- Tooling (spec 5.5) -------------------------------------------------------------------------
@@ -457,12 +475,22 @@ export function setActiveLibrary(name: string | null): Promise<void> {
   return invoke<void>("set_active_library", { name });
 }
 
-/**
- * Gives an operation tool `number` from the active library (copies number, diameter and the
- * tool into it). Null keeps the typed-in number and diameter without a library tool.
- */
-export function setOperationTool(id: number, number: number | null): Promise<void> {
-  return invoke<void>("set_operation_tool", { id, number });
+/** How an operation gets its tool: from its part/Machining, typed in, or a library tool number. */
+export type OperationTool = "Inherit" | "Typed" | { Library: number };
+
+/** Sets how an operation gets its tool. An undo step. */
+export function setOperationTool(id: number, tool: OperationTool): Promise<void> {
+  return invoke<void>("set_operation_tool", { id, tool });
+}
+
+/** Sets the Machining tool to tool `number` of the active library (null = none). An undo step. */
+export function setMachiningTool(number: number | null): Promise<void> {
+  return invoke<void>("set_machining_tool", { number });
+}
+
+/** Sets a part's own tool (null = use the Machining tool). An undo step. */
+export function setPartTool(part: number, number: number | null): Promise<void> {
+  return invoke<void>("set_part_tool", { part, number });
 }
 
 // --- Operations ------------------------------------------------------------------------------

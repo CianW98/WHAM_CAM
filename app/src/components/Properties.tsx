@@ -18,6 +18,8 @@ import type {
   ProfileSettings,
   ProfileSide,
   Shape,
+  OperationTool,
+  PickedTool,
   Tool,
   Tooling,
 } from "../engine";
@@ -349,44 +351,70 @@ const toolText = (number: number, t: Tool) => `T${number}: ${t.name} (Ø${num(t.
 /** Same tool values (ignoring the master-list id, which differs between computers). */
 const sameTool = (a: Tool, b: Tool) => JSON.stringify({ ...a, id: 0 }) === JSON.stringify({ ...b, id: 0 });
 
-/**
- * The operation's Tool drop-down: the tools of the project's active library. Picking one copies
- * its number and diameter in (done by the engine). Only end mills can be picked in v1.
- */
-function ToolPicker({
-  op,
-  tooling,
-  library,
-  onPick,
-}: {
-  op: Operation;
-  tooling: Tooling;
-  library: string | null;
-  onPick: (id: number, number: number | null) => Promise<boolean>;
-}) {
-  const c = op.common;
+/** The active library's tools on this computer, with their numbers. */
+function libraryEntries(tooling: Tooling, library: string | null) {
   const lib = library === null ? undefined : tooling.libraries.find((l) => l.name === library);
   const entries = (lib?.tools ?? []).flatMap((e) => {
     const t = tooling.tools.find((x) => x.id === e.tool_id);
     return t ? [{ number: e.number, tool: t }] : [];
   });
-  // The library tool matching the operation's copy (same number, same values).
-  const match = c.tool ? entries.find((e) => e.number === c.tool_number && sameTool(e.tool, c.tool!)) : undefined;
-  const value = c.tool === null ? "typed" : match ? String(match.number) : "kept";
-  const changed = c.tool !== null && !match && entries.some((e) => e.number === c.tool_number);
+  return { lib, entries };
+}
+
+/**
+ * A Tool drop-down: `first` is the top choice (e.g. "Use Machining tool …"), `extra` more fixed
+ * choices, then the active library's tools. `current` is the picked library tool (number and
+ * copy), or null when the top or an extra choice is in use (`value` says which). A picked tool
+ * no longer matching the library is still shown, as kept in the project. Only end mills can
+ * be picked in v1.
+ */
+function ToolSelect({
+  tooling,
+  library,
+  first,
+  extra = [],
+  value,
+  current,
+  onPick,
+}: {
+  tooling: Tooling;
+  library: string | null;
+  first: string;
+  extra?: [string, string][];
+  /** "first", one of the extra keys, or "library". */
+  value: string;
+  current: { number: number; tool: Tool } | null;
+  /** "first", an extra key, or a tool number. */
+  onPick: (choice: string | number) => void;
+}) {
+  const { lib, entries } = libraryEntries(tooling, library);
+  const match =
+    value === "library" && current
+      ? entries.find((e) => e.number === current.number && sameTool(e.tool, current.tool))
+      : undefined;
+  const selected = value !== "library" ? value : match ? String(match.number) : "kept";
+  const changed = value === "library" && current && !match && entries.some((e) => e.number === current.number);
   return (
     <>
       <select
         className="prop-input"
-        value={value}
+        value={selected}
         onChange={(e) => {
           const v = e.target.value;
-          if (v === "typed") void onPick(op.id, null);
-          else if (v !== "kept") void onPick(op.id, Number(v));
+          if (v === "kept") return;
+          onPick(/^\d+$/.test(v) ? Number(v) : v);
         }}
       >
-        <option value="typed">{library === null ? "No library selected" : !lib ? `"${library}" not on this computer` : "(typed in below)"}</option>
-        {c.tool !== null && !match && <option value="kept">{toolText(c.tool_number, c.tool)} – kept in project</option>}
+        <option value="first">{first}</option>
+        {extra.map(([k, label]) => (
+          <option key={k} value={k}>
+            {label}
+          </option>
+        ))}
+        {value === "library" && current && !match && (
+          <option value="kept">{toolText(current.number, current.tool)} – kept in project</option>
+        )}
+        {library !== null && !lib && <option disabled>"{library}" not on this computer</option>}
         {entries.map((e) => (
           <option key={e.number} value={String(e.number)} disabled={e.tool.end_type !== "Flat"}>
             {toolText(e.number, e.tool)}
@@ -394,10 +422,74 @@ function ToolPicker({
           </option>
         ))}
       </select>
-      {lib && changed ? (
-        <div className="muted prop-note">T{c.tool_number} has changed in the library: pick it again to update.</div>
-      ) : null}
+      {changed && (
+        <div className="muted prop-note">T{current!.number} has changed in the library: pick it again to update.</div>
+      )}
     </>
+  );
+}
+
+/** "T3: name (Ø6)" for a picked tool, or "no tool". */
+const pickedText = (p: PickedTool | null) => (p ? toolText(p.number, p.tool) : "no tool");
+
+/** The Machining or a part's Tool drop-down. */
+function LevelToolSelect({
+  doc,
+  tooling,
+  picked,
+  first,
+  onPick,
+}: {
+  doc: Document;
+  tooling: Tooling;
+  picked: PickedTool | null;
+  first: string;
+  onPick: (number: number | null) => void;
+}) {
+  return (
+    <ToolSelect
+      tooling={tooling}
+      library={doc.active_library}
+      first={first}
+      value={picked ? "library" : "first"}
+      current={picked}
+      onPick={(c) => onPick(typeof c === "number" ? c : null)}
+    />
+  );
+}
+
+/** The operation's Tool drop-down: follow the part/Machining tool, typed in, or a library tool. */
+function OperationToolSelect({
+  op,
+  doc,
+  tooling,
+  onPick,
+}: {
+  op: Operation;
+  doc: Document;
+  tooling: Tooling;
+  onPick: (id: number, tool: OperationTool) => Promise<boolean>;
+}) {
+  const c = op.common;
+  const part = doc.parts.find((p) => p.operations.some((o) => o.id === op.id));
+  const inherited = part?.tool ? `Use part tool (${pickedText(part.tool)})` : doc.machining_tool
+    ? `Use Machining tool (${pickedText(doc.machining_tool)})`
+    : doc.active_library === null
+      ? "No library selected"
+      : "No tool selected";
+  const value = c.inherit_tool ? "first" : c.tool === null ? "typed" : "library";
+  return (
+    <ToolSelect
+      tooling={tooling}
+      library={doc.active_library}
+      first={inherited}
+      extra={[["typed", "Typed in below"]]}
+      value={value}
+      current={!c.inherit_tool && c.tool ? { number: c.tool_number, tool: c.tool } : null}
+      onPick={(choice) =>
+        void onPick(op.id, choice === "first" ? "Inherit" : choice === "typed" ? "Typed" : { Library: choice as number })
+      }
+    />
   );
 }
 
@@ -406,17 +498,17 @@ function OperationRows({
   state,
   onSet,
   onSetShapes,
+  doc,
   tooling,
-  library,
   onPickTool,
 }: {
   op: Operation;
   state: OperationState | undefined;
   onSet: (op: Operation) => Promise<boolean>;
   onSetShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
+  doc: Document;
   tooling: Tooling;
-  library: string | null;
-  onPickTool: (id: number, number: number | null) => Promise<boolean>;
+  onPickTool: (id: number, tool: OperationTool) => Promise<boolean>;
 }) {
   const c = op.common;
   const drill = op.kind.type === "Drill";
@@ -448,16 +540,30 @@ function OperationRows({
       )}
       <GroupRow label="Common" />
       <Row label="Tool">
-        <ToolPicker op={op} tooling={tooling} library={library} onPick={onPickTool} />
+        <OperationToolSelect op={op} doc={doc} tooling={tooling} onPick={onPickTool} />
       </Row>
-      <Row label="Tool number">
-        <TextField
-          shown={String(c.tool_number)}
-          parse={(t) => (/^\d+$/.test(t.trim()) ? Number(t) : null)}
-          onSave={(tool_number) => common({ tool_number })}
-        />
-      </Row>
-      <Row label="Tool diameter">{num(c.tool_diameter, (tool_diameter) => common({ tool_diameter }))}</Row>
+      {c.inherit_tool ? (
+        <>
+          {/* Following the part or Machining tool: shown, not editable here. */}
+          <Row label="Tool number">
+            <span className="muted">{state?.tool_number ?? "–"}</span>
+          </Row>
+          <Row label="Tool diameter">
+            <span className="muted">{state?.tool_diameter != null ? String(Number(state.tool_diameter.toFixed(4))) : "–"}</span>
+          </Row>
+        </>
+      ) : (
+        <>
+          <Row label="Tool number">
+            <TextField
+              shown={String(c.tool_number)}
+              parse={(t) => (/^\d+$/.test(t.trim()) ? Number(t) : null)}
+              onSave={(tool_number) => common({ tool_number })}
+            />
+          </Row>
+          <Row label="Tool diameter">{num(c.tool_diameter, (tool_diameter) => common({ tool_diameter }))}</Row>
+        </>
+      )}
       <Row label="Stock surface">{num(c.stock_surface, (stock_surface) => common({ stock_surface }))}</Row>
       <Row label="Target depth">
         <TextField
@@ -634,8 +740,11 @@ interface Edits {
   operationStates: OperationState[];
   /** This computer's tools and libraries. */
   tooling: Tooling;
-  /** Gives an operation a tool from the active library (null = typed in). */
-  onPickTool: (id: number, number: number | null) => Promise<boolean>;
+  /** Sets how an operation gets its tool. */
+  onPickTool: (id: number, tool: OperationTool) => Promise<boolean>;
+  /** Sets the Machining tool / a part's tool to a library tool number (null = none). */
+  onSetMachiningTool: (number: number | null) => Promise<boolean>;
+  onSetPartTool: (part: number, number: number | null) => Promise<boolean>;
   onSetActiveLibrary: (name: string | null) => Promise<boolean>;
   /** The open project's active library. */
   activeLibrary: string | null;
@@ -839,9 +948,6 @@ function Content({
             <Row label="Grid spacing (mm)">
               <NumberField value={doc.grid_spacing} onSave={edits.onSetGridSpacing} />
             </Row>
-            <Row label="Tool library">
-              <LibraryChoice doc={doc} tooling={edits.tooling} onSet={(n) => void edits.onSetActiveLibrary(n)} />
-            </Row>
           </>
         </Grid>
       );
@@ -850,6 +956,15 @@ function Content({
         <Grid>
           <Row label="Tool library">
             <LibraryChoice doc={doc} tooling={edits.tooling} onSet={(n) => void edits.onSetActiveLibrary(n)} />
+          </Row>
+          <Row label="Tool">
+            <LevelToolSelect
+              doc={doc}
+              tooling={edits.tooling}
+              picked={doc.machining_tool}
+              first={doc.active_library === null ? "No library selected" : "No tool selected"}
+              onPick={(n) => void edits.onSetMachiningTool(n)}
+            />
           </Row>
         </Grid>
       );
@@ -860,6 +975,15 @@ function Content({
           <>
             <Row label="Name">
               {part.name}
+            </Row>
+            <Row label="Tool">
+              <LevelToolSelect
+                doc={doc}
+                tooling={edits.tooling}
+                picked={part.tool}
+                first={`Use Machining tool (${pickedText(doc.machining_tool)})`}
+                onPick={(n) => void edits.onSetPartTool(selection.part, n)}
+              />
             </Row>
           </>
         </Grid>
@@ -877,8 +1001,8 @@ function Content({
             state={edits.operationStates.find((s) => s.id === op.id)}
             onSet={edits.onSetOperation}
             onSetShapes={edits.onSetOperationShapes}
+            doc={doc}
             tooling={edits.tooling}
-            library={doc.active_library}
             onPickTool={edits.onPickTool}
           />
         </Grid>

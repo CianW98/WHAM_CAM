@@ -377,6 +377,30 @@ impl Tool {
     }
 }
 
+/// A tool picked from a tool library for Machining, a part or an operation: its tool number
+/// there and a copy of the tool, kept in the project so it opens and cuts the same on a
+/// computer with different tooling.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PickedTool {
+    pub number: u32,
+    pub tool: Tool,
+}
+
+impl PickedTool {
+    /// Only end mills can cut in v1.
+    pub fn check_usable(&self) -> Result<(), String> {
+        if self.tool.end_type == EndType::Flat {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} is a {}: v1 toolpaths are for end mills only.",
+                self.tool.name,
+                self.tool.end_type.label()
+            ))
+        }
+    }
+}
+
 /// A master tool in a library, with the tool number it has there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LibraryTool {

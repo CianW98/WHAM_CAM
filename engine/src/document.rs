@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::geometry::Shape;
 use crate::operation::Operation;
+use crate::tooling::PickedTool;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
@@ -17,6 +18,9 @@ pub struct Document {
     /// belong to the computer, not the project). None = not chosen yet.
     #[serde(default)]
     pub active_library: Option<String>,
+    /// The tool every part and operation uses unless it picks its own. None = not chosen.
+    #[serde(default)]
+    pub machining_tool: Option<PickedTool>,
 }
 
 /// Grid spacing for new projects (and older project files that don't have one), in mm.
@@ -68,6 +72,10 @@ pub struct DrawingObject {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Part {
     pub name: String,
+    /// The part's own tool, used instead of the Machining tool by its operations that follow
+    /// the tree. None = use the Machining tool.
+    #[serde(default)]
+    pub tool: Option<PickedTool>,
     #[serde(default)]
     pub operations: Vec<Operation>,
 }
@@ -83,10 +91,12 @@ impl Document {
             }],
             parts: vec![Part {
                 name: "Part1".to_string(),
+                tool: None,
                 operations: Vec::new(),
             }],
             grid_spacing: DEFAULT_GRID_SPACING,
             active_library: None,
+            machining_tool: None,
         }
     }
 

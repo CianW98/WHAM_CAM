@@ -250,13 +250,27 @@ Decided with the user 2026-11-19.
   edit). Right-click Tool libraries → New library; right-click a library → Rename, Use in this
   project, Delete library. Selecting a library shows its numbered tools in Properties, where tools
   are added from the master list, renumbered or taken out.
-- **Active library**: each project chooses one (Machining menu → Tool library, the Machining
-  item's Properties, Project properties, or the library's right-click menu); saved in the project file by name.
-- **Picking a tool**: an operation's Tool drop-down lists the active library's tools. Picking one
-  copies its tool number and diameter into the operation, plus a copy of the tool kept in the
-  project, so the project opens and cuts the same on a computer with different tooling. Typing a
-  different diameter drops the copy ("typed in"). Only end mills (flat end) can be picked in v1; other
-  end types can be recorded but are greyed out, and the engine refuses to generate with them.
+- **Active library**: each project chooses one in the Machining item's Properties (also the
+  Machining menu → Tool library, or the library's right-click menu in Setup); saved in the
+  project file by name.
+- **Tools follow the Machining tree** (decided 2026-11-19):
+  - *Machining* Properties: Tool library and **Tool** (from that library).
+  - *Part* Properties: **Tool**, "Use Machining tool" by default, or a library tool to override
+    it for the part's operations. No library choice of its own.
+  - *Operation* Tool box: "Use part tool" / "Use Machining tool" (the default for new
+    operations), "Typed in below" (own tool number and diameter), or a library tool.
+  - While an operation follows the tree, its Tool number and Tool diameter are shown greyed out.
+    Choosing "Typed in below" starts from the tool it was using. Typing a different diameter
+    over a library tool makes it "typed in".
+  - The engine works out each operation's tool (own, else part's, else Machining's) before
+    generating; the toolpath maths is unchanged. Changing a Machining or part tool marks the
+    operations following it out of date (only the tool number and diameter count).
+  - An operation following the tree with no tool set anywhere: its Tool box says "No tool
+    selected" (or "No library selected"), and Generate toolpaths refuses it with the message
+    "No tool selected. Choose a tool for Machining, the part, or the operation."
+  - Every picked tool is copied into the project, so it opens and cuts the same on a computer
+    with different tooling. Only end mills (flat end) can be picked in v1; other end types are
+    greyed out, and the engine refuses to generate with them.
 - The tool number goes into the G-code (tool changes) when G-code output arrives.
 
 ### 5.6 Toolpath preview

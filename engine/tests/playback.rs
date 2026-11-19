@@ -162,7 +162,7 @@ fn playback_points_are_the_drawn_points() {
 
 #[test]
 fn project_plays_shown_toolpaths_with_their_tool() {
-    let mut proj = Project::new();
+    let mut proj = project();
     let shape = proj
         .add_shape(
             "Default",
@@ -189,6 +189,20 @@ fn project_plays_shown_toolpaths_with_their_tool() {
 // --- Cut width (display of the band the cutter sweeps) ---
 
 use wham_engine::display::cut_width_steps;
+
+/// A new project with a 6 mm end mill (T1) as the Machining tool, which new operations use.
+fn project() -> Project {
+    let mut proj = Project::new();
+    proj.set_machining_tool(Some(PickedTool {
+        number: 1,
+        tool: Tool {
+            diameter: 6.0,
+            ..Tool::new_default()
+        },
+    }))
+    .unwrap();
+    proj
+}
 
 fn in_tri(p: (f64, f64), t: &[f64]) -> bool {
     let (a, b, c) = ((t[0], t[1]), (t[3], t[4]), (t[6], t[7]));

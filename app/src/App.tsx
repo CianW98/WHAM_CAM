@@ -606,7 +606,7 @@ export default function App() {
     [tryEdit],
   );
   const pickTool = useCallback(
-    (id: number, number: number | null) => tryEdit(() => engine.setOperationTool(id, number)),
+    (id: number, tool: engine.OperationTool) => tryEdit(() => engine.setOperationTool(id, tool)),
     [tryEdit],
   );
 
@@ -1284,6 +1284,8 @@ export default function App() {
             tooling={view?.tooling ?? EMPTY_TOOLING}
             activeLibrary={view?.document.active_library ?? null}
             onPickTool={pickTool}
+            onSetMachiningTool={(n) => tryEdit(() => engine.setMachiningTool(n))}
+            onSetPartTool={(part, n) => tryEdit(() => engine.setPartTool(part, n))}
             onSetActiveLibrary={setActiveLibrary}
             onRenameLibrary={renameLibrary}
             onAddLibraryTool={(library, toolId, number) =>
