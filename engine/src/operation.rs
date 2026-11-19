@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::tooling::{EndType, Tool};
+
 /// Spindle direction (spec 6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpindleDirection {
@@ -39,6 +41,11 @@ pub enum StepoverFeed {
 pub struct CommonSettings {
     pub tool_number: u32,
     pub tool_diameter: f64,
+    /// A copy of the tool picked from a tool library, so the project keeps it on a computer
+    /// with different tooling. None = tool number and diameter typed in directly. Only
+    /// `tool_number` and `tool_diameter` are used for toolpaths.
+    #[serde(default)]
+    pub tool: Option<Tool>,
     /// Z of the top of the material.
     pub stock_surface: f64,
     /// Final Z (below the stock surface). `None` until the user sets it.
@@ -64,6 +71,7 @@ impl Default for CommonSettings {
         Self {
             tool_number: 0,
             tool_diameter: 6.0,
+            tool: None,
             stock_surface: 0.0,
             target_depth: None,
             depth_increment: 1.0,
@@ -225,6 +233,16 @@ impl Operation {
             c.tool_diameter > 0.0,
             "The tool diameter must be more than 0.",
         )?;
+        if let Some(tool) = &c.tool {
+            ok(
+                tool.end_type == EndType::Flat,
+                &format!(
+                    "{} is a {}: v1 toolpaths are for flat end mills only.",
+                    tool.name,
+                    tool.end_type.label()
+                ),
+            )?;
+        }
         let target = c.target_depth.ok_or("Set the target depth.")?;
         ok(
             target < c.stock_surface,

@@ -1,6 +1,6 @@
 /**
  * What is selected. Drawing objects can be multi-selected (tree or drawing area);
- * the project, a layer, a part or an operation is a single tree selection shown in the properties
+ * the project, a layer, a part, an operation or a tool library is a single tree selection shown in the properties
  * panel.
  */
 export type Selection =
@@ -8,7 +8,9 @@ export type Selection =
   | { kind: "project" }
   | { kind: "layer"; layer: number }
   | { kind: "part"; part: number }
-  | { kind: "operation"; id: number };
+  | { kind: "operation"; id: number }
+  /** A tool library (Setup tab), by name. */
+  | { kind: "library"; name: string };
 
 export const NOTHING: Selection = { kind: "objects", ids: [] };
 

@@ -49,7 +49,7 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   the finished part, gouges and leftover material (like CAMotics). v1 has tool playback only;
   until then use CAMotics or NC Viewer on the G-code (discussed 2026-11-16).
 - **Libraries: tools, styles and materials** (noted 2026-11-17).
-  - **Tool library** beyond the v1 basics (spec 5.5): more tool shapes (ball nose, V-bit, drill),
+  - **Tool library** beyond the v1 basics (spec 5.5): toolpaths for the other tool shapes (ball nose, V-bit, drill: v1 can record them but only cuts with flat end mills),
     holders/lengths, sharing and importing tool sets.
   - **Style library**: saved sets of operation settings ("CAM styles") to apply to an operation
     in one go, e.g. "6 mm slot in plywood". Ties in with the CAM styles noted under Inches.

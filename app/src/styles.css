@@ -682,3 +682,92 @@ button.primary {
   display: inline-block;
   width: 1.2em;
 }
+
+/* Left panel tabs: Project | Setup */
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+  margin: -2px 0 6px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.panel-tabs button {
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  background: transparent;
+  padding: 3px 10px;
+  margin-bottom: -1px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.panel-tabs button.active {
+  background: #fff;
+  border-color: var(--panel-border);
+  color: var(--text);
+}
+
+/* Master tool list window and tool form */
+.tool-list-dialog {
+  max-width: 820px;
+  width: 780px;
+}
+.tool-table tbody tr {
+  cursor: default;
+  user-select: none;
+}
+.tool-table tbody tr:hover {
+  background: rgb(47 111 214 / 0.08);
+}
+.tool-table tbody tr.selected {
+  background: var(--select-bg);
+  color: var(--select-text);
+}
+.tool-table tbody tr.selected .muted {
+  color: var(--select-text);
+}
+.tool-table td:first-child {
+  width: auto;
+  text-align: left;
+}
+.tool-form {
+  width: 380px;
+}
+.tool-form .props {
+  margin-bottom: 10px;
+}
+.tool-note,
+.prop-note {
+  font-size: 12px;
+}
+.prop-note {
+  margin-top: 2px;
+}
+
+/* A tool library in the Properties panel */
+.library-table {
+  margin: 8px 0;
+}
+.library-table td:first-child {
+  width: 4em;
+}
+.library-table .remove {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.library-add {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.library-add select {
+  flex: 1;
+  min-width: 0;
+}
+.library-add .number {
+  width: 4em;
+  flex: none;
+}

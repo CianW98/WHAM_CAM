@@ -74,6 +74,8 @@ export type StepoverFeed = "Plunge" | "Cut";
 export interface CommonSettings {
   tool_number: number;
   tool_diameter: number;
+  /** Copy of the tool picked from a library (kept in the project); null = values typed in. */
+  tool: Tool | null;
   stock_surface: number;
   /** Null until set. */
   target_depth: number | null;
@@ -188,6 +190,45 @@ export interface Document {
   parts: Part[];
   /** Drawing grid spacing in mm. */
   grid_spacing: number;
+  /** Name of the tool library operations pick tools from; null = not chosen. */
+  active_library: string | null;
+}
+
+// --- Tooling (spec 5.5) -------------------------------------------------------------------------
+
+export type EndType = "Flat" | "Ball" | "VBit" | "Drill";
+
+/** A physical tool in the master tool list. Lengths in mm. */
+export interface Tool {
+  id: number;
+  name: string;
+  end_type: EndType;
+  diameter: number;
+  /** Null = same as the diameter. */
+  shank_diameter: number | null;
+  flutes: number;
+  flute_length: number;
+  overall_length: number;
+  /** Included angle (V-bit only). */
+  v_angle: number;
+}
+
+/** A master tool in a library, with its tool number there. */
+export interface LibraryTool {
+  number: number;
+  tool_id: number;
+}
+
+export interface ToolLibrary {
+  name: string;
+  /** In tool number order. */
+  tools: LibraryTool[];
+}
+
+/** This computer's master tool list and tool libraries. */
+export interface Tooling {
+  tools: Tool[];
+  libraries: ToolLibrary[];
 }
 
 export interface DisplayShape {
@@ -223,6 +264,8 @@ export interface View {
   operations: OperationState[];
   /** Toolpaths to draw. */
   toolpaths: ToolpathDisplay[];
+  /** This computer's master tool list and tool libraries. */
+  tooling: Tooling;
 }
 
 export interface DxfUnits {
@@ -322,6 +365,73 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
   return getCurrentWindow().onCloseRequested(async (event) => {
     if (!(await canClose())) event.preventDefault();
   });
+}
+
+// --- Tooling ---------------------------------------------------------------------------------
+// The master tool list and libraries belong to this computer and are saved straight away
+// (not undo steps). The active library and an operation's tool are part of the project.
+
+/** A problem found loading the tool list (only reported once), or null. */
+export function toolingProblem(): Promise<string | null> {
+  return invoke<string | null>("tooling_problem");
+}
+
+/** Starting values for a new tool. */
+export function newTool(): Promise<Tool> {
+  return invoke<Tool>("new_tool");
+}
+
+/** Adds a tool to the master list. Returns its id. Rejects with a plain-English message. */
+export function addTool(tool: Tool): Promise<number> {
+  return invoke<number>("add_tool", { tool });
+}
+
+export function setTool(tool: Tool): Promise<void> {
+  return invoke<void>("set_tool", { tool });
+}
+
+/** Deletes a master tool and takes it out of every library. */
+export function deleteTool(id: number): Promise<boolean> {
+  return invoke<boolean>("delete_tool", { id });
+}
+
+/** Adds an empty library ("Library 1", ...). Returns its name. */
+export function addLibrary(): Promise<string> {
+  return invoke<string>("add_library");
+}
+
+/** Renames a library. Resolves to the name as stored. */
+export function renameLibrary(oldName: string, newName: string): Promise<string> {
+  return invoke<string>("rename_library", { old: oldName, new: newName });
+}
+
+export function deleteLibrary(name: string): Promise<boolean> {
+  return invoke<boolean>("delete_library", { name });
+}
+
+export function addLibraryTool(library: string, toolId: number, number: number): Promise<void> {
+  return invoke<void>("add_library_tool", { library, toolId, number });
+}
+
+export function setLibraryToolNumber(library: string, oldNumber: number, newNumber: number): Promise<void> {
+  return invoke<void>("set_library_tool_number", { library, old: oldNumber, new: newNumber });
+}
+
+export function removeLibraryTool(library: string, number: number): Promise<boolean> {
+  return invoke<boolean>("remove_library_tool", { library, number });
+}
+
+/** Sets the project's active tool library (null = none). An undo step. */
+export function setActiveLibrary(name: string | null): Promise<void> {
+  return invoke<void>("set_active_library", { name });
+}
+
+/**
+ * Gives an operation tool `number` from the active library (copies number, diameter and the
+ * tool into it). Null keeps the typed-in number and diameter without a library tool.
+ */
+export function setOperationTool(id: number, number: number | null): Promise<void> {
+  return invoke<void>("set_operation_tool", { id, number });
 }
 
 // --- Operations ------------------------------------------------------------------------------

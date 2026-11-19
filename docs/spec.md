@@ -218,9 +218,35 @@ A classic CAD/CAM layout, with a toolbar:
 Profile (inside / outside / on line), Pocket, Drill. Settings in section 6.
 
 ### 5.5 Tool library
-Each tool has: number, name, diameter, flutes, profile (end mill only in v1), default
-cut feed, plunge feed, spindle speed, depth increment, stepover. An operation can pick a tool
-from the library (which fills in its defaults) or have values typed in directly.
+Decided with the user 2026-11-19.
+- **Master tool list** (one per computer, shared by every project): every physical tool the user
+  has. Each tool: name, end type (Flat end mill, Ball nose, V-bit, Drill), diameter, shank
+  diameter (blank = same as the diameter), flutes, flute length, overall length, V angle (V-bit
+  only). All mm.
+- **Tools hold no feeds or speeds**: those depend on the material as well as the tool. In v1 each
+  operation keeps its own feeds, speeds, depth increment and stepover; the materials library
+  (roadmap) will later fill them in from tool + material.
+- **Tool libraries** (also per computer): named sets of master tools, each given a tool number
+  (unique in the library, from 1), e.g. "mm tooling" and "inch tooling" (values still in mm), or
+  what is loaded in a tool changer. The same master tool can be in several libraries under
+  different numbers.
+- The tooling is kept in `tooling.json` in WHAM_CAM's settings folder on the computer (the app
+  layer reads/writes it; the engine only converts it to and from text). Tooling changes are saved
+  straight away and are not undo steps. A damaged file is kept aside as `tooling.json.damaged`,
+  never overwritten.
+- **Left panel tabs**: *Project* (the tree) and *Setup* (Master tool list, Tool libraries).
+  Clicking Master tool list opens its window (Add tool / Edit / Delete; double-click a row to
+  edit). Right-click Tool libraries → New library; right-click a library → Rename, Use in this
+  project, Delete library. Selecting a library shows its numbered tools in Properties, where tools
+  are added from the master list, renumbered or taken out.
+- **Active library**: each project chooses one (Machining → Tool library, Project properties, or
+  the library's right-click menu); saved in the project file by name.
+- **Picking a tool**: an operation's Tool drop-down lists the active library's tools. Picking one
+  copies its tool number and diameter into the operation, plus a copy of the tool kept in the
+  project, so the project opens and cuts the same on a computer with different tooling. Typing a
+  different diameter drops the copy ("typed in"). Only flat end mills can be picked in v1; other
+  end types can be recorded but are greyed out, and the engine refuses to generate with them.
+- The tool number goes into the G-code (tool changes) when G-code output arrives.
 
 ### 5.6 Toolpath preview
 - Cutting moves, plunges and rapids drawn in different colours (rapids dashed).

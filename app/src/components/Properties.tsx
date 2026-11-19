@@ -18,11 +18,14 @@ import type {
   ProfileSettings,
   ProfileSide,
   Shape,
+  Tool,
+  Tooling,
 } from "../engine";
 import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
 import ColorSwatch from "./ColorSwatch";
 import PointsDialog, { type PointsEdit } from "./PointsDialog";
+import { endTypeLabel } from "./ToolListDialog";
 
 /** Numbers as the engine sent them, rounded for display with trailing zeros trimmed. */
 const num = (n: number) => String(Number(n.toFixed(4)));
@@ -340,16 +343,84 @@ function ShapeRows({
 
 // --- Operations -----------------------------------------------------------------------------
 
+/** "T3: 6mm 2F (Ø6, flat end mill)" */
+const toolText = (number: number, t: Tool) => `T${number}: ${t.name} (Ø${num(t.diameter)}, ${endTypeLabel(t.end_type).toLowerCase()})`;
+
+/** Same tool values (ignoring the master-list id, which differs between computers). */
+const sameTool = (a: Tool, b: Tool) => JSON.stringify({ ...a, id: 0 }) === JSON.stringify({ ...b, id: 0 });
+
+/**
+ * The operation's Tool drop-down: the tools of the project's active library. Picking one copies
+ * its number and diameter in (done by the engine). Only flat end mills can be picked in v1.
+ */
+function ToolPicker({
+  op,
+  tooling,
+  library,
+  onPick,
+}: {
+  op: Operation;
+  tooling: Tooling;
+  library: string | null;
+  onPick: (id: number, number: number | null) => Promise<boolean>;
+}) {
+  const c = op.common;
+  const lib = library === null ? undefined : tooling.libraries.find((l) => l.name === library);
+  const entries = (lib?.tools ?? []).flatMap((e) => {
+    const t = tooling.tools.find((x) => x.id === e.tool_id);
+    return t ? [{ number: e.number, tool: t }] : [];
+  });
+  // The library tool matching the operation's copy (same number, same values).
+  const match = c.tool ? entries.find((e) => e.number === c.tool_number && sameTool(e.tool, c.tool!)) : undefined;
+  const value = c.tool === null ? "typed" : match ? String(match.number) : "kept";
+  const changed = c.tool !== null && !match && entries.some((e) => e.number === c.tool_number);
+  return (
+    <>
+      <select
+        className="prop-input"
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "typed") void onPick(op.id, null);
+          else if (v !== "kept") void onPick(op.id, Number(v));
+        }}
+      >
+        <option value="typed">(typed in below)</option>
+        {c.tool !== null && !match && <option value="kept">{toolText(c.tool_number, c.tool)} – kept in project</option>}
+        {entries.map((e) => (
+          <option key={e.number} value={String(e.number)} disabled={e.tool.end_type !== "Flat"}>
+            {toolText(e.number, e.tool)}
+            {e.tool.end_type !== "Flat" ? " – not supported in v1" : ""}
+          </option>
+        ))}
+      </select>
+      {library === null ? (
+        <div className="muted prop-note">Choose a tool library for the project (Machining menu or Project properties).</div>
+      ) : !lib ? (
+        <div className="prop-error">Tool library "{library}" isn't on this computer.</div>
+      ) : changed ? (
+        <div className="muted prop-note">T{c.tool_number} has changed in the library: pick it again to update.</div>
+      ) : null}
+    </>
+  );
+}
+
 function OperationRows({
   op,
   state,
   onSet,
   onSetShapes,
+  tooling,
+  library,
+  onPickTool,
 }: {
   op: Operation;
   state: OperationState | undefined;
   onSet: (op: Operation) => Promise<boolean>;
   onSetShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
+  tooling: Tooling;
+  library: string | null;
+  onPickTool: (id: number, number: number | null) => Promise<boolean>;
 }) {
   const c = op.common;
   const drill = op.kind.type === "Drill";
@@ -380,6 +451,9 @@ function OperationRows({
         </Row>
       )}
       <GroupRow label="Common" />
+      <Row label="Tool">
+        <ToolPicker op={op} tooling={tooling} library={library} onPick={onPickTool} />
+      </Row>
       <Row label="Tool number">
         <TextField
           shown={String(c.tool_number)}
@@ -562,6 +636,158 @@ interface Edits {
   /** Resolves false if the engine refused the shapes. */
   onSetOperationShapes: (id: number, shapeIds: number[]) => Promise<boolean>;
   operationStates: OperationState[];
+  /** This computer's tools and libraries. */
+  tooling: Tooling;
+  /** Gives an operation a tool from the active library (null = typed in). */
+  onPickTool: (id: number, number: number | null) => Promise<boolean>;
+  onSetActiveLibrary: (name: string | null) => Promise<boolean>;
+  /** The open project's active library. */
+  activeLibrary: string | null;
+  /** Resolves false if the rename was rejected. */
+  onRenameLibrary: (oldName: string, newName: string) => Promise<boolean>;
+  onAddLibraryTool: (library: string, toolId: number, number: number) => Promise<boolean>;
+  onSetLibraryToolNumber: (library: string, oldNumber: number, newNumber: number) => Promise<boolean>;
+  onRemoveLibraryTool: (library: string, number: number) => Promise<boolean>;
+}
+
+/** The project's tool library drop-down. */
+function LibraryChoice({ doc, tooling, onSet }: { doc: Document; tooling: Tooling; onSet: (n: string | null) => void }) {
+  const active = doc.active_library;
+  const missing = active !== null && !tooling.libraries.some((l) => l.name === active);
+  return (
+    <>
+      <select
+        className="prop-input"
+        value={active ?? ""}
+        onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}
+      >
+        <option value="">(none)</option>
+        {missing && <option value={active!}>{active} – not on this computer</option>}
+        {tooling.libraries.map((l) => (
+          <option key={l.name} value={l.name}>
+            {l.name}
+          </option>
+        ))}
+      </select>
+      {missing && (
+        <div className="prop-error">
+          This computer has no tool library "{active}". Operations keep their tools; pick another library to change them.
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A tool library: its numbered tools, and adding tools from the master list. */
+function LibraryRows({ name, edits }: { name: string; edits: Edits }) {
+  const { tooling } = edits;
+  const lib = tooling.libraries.find((l) => l.name === name);
+  const [toolId, setToolId] = useState<string>("");
+  const [number, setNumber] = useState("");
+  if (!lib) return <div className="empty">Select an item to see its properties.</div>;
+  const nextFree = () => {
+    let n = 1;
+    while (lib.tools.some((t) => t.number === n)) n++;
+    return n;
+  };
+  const numberText = number === "" ? String(nextFree()) : number;
+  const numberOk = /^\d+$/.test(numberText.trim()) && Number(numberText) >= 1;
+  const chosen = toolId === "" ? tooling.tools[0]?.id : Number(toolId);
+  return (
+    <>
+      <Grid>
+        <Row label="Name">
+          <TextField
+            shown={lib.name}
+            parse={(t) => (t.trim() ? t : null)}
+            onSave={(n) => edits.onRenameLibrary(lib.name, n)}
+          />
+        </Row>
+        <Row label="Use in this project">
+          <BoolField
+            value={edits.activeLibrary === lib.name}
+            onSave={(on) => void edits.onSetActiveLibrary(on ? lib.name : null)}
+          />
+        </Row>
+      </Grid>
+      <table className="points-table library-table">
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th>Tool</th>
+            <th>Ø</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {lib.tools.map((e) => {
+            const t = tooling.tools.find((x) => x.id === e.tool_id);
+            return (
+              <tr key={e.number}>
+                <td>
+                  <TextField
+                    shown={String(e.number)}
+                    parse={(s) => (/^\d+$/.test(s.trim()) ? Number(s) : null)}
+                    onSave={(n) => edits.onSetLibraryToolNumber(lib.name, e.number, n)}
+                  />
+                </td>
+                <td title={t ? endTypeLabel(t.end_type) : ""}>
+                  {t?.name ?? "?"}
+                  {t && t.end_type !== "Flat" && <span className="muted"> ({endTypeLabel(t.end_type).toLowerCase()})</span>}
+                </td>
+                <td>{t ? num(t.diameter) : ""}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="remove"
+                    title="Take this tool out of the library (it stays in the master tool list)"
+                    onClick={() => void edits.onRemoveLibraryTool(lib.name, e.number)}
+                  >
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+          {lib.tools.length === 0 && (
+            <tr>
+              <td colSpan={4} className="muted">
+                No tools yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {tooling.tools.length === 0 ? (
+        <div className="muted prop-note">Add tools to the Master tool list first.</div>
+      ) : (
+        <div className="library-add">
+          <select className="prop-input" value={String(chosen)} onChange={(e) => setToolId(e.target.value)}>
+            {tooling.tools.map((t) => (
+              <option key={t.id} value={String(t.id)}>
+                {t.name} (Ø{num(t.diameter)})
+              </option>
+            ))}
+          </select>
+          <input
+            className={`prop-input number${numberOk ? "" : " bad"}`}
+            title="Tool number"
+            value={numberText}
+            onChange={(e) => setNumber(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={!numberOk || chosen === undefined}
+            onClick={async () => {
+              if (await edits.onAddLibraryTool(lib.name, chosen!, Number(numberText))) setNumber("");
+            }}
+          >
+            Add tool
+          </button>
+        </div>
+      )}
+    </>
+  );
 }
 
 function LayerRows({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer } & Edits) {
@@ -622,6 +848,9 @@ function Content({
             <Row label="Grid spacing (mm)">
               <NumberField value={doc.grid_spacing} onSave={edits.onSetGridSpacing} />
             </Row>
+            <Row label="Tool library">
+              <LibraryChoice doc={doc} tooling={edits.tooling} onSet={(n) => void edits.onSetActiveLibrary(n)} />
+            </Row>
           </>
         </Grid>
       );
@@ -649,12 +878,17 @@ function Content({
             state={edits.operationStates.find((s) => s.id === op.id)}
             onSet={edits.onSetOperation}
             onSetShapes={edits.onSetOperationShapes}
+            tooling={edits.tooling}
+            library={doc.active_library}
+            onPickTool={edits.onPickTool}
           />
         </Grid>
       ) : (
         nothing
       );
     }
+    case "library":
+      return <LibraryRows key={selection.name} name={selection.name} edits={edits} />;
     case "objects": {
       if (selection.ids.length > 1) return <div className="empty">{selection.ids.length} objects selected.</div>;
       for (const layer of doc.layers) {

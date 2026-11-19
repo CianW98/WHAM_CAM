@@ -230,7 +230,13 @@ Done:
 - Release 0.3.0 published (2026-11-17): Profile, Pocket and Drill toolpaths with preview and playback. No
   G-code yet.
 
+- Tooling (spec 5.5, decided 2026-11-19): master tool list and tool libraries per computer
+  (`engine/src/tooling.rs`; file `tooling.json` in the app's settings folder, read/written by the
+  app layer), left panel tabs Project | Setup, project's active library, operation Tool drop-down
+  copying number + diameter + a copy of the tool into the project. Tools hold no feeds/speeds
+  (material-dependent: materials library later). Only flat end mills can be used in v1.
+
 Next:
-- The tool library (spec 5.5), then G-code output (spec 7) through the generic post-processor,
+- G-code output (spec 7) through the generic post-processor (tool numbers from the library),
   with the safety checker run on the G-code too and comparisons against `tests/reference/`.
 - Dimensions and more DXF features: later in v1 (user to list the DXF features).

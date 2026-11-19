@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
     GenerateReport, ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project,
-    Shape, Snap, SnapOptions, ToolpathDisplay, TransformOp,
+    Shape, Snap, SnapOptions, Tool, Tooling, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -18,6 +18,84 @@ struct AppState(Mutex<Project>);
 
 /// Where the open project was last saved or opened from (None until it is first saved).
 struct OpenFile(Mutex<Option<PathBuf>>);
+
+/// This computer's master tool list and tool libraries, and the file they are kept in
+/// (None if the settings folder couldn't be found: changes then last until WHAM_CAM closes).
+struct ToolingState(Mutex<ToolingFile>);
+
+struct ToolingFile {
+    tooling: Tooling,
+    path: Option<PathBuf>,
+    /// A problem found when loading, shown to the user once.
+    problem: Option<String>,
+}
+
+const TOOLING_FILE: &str = "tooling.json";
+
+/// Loads the tooling file from the app's settings folder. A missing file means no tools yet.
+/// A file that can't be read is kept aside (renamed `.damaged`), never overwritten.
+fn load_tooling(dir: Option<PathBuf>) -> ToolingFile {
+    let Some(dir) = dir else {
+        return ToolingFile {
+            tooling: Tooling::default(),
+            path: None,
+            problem: Some(
+                "WHAM_CAM couldn't find its settings folder, so tool changes won't be kept.".into(),
+            ),
+        };
+    };
+    let path = dir.join(TOOLING_FILE);
+    let (tooling, problem) = match std::fs::read_to_string(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Tooling::default(), None),
+        Err(e) => (
+            Tooling::default(),
+            Some(format!(
+                "Could not read the tool list {}: {e}",
+                path.display()
+            )),
+        ),
+        Ok(text) => match wham_engine::tooling::from_text(&text) {
+            Ok(t) => (t, None),
+            Err(e) => {
+                let mut aside = path.clone().into_os_string();
+                aside.push(".damaged");
+                let _ = std::fs::rename(&path, &aside);
+                (
+                    Tooling::default(),
+                    Some(format!(
+                        "{e} It was kept as {} and an empty tool list started.",
+                        PathBuf::from(aside).display()
+                    )),
+                )
+            }
+        },
+    };
+    ToolingFile {
+        tooling,
+        path: Some(path),
+        problem,
+    }
+}
+
+/// Runs a change on the tooling and writes the file. On any error nothing changes.
+fn change_tooling<T>(
+    state: &State<ToolingState>,
+    change: impl FnOnce(&mut Tooling) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut file = state.0.lock().unwrap();
+    let mut tooling = file.tooling.clone();
+    let result = change(&mut tooling)?;
+    if let Some(path) = &file.path {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+        }
+        write_safely(path, &wham_engine::tooling::to_text(&tooling))
+            .map_err(|e| format!("Could not save the tool list {}: {e}", path.display()))?;
+    }
+    file.tooling = tooling;
+    Ok(result)
+}
 
 /// Everything the interface needs to redraw after a change.
 #[derive(Serialize)]
@@ -35,9 +113,11 @@ struct View {
     operations: Vec<OperationState>,
     /// Toolpaths to draw.
     toolpaths: Vec<ToolpathDisplay>,
+    /// This computer's master tool list and tool libraries.
+    tooling: Tooling,
 }
 
-fn view(p: &Project, file: Option<&Path>) -> View {
+fn view(p: &Project, file: Option<&Path>, tooling: &Tooling) -> View {
     View {
         document: p.document().clone(),
         display: p.display().clone(),
@@ -49,6 +129,7 @@ fn view(p: &Project, file: Option<&Path>) -> View {
             .map(|n| n.to_string_lossy().into_owned()),
         operations: p.operation_states(),
         toolpaths: p.toolpaths_display(),
+        tooling: tooling.clone(),
     }
 }
 
@@ -68,8 +149,126 @@ fn read_text(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn get_view(state: State<AppState>, file: State<OpenFile>) -> View {
-    view(&state.0.lock().unwrap(), file.0.lock().unwrap().as_deref())
+fn get_view(state: State<AppState>, file: State<OpenFile>, tooling: State<ToolingState>) -> View {
+    view(
+        &state.0.lock().unwrap(),
+        file.0.lock().unwrap().as_deref(),
+        &tooling.0.lock().unwrap().tooling,
+    )
+}
+
+// --- Tooling ------------------------------------------------------------------------------------
+
+/// A problem found loading the tool list, once (None after the first call).
+#[tauri::command]
+fn tooling_problem(tooling: State<ToolingState>) -> Option<String> {
+    tooling.0.lock().unwrap().problem.take()
+}
+
+/// Starting values for the Add tool form.
+#[tauri::command]
+fn new_tool() -> Tool {
+    Tool::new_default()
+}
+
+#[tauri::command]
+fn add_tool(tool: Tool, tooling: State<ToolingState>) -> Result<u32, String> {
+    change_tooling(&tooling, |t| t.add_tool(tool))
+}
+
+#[tauri::command]
+fn set_tool(tool: Tool, tooling: State<ToolingState>) -> Result<(), String> {
+    change_tooling(&tooling, |t| t.set_tool(tool))
+}
+
+#[tauri::command]
+fn delete_tool(id: u32, tooling: State<ToolingState>) -> Result<bool, String> {
+    change_tooling(&tooling, |t| Ok(t.delete_tool(id)))
+}
+
+#[tauri::command]
+fn add_library(tooling: State<ToolingState>) -> Result<String, String> {
+    change_tooling(&tooling, |t| Ok(t.add_library()))
+}
+
+/// Renames a library; a project using it keeps using it. Returns the new name.
+#[tauri::command]
+fn rename_library(
+    old: String,
+    new: String,
+    tooling: State<ToolingState>,
+    state: State<AppState>,
+) -> Result<String, String> {
+    let name = change_tooling(&tooling, |t| t.rename_library(&old, &new))?;
+    state.0.lock().unwrap().library_renamed(&old, &name);
+    Ok(name)
+}
+
+#[tauri::command]
+fn delete_library(name: String, tooling: State<ToolingState>) -> Result<bool, String> {
+    change_tooling(&tooling, |t| Ok(t.delete_library(&name)))
+}
+
+#[tauri::command]
+fn add_library_tool(
+    library: String,
+    tool_id: u32,
+    number: u32,
+    tooling: State<ToolingState>,
+) -> Result<(), String> {
+    change_tooling(&tooling, |t| t.add_library_tool(&library, tool_id, number))
+}
+
+#[tauri::command]
+fn set_library_tool_number(
+    library: String,
+    old: u32,
+    new: u32,
+    tooling: State<ToolingState>,
+) -> Result<(), String> {
+    change_tooling(&tooling, |t| t.set_library_tool_number(&library, old, new))
+}
+
+#[tauri::command]
+fn remove_library_tool(
+    library: String,
+    number: u32,
+    tooling: State<ToolingState>,
+) -> Result<bool, String> {
+    change_tooling(&tooling, |t| Ok(t.remove_library_tool(&library, number)))
+}
+
+#[tauri::command]
+fn set_active_library(name: Option<String>, state: State<AppState>) {
+    state.0.lock().unwrap().set_active_library(name);
+}
+
+/// Gives an operation tool `number` from the project's active library (None = keep the
+/// typed-in number and diameter, without a library tool).
+#[tauri::command]
+fn set_operation_tool(
+    id: u32,
+    number: Option<u32>,
+    state: State<AppState>,
+    tooling: State<ToolingState>,
+) -> Result<(), String> {
+    let mut project = state.0.lock().unwrap();
+    let tool = match number {
+        None => None,
+        Some(n) => {
+            let library = project
+                .document()
+                .active_library
+                .clone()
+                .ok_or("Choose a tool library for the project first (Machining menu).")?;
+            let tooling = tooling.0.lock().unwrap();
+            let tool = tooling.tooling.library_tool(&library, n).ok_or_else(|| {
+                format!("There is no tool {n} in the tool library \"{library}\" on this computer.")
+            })?;
+            Some((n, tool.clone()))
+        }
+    };
+    project.set_operation_tool(id, tool)
 }
 
 // --- Project files ------------------------------------------------------------------------------
@@ -368,8 +567,26 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState(Mutex::new(Project::new())))
         .manage(OpenFile(Mutex::new(None)))
+        .setup(|app| {
+            let dir = app.path().app_config_dir().ok();
+            app.manage(ToolingState(Mutex::new(load_tooling(dir))));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_view,
+            tooling_problem,
+            new_tool,
+            add_tool,
+            set_tool,
+            delete_tool,
+            add_library,
+            rename_library,
+            delete_library,
+            add_library_tool,
+            set_library_tool_number,
+            remove_library_tool,
+            set_active_library,
+            set_operation_tool,
             new_project,
             open_project,
             save_project,

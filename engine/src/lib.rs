@@ -19,6 +19,7 @@ pub mod profile;
 pub mod project;
 pub mod project_file;
 pub mod safety;
+pub mod tooling;
 pub mod toolpath;
 pub mod transform;
 
@@ -35,4 +36,5 @@ pub use project::{
     BoxMode, BreakReport, DxfInfo, GenerateReport, ImportReport, JoinReport, OperationState,
     Project,
 };
+pub use tooling::{EndType, LibraryTool, Tool, ToolLibrary, Tooling};
 pub use transform::{TransformOp, shape_bounds};

@@ -12,6 +12,8 @@ import {
   type Point,
   type Shape,
   type SnapOptions,
+  type Tool,
+  type Tooling,
   type ToolpathDisplay,
   type TransformOp,
   type View,
@@ -26,6 +28,8 @@ import ContextMenu, { type MenuItem } from "./components/ContextMenu";
 import MenuBar from "./components/MenuBar";
 import NumberDialog, { type NumberQuestion } from "./components/NumberDialog";
 import PlaybackBar from "./components/PlaybackBar";
+import SetupTree from "./components/SetupTree";
+import ToolListDialog from "./components/ToolListDialog";
 import { NOTHING, selectObjects, selectedIds, type Selection } from "./selection";
 
 function importMessage(r: ImportReport, unitsName: string | null): string {
@@ -113,6 +117,7 @@ function specialHint(sp: Special): string {
 /** Stable empty list, so the drawing area doesn't redraw toolpaths for nothing. */
 const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
 const EMPTY_CUT_WIDTHS: CutWidthStep[] = [];
+const EMPTY_TOOLING: Tooling = { tools: [], libraries: [] };
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
@@ -144,6 +149,9 @@ export default function App() {
     null,
   );
   const [hasClipboard, setHasClipboard] = useState(false);
+  /** Which tab of the left panel is shown (view state only). */
+  const [leftTab, setLeftTab] = useState<"project" | "setup">("project");
+  const [showToolList, setShowToolList] = useState(false);
   // Toolpath display and tool playback (view state only: not saved, not undo steps).
   const [showToolpaths, setShowToolpaths] = useState(true);
   // Shaded cutter width along the toolpaths (off by default; fetched only while it's on).
@@ -217,6 +225,7 @@ export default function App() {
   useEffect(() => {
     refresh().catch((err) => notify("error", `Could not reach the CAM engine: ${String(err)}`));
     engine.hasClipboard().then(setHasClipboard, () => {});
+    engine.toolingProblem().then((p) => p && notify("error", p), () => {});
   }, [refresh, notify]);
 
   const importDxf = useCallback(async () => {
@@ -514,6 +523,90 @@ export default function App() {
   const setOperation = useCallback((op: Operation) => tryEdit(() => engine.setOperation(op)), [tryEdit]);
   const setOperationShapes = useCallback(
     (id: number, shapeIds: number[]) => tryEdit(() => engine.setOperationShapes(id, shapeIds)),
+    [tryEdit],
+  );
+
+  // --- Tooling (this computer's tool list and libraries; saved straight away) ---------------------
+
+  /** Runs a tooling change; resolves to an error message, or null if it worked. */
+  const toolingEdit = useCallback(
+    async (change: () => Promise<unknown>): Promise<string | null> => {
+      try {
+        await change();
+        await refresh();
+        return null;
+      } catch (err) {
+        return String(err);
+      }
+    },
+    [refresh],
+  );
+  const toolingTry = useCallback(
+    async (change: () => Promise<unknown>) => {
+      const error = await toolingEdit(change);
+      if (error) notify("error", error);
+      return error === null;
+    },
+    [toolingEdit, notify],
+  );
+
+  const deleteTool = useCallback(
+    async (tool: Tool) => {
+      const libs = (view?.tooling.libraries ?? []).filter((l) => l.tools.some((t) => t.tool_id === tool.id));
+      const where =
+        libs.length === 0
+          ? ""
+          : ` It will also be taken out of ${libs.length === 1 ? "the library" : "the libraries"} ${libs
+              .map((l) => `"${l.name}"`)
+              .join(", ")}.`;
+      const answer = await ask({
+        title: "Delete tool",
+        message: `Delete "${tool.name}" from the master tool list?${where} Operations that use it keep their tool values. This can't be undone.`,
+        options: ["Delete"],
+      });
+      if (answer === "Delete") await toolingTry(() => engine.deleteTool(tool.id));
+    },
+    [view, ask, toolingTry],
+  );
+
+  const renameLibrary = useCallback(
+    async (oldName: string, newName: string) => {
+      let stored = newName.trim();
+      const ok = await toolingTry(async () => {
+        stored = await engine.renameLibrary(oldName, newName);
+      });
+      if (ok) setSelection((sel) => (sel.kind === "library" && sel.name === oldName ? { kind: "library", name: stored } : sel));
+      return ok;
+    },
+    [toolingTry],
+  );
+
+  const deleteLibrary = useCallback(
+    async (name: string) => {
+      const answer = await ask({
+        title: "Delete tool library",
+        message: `Delete the tool library "${name}"? Its tools stay in the master tool list, and operations keep their tool values. This can't be undone.`,
+        options: ["Delete"],
+      });
+      if (answer !== "Delete") return;
+      if (await toolingTry(() => engine.deleteLibrary(name)))
+        setSelection((sel) => (sel.kind === "library" && sel.name === name ? NOTHING : sel));
+    },
+    [ask, toolingTry],
+  );
+
+  const addLibrary = useCallback(async () => {
+    const name = await engine.addLibrary();
+    await refresh();
+    return name;
+  }, [refresh]);
+
+  const setActiveLibrary = useCallback(
+    (name: string | null) => tryEdit(() => engine.setActiveLibrary(name)),
+    [tryEdit],
+  );
+  const pickTool = useCallback(
+    (id: number, number: number | null) => tryEdit(() => engine.setOperationTool(id, number)),
     [tryEdit],
   );
 
@@ -1077,7 +1170,25 @@ export default function App() {
           { label: "Profile", action: () => run(addProfile) },
           { label: "Pocket", action: () => run(addPocket) },
           { label: "Drill", action: () => run(addDrill) },
-          c.sep(c.later("Tool library")),
+          c.sep({ label: "Master tool list…", action: () => setShowToolList(true) }),
+          {
+            label: "Tool library",
+            items:
+              (view?.tooling.libraries.length ?? 0) === 0
+                ? [{ label: "No libraries yet (Setup tab)", disabled: true }]
+                : [
+                    {
+                      label: "None",
+                      checked: view?.document.active_library === null,
+                      action: () => void setActiveLibrary(null),
+                    },
+                    ...(view?.tooling.libraries ?? []).map((l) => ({
+                      label: l.name,
+                      checked: view?.document.active_library === l.name,
+                      action: () => void setActiveLibrary(l.name),
+                    })),
+                  ],
+          },
           c.sep({ label: "Generate toolpaths", action: () => run(() => generateToolpaths()) }),
           c.later("Produce G-code"),
         ],
@@ -1106,7 +1217,39 @@ export default function App() {
       />
       <div className="side">
         <section className="panel tree-panel">
-          <h2>Project</h2>
+          <div className="panel-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={leftTab === "project"}
+              className={leftTab === "project" ? "active" : ""}
+              onClick={() => setLeftTab("project")}
+            >
+              Project
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={leftTab === "setup"}
+              className={leftTab === "setup" ? "active" : ""}
+              onClick={() => setLeftTab("setup")}
+            >
+              Setup
+            </button>
+          </div>
+          {leftTab === "setup" ? (
+            <SetupTree
+              tooling={view?.tooling ?? null}
+              activeLibrary={view?.document.active_library ?? null}
+              selection={selection}
+              onSelect={onSelect}
+              onOpenToolList={() => setShowToolList(true)}
+              onAddLibrary={addLibrary}
+              onRenameLibrary={renameLibrary}
+              onDeleteLibrary={(name) => void deleteLibrary(name)}
+              onSetActiveLibrary={(name) => void setActiveLibrary(name)}
+            />
+          ) : (
           <Tree
             doc={view?.document ?? null}
             selection={selection}
@@ -1123,6 +1266,7 @@ export default function App() {
             }}
             onDeleteLayer={(name) => run(() => deleteLayer(name))}
           />
+          )}
         </section>
         <section className="panel props-panel">
           <h2>Properties</h2>
@@ -1137,6 +1281,18 @@ export default function App() {
             onSetOperation={setOperation}
             onSetOperationShapes={setOperationShapes}
             operationStates={view?.operations ?? []}
+            tooling={view?.tooling ?? EMPTY_TOOLING}
+            activeLibrary={view?.document.active_library ?? null}
+            onPickTool={pickTool}
+            onSetActiveLibrary={setActiveLibrary}
+            onRenameLibrary={renameLibrary}
+            onAddLibraryTool={(library, toolId, number) =>
+              toolingTry(() => engine.addLibraryTool(library, toolId, number))
+            }
+            onSetLibraryToolNumber={(library, oldNumber, newNumber) =>
+              toolingTry(() => engine.setLibraryToolNumber(library, oldNumber, newNumber))
+            }
+            onRemoveLibraryTool={(library, number) => toolingTry(() => engine.removeLibraryTool(library, number))}
           />
         </section>
       </div>
@@ -1185,6 +1341,16 @@ export default function App() {
             numbers.resolve(v);
             setNumbers(null);
           }}
+        />
+      )}
+      {showToolList && view && (
+        <ToolListDialog
+          tooling={view.tooling}
+          newTool={engine.newTool}
+          onAdd={(tool) => toolingEdit(() => engine.addTool(tool))}
+          onEdit={(tool) => toolingEdit(() => engine.setTool(tool))}
+          onDelete={(tool) => void deleteTool(tool)}
+          onClose={() => setShowToolList(false)}
         />
       )}
       {choice && (

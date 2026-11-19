@@ -18,7 +18,7 @@ WHAM_CAM runs on Windows and Linux, works fully offline, and is not tied to any 
   (standard, peck, spiral) toolpaths, with every toolpath checked by a safety checker;
 - preview toolpaths in 2D and 3D, show the cutter width, and play the tool back along them.
 
-The tool library and G-code output are still being built, so it can't produce G-code yet.
+G-code output is still being built, so it can't produce G-code yet.
 See `docs/spec.md` for the v1 plan and `docs/roadmap.md` for ideas beyond it.
 
 ## Download

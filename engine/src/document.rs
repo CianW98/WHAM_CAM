@@ -13,6 +13,10 @@ pub struct Document {
     /// Drawing grid spacing in mm, used for display and grid snapping.
     #[serde(default = "default_grid_spacing")]
     pub grid_spacing: f64,
+    /// The tool library operations pick their tools from (by name; the libraries themselves
+    /// belong to the computer, not the project). None = not chosen yet.
+    #[serde(default)]
+    pub active_library: Option<String>,
 }
 
 /// Grid spacing for new projects (and older project files that don't have one), in mm.
@@ -82,6 +86,7 @@ impl Document {
                 operations: Vec::new(),
             }],
             grid_spacing: DEFAULT_GRID_SPACING,
+            active_library: None,
         }
     }
 

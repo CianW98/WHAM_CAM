@@ -24,6 +24,7 @@ use crate::pocket;
 use crate::profile;
 use crate::project_file;
 use crate::safety;
+use crate::tooling::{EndType, Tool};
 use crate::toolpath::Toolpath;
 use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
 
@@ -838,8 +839,69 @@ impl Project {
         {
             return Err(e);
         }
+        let mut op = op;
+        // A diameter typed over the library tool's means the tool is no longer that tool.
+        if op
+            .common
+            .tool
+            .as_ref()
+            .is_some_and(|t| t.diameter != op.common.tool_diameter)
+        {
+            op.common.tool = None;
+        }
         self.edit(|doc| doc.parts[pi].operations[oi] = op);
         Ok(())
+    }
+
+    /// Gives an operation a tool from a tool library as one undo step: its tool number and
+    /// diameter, plus a copy of the tool kept in the project. `None` keeps the number and
+    /// diameter but drops the copy (values typed in directly). Only flat end mills can be
+    /// used in v1.
+    pub fn set_operation_tool(&mut self, id: u32, tool: Option<(u32, Tool)>) -> Result<(), String> {
+        let (pi, oi) = self
+            .find_operation(id)
+            .ok_or_else(|| format!("There is no operation with id {id}."))?;
+        if let Some((_, t)) = &tool
+            && t.end_type != EndType::Flat
+        {
+            return Err(format!(
+                "{} is a {}: v1 toolpaths are for flat end mills only.",
+                t.name,
+                t.end_type.label()
+            ));
+        }
+        self.edit(|doc| {
+            let c = &mut doc.parts[pi].operations[oi].common;
+            match tool {
+                Some((number, t)) => {
+                    c.tool_number = number;
+                    c.tool_diameter = t.diameter;
+                    c.tool = Some(t);
+                }
+                None => c.tool = None,
+            }
+        });
+        Ok(())
+    }
+
+    /// Sets the project's active tool library (by name; None = none) as one undo step.
+    pub fn set_active_library(&mut self, name: Option<String>) {
+        if self.doc.active_library != name {
+            self.edit(|doc| doc.active_library = name);
+        }
+    }
+
+    /// Follows a tool library being renamed on this computer: the project keeps using it
+    /// (throughout the undo history, so undo doesn't bring back the old name).
+    pub fn library_renamed(&mut self, old: &str, new: &str) {
+        for doc in std::iter::once(&mut self.doc)
+            .chain(&mut self.undo)
+            .chain(&mut self.redo)
+        {
+            if doc.active_library.as_deref() == Some(old) {
+                doc.active_library = Some(new.to_string());
+            }
+        }
     }
 
     /// Sets which shapes an operation machines, as one undo step.
