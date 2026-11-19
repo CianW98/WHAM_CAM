@@ -43,11 +43,6 @@ export default function ToolListDialog({ tooling, newTool, preview, onAdd, onEdi
   const [selected, setSelected] = useState<number | null>(null);
   const [form, setForm] = useState<{ tool: Tool; isNew: boolean } | null>(null);
   const current = tooling.tools.find((t) => t.id === selected) ?? null;
-  const libraries = (id: number) =>
-    tooling.libraries
-      .filter((l) => l.tools.some((t) => t.tool_id === id))
-      .map((l) => l.name)
-      .join(", ");
 
   if (form) {
     return (
@@ -91,7 +86,6 @@ export default function ToolListDialog({ tooling, newTool, preview, onAdd, onEdi
                   <th>Flutes</th>
                   <th>Flute length</th>
                   <th>Overall length</th>
-                  <th>In libraries</th>
                 </tr>
               </thead>
               <tbody>
@@ -116,7 +110,6 @@ export default function ToolListDialog({ tooling, newTool, preview, onAdd, onEdi
                     </td>
                     <td>{num(t.flute_length)}</td>
                     <td>{num(t.overall_length)}</td>
-                    <td className="muted">{libraries(t.id)}</td>
                   </tr>
                 ))}
               </tbody>
