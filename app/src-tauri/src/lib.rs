@@ -334,6 +334,7 @@ fn set_operation_tool(
     tooling: State<ToolingState>,
 ) -> Result<(), String> {
     let mut project = state.0.lock().unwrap();
+    tell_library_numbers(&mut project, &tooling);
     let setting = match tool {
         OperationTool::Inherit => ToolSetting::Inherit,
         OperationTool::Custom => ToolSetting::Custom,
@@ -554,8 +555,34 @@ fn add_profile(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, Strin
 }
 
 #[tauri::command]
-fn set_operation(op: Operation, state: State<AppState>) -> Result<(), String> {
-    state.0.lock().unwrap().set_operation(op)
+fn set_operation(
+    op: Operation,
+    state: State<AppState>,
+    tooling: State<ToolingState>,
+) -> Result<(), String> {
+    let mut project = state.0.lock().unwrap();
+    tell_library_numbers(&mut project, &tooling);
+    project.set_operation(op)
+}
+
+/// Tells the project the active library's tool numbers on this computer (custom tools can't
+/// use them).
+fn tell_library_numbers(project: &mut Project, tooling: &State<ToolingState>) {
+    let numbers = project
+        .document()
+        .active_library
+        .as_deref()
+        .and_then(|name| {
+            tooling
+                .0
+                .lock()
+                .unwrap()
+                .tooling
+                .library(name)
+                .map(|l| l.tools.iter().map(|t| t.number).collect())
+        })
+        .unwrap_or_default();
+    project.set_library_numbers(numbers);
 }
 
 #[tauri::command]
@@ -573,8 +600,14 @@ fn delete_operation(id: u32, state: State<AppState>) -> bool {
 }
 
 #[tauri::command]
-fn generate_toolpaths(ids: Vec<u32>, state: State<AppState>) -> GenerateReport {
-    state.0.lock().unwrap().generate(&ids)
+fn generate_toolpaths(
+    ids: Vec<u32>,
+    state: State<AppState>,
+    tooling: State<ToolingState>,
+) -> GenerateReport {
+    let mut project = state.0.lock().unwrap();
+    tell_library_numbers(&mut project, &tooling);
+    project.generate(&ids)
 }
 
 #[tauri::command]

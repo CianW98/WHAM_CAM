@@ -497,7 +497,10 @@ function OperationToolSelect({
   );
 }
 
-/** A custom tool's settings (the same as the Add tool window), edited in place. */
+/**
+ * A custom tool's settings (as in the Add tool window, without the name: a custom tool isn't
+ * saved to a library), edited in place.
+ */
 function CustomToolRows({ op, onSet }: { op: Operation; onSet: (op: Operation) => Promise<boolean> }) {
   const c = op.common;
   const t = c.tool;
@@ -513,16 +516,6 @@ function CustomToolRows({ op, onSet }: { op: Operation; onSet: (op: Operation) =
           parse={whole}
           onSave={(tool_number) => onSet({ ...op, common: { ...c, tool_number } })}
         />
-      </Row>
-      <Row label="Tool name">
-        <TextField
-          shown={t.name}
-          parse={(text) => (text.trim() ? text.trim() : null)}
-          onSave={(name) => set({ name, auto_name: false })}
-        />
-      </Row>
-      <Row label="Automatic name">
-        <BoolField value={t.auto_name} onSave={(auto_name) => void set({ auto_name })} />
       </Row>
       <Row label="End type">
         <select className="prop-input" value={t.end_type} onChange={(e) => void set({ end_type: e.target.value as EndType })}>

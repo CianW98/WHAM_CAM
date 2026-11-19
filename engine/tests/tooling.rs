@@ -526,10 +526,9 @@ fn machining_tool_then_part_tool_then_operation_tool() {
     let st = state(&proj, op);
     assert_eq!(
         (st.tool_from.as_str(), st.tool_number, st.tool_diameter),
-        ("operation", Some(7), Some(3.0)),
-        "Custom starts from the tool in use"
+        ("operation", Some(2), Some(3.0)),
+        "Custom starts from the tool in use, with the first free number (T1 and T7 are taken)"
     );
-    assert_eq!(st.status, "ok", "switching to Custom changes nothing yet");
     let mut o = proj.operation(op).unwrap().clone();
     o.common.tool_number = 9;
     o.common.tool.as_mut().unwrap().diameter = 4.0;
@@ -688,4 +687,113 @@ fn renaming_a_library_follows_in_the_project() {
     assert_eq!(proj.document().active_library, None);
     proj.redo();
     assert_eq!(proj.document().active_library.as_deref(), Some("Router"));
+}
+
+// --- Tool numbers: one number, one tool ---------------------------------------------------------
+
+fn add_pocket(proj: &mut Project, x: f64) -> u32 {
+    let shape = proj
+        .add_shape(
+            "Default",
+            Shape::rectangle(Point::new(x, 0.0), 20.0, 20.0, 0.0),
+        )
+        .unwrap();
+    let op = proj.add_pocket(&[shape]).unwrap();
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.target_depth = Some(-1.0);
+    proj.set_operation(o).unwrap();
+    op
+}
+
+fn set_custom_number(proj: &mut Project, op: u32, n: u32) -> Result<(), String> {
+    let mut o = proj.operation(op).unwrap().clone();
+    o.common.tool_number = n;
+    proj.set_operation(o)
+}
+
+#[test]
+fn custom_tools_avoid_library_numbers() {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_library_numbers(vec![1, 2, 5]);
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
+    assert_eq!(
+        proj.operation(op).unwrap().common.tool_number,
+        3,
+        "first number not in the library"
+    );
+    let err = set_custom_number(&mut proj, op, 5).unwrap_err();
+    assert!(err.contains("T5 is a tool in the tool library"), "{err}");
+    assert_eq!(proj.operation(op).unwrap().common.tool_number, 3);
+    set_custom_number(&mut proj, op, 8).unwrap();
+}
+
+#[test]
+fn two_different_custom_tools_cant_share_a_number() {
+    let mut proj = Project::new();
+    let a = add_pocket(&mut proj, 0.0);
+    let b = add_pocket(&mut proj, 50.0);
+    proj.set_operation_tool(a, ToolSetting::Custom).unwrap();
+    proj.set_operation_tool(b, ToolSetting::Custom).unwrap();
+    assert_eq!(proj.operation(a).unwrap().common.tool_number, 1);
+    assert_eq!(proj.operation(b).unwrap().common.tool_number, 2);
+    // Same cutter, same number: fine (it is the same tool).
+    set_custom_number(&mut proj, b, 1).unwrap();
+    // Make b a different cutter while it is T1: refused.
+    let mut o = proj.operation(b).unwrap().clone();
+    o.common.tool.as_mut().unwrap().diameter = 3.0;
+    let err = proj.set_operation(o).unwrap_err();
+    assert!(err.contains("T1 is already used"), "{err}");
+}
+
+#[test]
+fn unrelated_edits_are_not_blocked_by_a_number_clash() {
+    let (mut proj, op) = project_with_pocket();
+    proj.set_operation_tool(op, ToolSetting::Custom).unwrap();
+    // The library later gets a T1.
+    proj.set_library_numbers(vec![1]);
+    let mut o = proj.operation(op).unwrap().clone();
+    o.name = "Renamed".into();
+    proj.set_operation(o).unwrap();
+    // But Generate refuses it.
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 0);
+    assert!(
+        report.errors[0]
+            .1
+            .contains("T1 is a tool in the tool library")
+    );
+}
+
+#[test]
+fn generate_refuses_one_number_for_two_different_tools() {
+    let mut proj = Project::new();
+    let a = add_pocket(&mut proj, 0.0);
+    let b = add_pocket(&mut proj, 50.0);
+    let c = add_pocket(&mut proj, 100.0);
+    // a and c follow Machining's T1 (6 mm); b has its own library tool also numbered T1 but a
+    // different cutter (e.g. picked from another library).
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    proj.set_operation_tool(
+        b,
+        ToolSetting::Library(PickedTool {
+            number: 1,
+            ..picked(7)
+        }),
+    )
+    .unwrap();
+    let report = proj.generate(&[]);
+    assert_eq!(report.generated, 0, "all three use T1");
+    assert!(
+        report
+            .errors
+            .iter()
+            .all(|(_, e)| e.contains("T1 is used for two different tools"))
+    );
+    // Disabled operations aren't part of the job.
+    let mut o = proj.operation(b).unwrap().clone();
+    o.enabled = false;
+    proj.set_operation(o).unwrap();
+    assert_eq!(proj.generate(&[]).generated, 2);
+    let _ = (a, c);
 }

@@ -144,6 +144,10 @@ pub struct Project {
     display: DisplayData,
     /// Copied shapes with the layer each came from. Not part of the document or of undo.
     clipboard: Vec<(String, Shape)>,
+    /// Tool numbers of the active tool library on this computer (set by the app). Custom tools
+    /// can't use them: on a tool changer that number is the library tool's pocket. Not part of
+    /// the document.
+    library_numbers: Vec<u32>,
     /// The document as last saved or opened, to tell whether there are unsaved changes.
     saved: Document,
     /// Generated toolpaths by operation id. Not part of the document: regenerated on request.
@@ -167,6 +171,7 @@ impl Project {
             redo: Vec::new(),
             display,
             clipboard: Vec::new(),
+            library_numbers: Vec::new(),
             toolpaths: BTreeMap::new(),
         }
     }
@@ -882,6 +887,14 @@ impl Project {
             };
             op.common.tool_diameter = tool.diameter;
             op.common.tool = Some(tool);
+            // Checked when the custom tool or its number changes (Generate checks every time).
+            let before = &self.doc.parts[pi].operations[oi].common;
+            let changed = before.tool_source != op.common.tool_source
+                || before.tool_number != op.common.tool_number
+                || before.tool != op.common.tool;
+            if op.common.tool_source == ToolSource::Custom && changed {
+                self.check_custom_number(&op)?;
+            }
         }
         self.edit(|doc| doc.parts[pi].operations[oi] = op);
         Ok(())
@@ -898,6 +911,7 @@ impl Project {
             p.check_usable()?;
         }
         let (_, current) = self.tool_source(pi, &self.doc.parts[pi].operations[oi]);
+        let free = self.free_tool_number(id);
         self.edit(|doc| {
             let c = &mut doc.parts[pi].operations[oi].common;
             match setting {
@@ -914,12 +928,77 @@ impl Project {
                         tool: Tool::new_default(),
                     });
                     c.tool_source = ToolSource::Custom;
-                    c.tool_number = p.number;
+                    // A different tool from the one it copies, so it gets its own number.
+                    c.tool_number = free;
                     c.tool_diameter = p.tool.diameter;
                     c.tool = Some(p.tool);
                 }
             }
         });
+        Ok(())
+    }
+
+    /// Tells the project the tool numbers of the active library on this computer (the app
+    /// calls this before edits and generating). Custom tools can't use them.
+    pub fn set_library_numbers(&mut self, numbers: Vec<u32>) {
+        self.library_numbers = numbers;
+    }
+
+    /// Every tool the project names with a number, except operation `except`'s own tool:
+    /// Machining's, each part's, and each operation's own (library or custom) tool.
+    fn project_tools(&self, except: u32) -> Vec<PickedTool> {
+        let mut tools: Vec<PickedTool> = self.doc.machining_tool.iter().cloned().collect();
+        for part in &self.doc.parts {
+            tools.extend(part.tool.iter().cloned());
+            for op in &part.operations {
+                let c = &op.common;
+                if op.id != except
+                    && c.tool_source != ToolSource::Inherit
+                    && let Some(tool) = &c.tool
+                {
+                    tools.push(PickedTool {
+                        number: c.tool_number,
+                        tool: tool.clone(),
+                    });
+                }
+            }
+        }
+        tools
+    }
+
+    /// The lowest tool number not in the active library and not used by another tool in the
+    /// project, for a new custom tool on operation `id`.
+    fn free_tool_number(&self, id: u32) -> u32 {
+        let used: HashSet<u32> = self
+            .library_numbers
+            .iter()
+            .copied()
+            .chain(self.project_tools(id).iter().map(|p| p.number))
+            .collect();
+        (1..).find(|n| !used.contains(n)).expect("a free number")
+    }
+
+    /// A custom tool's number must not be a library tool's, nor another, different tool's in
+    /// the project: the machine would load the wrong tool for that number.
+    fn check_custom_number(&self, op: &Operation) -> Result<(), String> {
+        let c = &op.common;
+        let n = c.tool_number;
+        if self.library_numbers.contains(&n) {
+            return Err(format!(
+                "T{n} is a tool in the tool library. Give the custom tool a number that isn't in the library."
+            ));
+        }
+        if let Some(tool) = &c.tool
+            && let Some(other) = self
+                .project_tools(op.id)
+                .into_iter()
+                .find(|p| p.number == n && !p.tool.same_cutter(tool))
+        {
+            return Err(format!(
+                "T{n} is already used for {} in this project. Give the custom tool another number.",
+                other.tool.name
+            ));
+        }
         Ok(())
     }
 
@@ -1097,11 +1176,48 @@ impl Project {
             generated: 0,
             errors: Vec::new(),
         };
+        // One tool number must mean one tool across the whole job (every enabled operation,
+        // as in the G-code): the machine loads tools by number.
+        let job: Vec<(u32, PickedTool)> = self
+            .doc
+            .parts
+            .iter()
+            .enumerate()
+            .flat_map(|(pi, p)| p.operations.iter().map(move |o| (pi, o)))
+            .filter(|(_, o)| o.enabled)
+            .filter_map(|(pi, o)| Some((o.id, self.tool_source(pi, o).1?)))
+            .collect();
+        let clashes: HashMap<u32, String> = job
+            .iter()
+            .filter_map(|(id, mine)| {
+                let n = mine.number;
+                job.iter()
+                    .find(|(i, p)| i != id && p.number == n && !p.tool.same_cutter(&mine.tool))
+                    .map(|(i, p)| {
+                        let other = self.operation(*i).map_or("another operation", |o| &o.name);
+                        let msg = format!(
+                            "T{n} is used for two different tools: {} here and {} in {other}. Give one of them another number.",
+                            mine.tool.name, p.tool.name
+                        );
+                        (*id, msg)
+                    })
+            })
+            .collect();
         for (pi, op) in ops {
             // Generated with the tool it really uses (its own, the part's or Machining's).
-            let result = self
-                .resolve(pi, &op)
-                .and_then(|resolved| self.make_toolpath(&resolved));
+            let custom_in_library = op.common.tool_source == ToolSource::Custom
+                && self.library_numbers.contains(&op.common.tool_number);
+            let result = if custom_in_library {
+                Err(format!(
+                    "T{} is a tool in the tool library. Give the custom tool a number that isn't in the library.",
+                    op.common.tool_number
+                ))
+            } else if let Some(e) = clashes.get(&op.id) {
+                Err(e.clone())
+            } else {
+                self.resolve(pi, &op)
+                    .and_then(|resolved| self.make_toolpath(&resolved))
+            };
             match &result {
                 Ok(_) => report.generated += 1,
                 Err(e) => report.errors.push((op.name.clone(), e.clone())),

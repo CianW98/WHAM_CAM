@@ -260,10 +260,15 @@ Decided with the user 2026-11-19.
   - *Operation* Tool box, in this order: **Custom tool**, "Use part tool" / "Use Machining
     tool" (the default for new operations), then the library's tools.
   - **Custom tool** shows every tool setting from the Add tool window below the Tool box (tool
-    number, name with Automatic name, end type, flute type, helix angle, diameter, shank
-    diameter, flutes, flute length, overall length), starting from the tool the operation was
-    using. They are checked like a tool in the master list. Non-end-mill end types are greyed
-    out in v1.
+    number, end type, flute type, helix angle, diameter, shank diameter, flutes, flute length,
+    overall length; no name, as it isn't saved to a library), starting from the tool the
+    operation was using. They are checked like a tool in the master list. Non-end-mill end
+    types are greyed out in v1.
+  - **One tool number, one tool** (decided 2026-11-19): a custom tool can't use a number from
+    the active library (on a tool changer that number is the library tool's pocket), nor a
+    number another, different tool in the project uses. Switching to Custom tool gives the first
+    free number. Generate toolpaths checks again across every enabled operation and refuses any
+    whose number clashes (the library may have changed since).
   - With any other choice, the Tool number and Tool diameter are shown greyed out.
   - The engine works out each operation's tool (own, else part's, else Machining's) before
     generating; the toolpath maths is unchanged. Changing a Machining or part tool marks the

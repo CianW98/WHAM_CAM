@@ -327,6 +327,18 @@ impl Tool {
         self.flute_type.has_helix() && self.end_type != EndType::Drill
     }
 
+    /// True if both describe the same cutter: every value the same, ignoring the name and the
+    /// master-list id (which differ between computers and don't change the cutter).
+    pub fn same_cutter(&self, other: &Tool) -> bool {
+        let plain = |t: &Tool| Tool {
+            id: 0,
+            name: String::new(),
+            auto_name: false,
+            ..t.clone()
+        };
+        plain(self) == plain(other)
+    }
+
     /// The shank diameter, or the cutting diameter if it isn't set.
     pub fn shank(&self) -> f64 {
         self.shank_diameter.unwrap_or(self.diameter)
