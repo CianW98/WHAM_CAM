@@ -1,23 +1,24 @@
 # WHAM_CAM v1 Specification
 
-Status: **v1 in progress.** DXF import, layers, drawing, selection, transforms, edit tools
-(sections 5.1–5.3, apart from SVG import and dimensions), project files (5.8), and Profile,
-Pocket and Drill toolpaths with preview and playback (5.4, 5.6, 6.1–6.4) and tooling (5.5) are
-built. G-code output and the generic post-processor (5.7, 7) are next, built together; their open
-questions are in section 9. Items marked **(?)** need a decision from the user.
+What WHAM_CAM v1 does and how it behaves. Points marked **(?)** still need a decision from the
+user; they are listed in section 9. Ideas beyond v1 are in `docs/roadmap.md`. Build progress is
+tracked in the Status section of `CLAUDE.md`, not here.
 
 ## 1. Purpose
 
-WHAM_CAM is a simple 2.5D CAM program in the spirit of the classic simple 2.5D CAM programs. You draw or import 2D geometry,
+WHAM_CAM is a simple 2.5D CAM program for CNC routers and mills. You draw or import 2D geometry,
 select shapes, apply machining operations (profile, pocket, drill), preview the toolpaths and
 output G-code for the machine.
 
 Design principles (from CLAUDE.md):
 - **Geometry first, operations second.** Select shapes, then apply an operation to them.
 - **One main screen.** Drawing area, object/operation tree, properties panel.
-- **Every setting visible and editable.** No hidden wizards, no 3D modelling, no parametric history.
-- **Simple wins.** If a feature makes the common workflow slower or more confusing, it doesn't go in.
-- **An established simple CAM program is the behaviour reference** (clean room: we study behaviour and output, never code).
+- **Every setting visible and editable.** No hidden wizards, no 3D modelling, no parametric
+  history.
+- **Simple wins.** If a feature makes the common workflow slower or more confusing, it doesn't go
+  in.
+- **An established simple CAM program is the behaviour reference** (clean room: we study its
+  behaviour and output, never its code).
 
 ## 2. Stack
 
@@ -65,10 +66,11 @@ A classic CAD/CAM layout, with a toolbar:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ Menus                                                        │
-│ Toolbar: [New Open Save Import] [Line Arc Circle Rect Pline  │
-│          Point] [Profile Pocket Drill] [Generate] [G-code]   │
+│ Toolbar: [New Open Save Import] [Undo Redo Delete] [Line Arc │
+│   Circle Rect Pline Point] [Profile Pocket Drill] [Generate  │
+│   Show-toolpaths Show-cut-width G-code] [Zoom to fit]        │
 ├─────────────────────┬────────────────────────────────────────┤
-│ Tree                │                                        │
+│ [Project | Setup]   │                                        │
 │  Project            │                                        │
 │   Layers            │          Drawing area                  │
 │    Default          │          (grid, geometry, toolpaths)   │
@@ -83,31 +85,56 @@ A classic CAD/CAM layout, with a toolbar:
 └─────────────────────┴────────────────────────────────────────┘
 ```
 
-- **Menu bar** across the top: File (New, Open, Save, Save As, Import DXF), View, Edit (Undo/Redo,
-  Cut/Copy/Paste, Delete, Select All / On Layer, Transform, Join, Explode, Break at
-  intersections, Close polyline, Dimension), Draw (the drawing tools), Machining (Profile, Pocket, Drill, Tool library, Generate
-  toolpaths, Produce G-code). Click a heading to open it; while one is open, hovering another
-  switches to it. Items not built yet are greyed.
-- **Toolbar**: file actions (new, open, save, import), drawing tools (line, arc, circle,
-  rectangle, polyline, point), operations (Profile, Pocket, Drill), Generate toolpaths and
-  Produce G-code. Everything on the toolbar is also in the menus.
-- **Tree**: Layers → drawing objects; Machining → Parts → operations. Click to select,
-  right-click for actions (rename, delete, enable/disable, generate toolpath).
+- **Menu bar** across the top:
+  - File: New, Open, Save, Save As, Import DXF.
+  - View: Zoom to fit, 2D/3D, Show toolpaths, Show cut width, Toolpath playback.
+  - Edit: Undo/Redo, Cut/Copy/Paste, Delete, Select All / On Layer, Transform, Join, Explode,
+    Break at intersections, Close polyline, Dimension.
+  - Draw: the drawing tools.
+  - Machining: Profile, Pocket, Drill, Master tool list…, Tool library ▸ (the project's library),
+    Generate toolpaths, Produce G-code.
+
+  Click a heading to open it; while one is open, hovering another switches to it. Items that
+  can't be used right now are greyed.
+- **Toolbar**: file actions (new, open, save, import), undo/redo/delete, drawing tools (line, arc,
+  circle, rectangle, polyline, point), operations (Profile, Pocket, Drill), Generate toolpaths,
+  Show toolpaths, Show cut width, Produce G-code, and Zoom to fit. Everything on the toolbar is
+  also in the menus.
+- **Left panel tabs**: *Project* and *Setup*, above the tree. The Properties panel stays below
+  both.
+  - **Project** is the tree: Layers → drawing objects; Machining → Parts → operations. Click to
+    select (Machining and parts too: their Properties are in 5.4), right-click for actions
+    (rename, delete, enable/disable, generate toolpath).
+  - **Setup** holds the Master tool list and the Tool libraries (5.5). Clicking Master tool list
+    opens its window. Right-click Tool libraries → New library; right-click a library → Rename,
+    Delete library. Selecting a library shows its numbered tools in Properties, where tools are
+    added from the master list, renumbered or taken out.
+- **The Setup tab is global, not project-specific** (decided 2026-11-19). It holds what belongs to
+  the computer and is shared by every project: now the master tool list and tool libraries; later,
+  for example, machine settings and the materials library. It is only for configuring things at
+  that level:
+  - Nothing in it changes the open project, and it shows no project information.
+  - Project choices, such as which library a project uses, are made in the Project tab (5.4).
+  - Renaming or deleting a library doesn't change any project: a project using the old name
+    shows it as "not on this computer" until another library is chosen in its Machining
+    properties.
 - **Properties panel**: every setting of whatever is selected, editable in place. A point is one
-  `x,y` box. Polyline and point-list points open in a pop-up table
-  ("Points (Collection) …": X, Y and, for polylines, bulge; add/remove points, OK saves) instead
-  of filling the panel. Closed polylines and rectangles show their direction (CW/CCW).
-- **Right-click menu** in the drawing area (right-click without dragging; right-drag pans):
-  View (Zoom to fit, 2D/3D), Draw (the drawing tools), Transform, Edit, Select All,
-  Select All On Layer (current layer), Cut, Copy, Paste, Undo, Redo. Items that can't be used
-  right now, or aren't built yet, are greyed.
-- **Drawing area**: dark background, grid, X/Y axes. Pan, zoom, select (click and box-select).
-  A toggle switches between the 2D top view and a 3D orbit view of the toolpaths. The cursor
-  X/Y position is shown in a small readout in a corner of the drawing area.
-- **Notifications**: no status bar. Important messages (items skipped on import, toolpath errors,
-  file saved) pop up over the drawing area. Errors stay until dismissed; info messages fade out.
+  `x,y` box. Polyline and point-list points open in a pop-up table ("Points (Collection) …": X, Y
+  and, for polylines, bulge; add/remove points, OK saves) instead of filling the panel. Closed
+  polylines and rectangles show their direction (CW/CCW).
+- **Right-click menu** in the drawing area (right-click without dragging; right-drag pans): View
+  (Zoom to fit, 2D/3D), Draw (the drawing tools), Transform, Edit, Select All, Select All On Layer
+  (current layer), Cut, Copy, Paste, Undo, Redo. Items that can't be used right now are greyed.
+- **Drawing area**: dark background, grid, X/Y axes. Pan, zoom, select (click and box-select). A
+  toggle switches between the 2D top view and a 3D orbit view of the toolpaths. The cursor X/Y
+  position is shown in a small readout in a corner of the drawing area.
+- **Notifications**: no status bar. Messages pop up over the drawing area:
+  - info (e.g. file saved, toolpaths generated) fades out;
+  - warnings (amber, e.g. tool numbers couldn't be checked) stay until closed;
+  - errors (e.g. items skipped on import, toolpath errors) stay until closed.
 - **Workflow**: select shapes → toolbar or Machining menu → Profile, Pocket or Drill → the new
-  operation appears in the tree and its properties are shown → Generate toolpaths → Produce G-code.
+  operation appears in the tree and its properties are shown → Generate toolpaths → Produce
+  G-code.
 
 ## 5. v1 Features
 
@@ -127,9 +154,13 @@ A classic CAD/CAM layout, with a toolbar:
 
   Everything else (TEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and the
   import message lists what was skipped. Binary DXF and broken files give a clear error.
+- **(?) Further DXF entities**: v1 also reads the extra entities the user needs from their own
+  drawings. Which ones is still to decide; candidates are the ones skipped today, e.g. TEXT and
+  MTEXT (as shapes to engrave or as reference), HATCH boundaries (as closed shapes) and DIMENSION
+  (as dimensions, 5.3). Each becomes ordinary drawing objects, so operations work on it as usual.
 - **Splines and ellipses stay exact** in the drawing. They are converted to arcs and lines only
-  when a toolpath is made (conversion tolerance is a toolpath setting). A "Convert to polyline"
-  command will allow editing them like any polyline.
+  when a toolpath is made (conversion tolerance is a toolpath setting). A **Convert to polyline**
+  command turns them into polylines, to edit like any other polyline.
 - **Units**: if a DXF says it is in inches (or other non-mm units), import asks whether to
   convert to mm or treat the numbers as mm.
 - Import adds to the current drawing as one undo step.
@@ -153,8 +184,8 @@ A classic CAD/CAM layout, with a toolbar:
   - **Point**: each click adds a point; Enter or double-click makes them one point list.
   - Esc cancels the shape in progress; a second Esc stops drawing.
   - Shortcut keys start a tool: **L** line, **A** arc, **C** circle, **R** rectangle, **P**
-    polyline, **.** (full stop) point (shown in the Draw menu). While a polyline is being drawn (after its first click),
-    A and L instead switch its next segment between arc and line.
+    polyline, **.** (full stop) point (shown in the Draw menu). While a polyline is being drawn
+    (after its first click), A and L instead switch its next segment between arc and line.
 - New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
 - Points are set by clicking. Clicks snap to end points, mid points and centres of shapes
   (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the
@@ -211,88 +242,99 @@ A classic CAD/CAM layout, with a toolbar:
   opens at the cut. A shape is not cut where it crosses itself.
 - **Close polyline**: closes open polylines; a last point on top of the first is dropped.
 - Each of these is one undo step, and the results become the selection.
-- **Dimensions** are put off until later in v1, together with more DXF features (to be listed).
-- Undo/redo.
+- **(?) Dimensions** (v1 scope: "basic dimensioning"): measured dimensions shown on the drawing,
+  such as lengths, radii and diameters, snapped to the shapes they measure and kept on the grid.
+  Still to decide with the user: which kinds, how they look, whether they are saved with the
+  project and printed/exported, and whether typing a new value changes the shape (driving
+  dimensions) or they only show measurements.
 
-### 5.4 Operations
-Profile (inside / outside / on line), Pocket, Drill. Settings in section 6.
+### 5.4 Operations and the Machining tree
+The Machining branch of the Project tree holds the project's machining, in three levels: the
+**Machining** item, its **parts**, and each part's **operations**. Each can be selected; its
+Properties show:
+- **Machining**:
+  - **Tool library**: the project's tool library (5.5), saved in the project file by name. Also
+    set from Machining menu → Tool library. This is the only place a project's library is chosen
+    (the Setup tab never changes a project).
+  - **Tool**: a tool from that library, used by every part and operation that doesn't pick its
+    own.
+- **Part**: **Tool**: "Use Machining tool" (default), or a tool from the library to use for the
+  part's operations instead. A part has no library choice of its own.
+- **Operation**: Profile (inside / outside / on line), Pocket or Drill, with its settings
+  (section 6), including how it gets its tool (5.5).
 
 ### 5.5 Tool library
 Decided with the user 2026-11-19.
-- **Master tool list** (one per computer, shared by every project): every physical tool the user
-  has. Each tool: name, end type (End mill, Ball nose, V-bit, Drill), diameter, shank
-  diameter (blank = same as the diameter), flutes, flute type (Spiral = upcut, Straight, Downcut =
-  reverse spiral; not drills, decided 2026-11-19), helix angle (Spiral and Downcut, not drills; default 30°, the common
-  general-purpose angle), flute length, overall length, V angle (V-bit
-  only). All mm.
-- **Automatic tool names** (decided 2026-11-19): made from diameter, V angle (V-bits), flutes,
-  flute type (not for drills), end type and flute length (not the helix angle), e.g. "6mm 2F Spiral End Mill, 20mm
-  flute", and kept up to date when those
-  change. Typing a name (or unticking *Automatic name*) keeps the typed name. Tools saved before
-  this keep their names.
-- The Add/Edit tool form shows a **live side view** of the tool on the right (silhouette from the
-  engine: flat, ball, V point; drills drawn with a 118° point; flute edges drawn by flute type
-  and helix angle), with the diameters and the flute
-  and overall lengths marked.
-- **Tools hold no feeds or speeds**: those depend on the material as well as the tool. In v1 each
+
+**Tools**
+- The **master tool list** belongs to the computer and is shared by every project (Setup tab,
+  section 4): every physical tool the user has. Each tool has:
+  - name (automatic or typed, below);
+  - end type: End mill, Ball nose, V-bit or Drill;
+  - diameter, and shank diameter (blank = same as the diameter);
+  - flutes, and flute type: Spiral (upcut), Straight or Downcut (reverse spiral); drills have no
+    flute type;
+  - helix angle, for Spiral and Downcut only (not drills): default 30°, the common general-purpose
+    angle;
+  - flute length and overall length;
+  - V angle (V-bits only).
+
+  All values are in mm.
+- **Automatic tool names**, made from diameter, V angle (V-bits), flutes, flute type (not for
+  drills), end type and flute length, but not the helix angle, e.g. "6mm 2F Spiral End Mill, 20mm
+  flute". They follow the values when those change. Typing a name (or unticking *Automatic name*)
+  keeps the typed name.
+- The Add/Edit tool window shows a **live side view** of the tool on the right, drawn from the
+  engine's outline: flat, ball or V end (drills with a 118° point), flute edges by flute type and
+  helix angle, with the diameters and the flute and overall lengths marked.
+- **Tools hold no feeds or speeds**: those depend on the material as well as the tool. Each
   operation keeps its own feeds, speeds, depth increment and stepover; the materials library
-  (roadmap) will later fill them in from tool + material.
-- **Tool libraries** (also per computer): named sets of master tools, each given a tool number
-  (unique in the library, from 1), e.g. "mm tooling" and "inch tooling" (values still in mm), or
-  what is loaded in a tool changer. The same master tool can be in several libraries under
-  different numbers.
-- The tooling is kept in `tooling.json` in WHAM_CAM's settings folder on the computer (the app
-  layer reads/writes it; the engine only converts it to and from text). Tooling changes are saved
-  straight away and are not undo steps. A damaged file is kept aside as `tooling.json.damaged`,
-  never overwritten.
-- **Left panel tabs**: *Project* (the tree) and *Setup* (Master tool list, Tool libraries).
-  Clicking Master tool list opens its window (Add tool / Edit / Delete; double-click a row to
-  edit). Right-click Tool libraries → New library; right-click a library → Rename, Delete
-  library. Selecting a library shows its numbered tools in Properties, where tools are added
-  from the master list, renumbered or taken out.
-- **The Setup tab is global, not project-specific** (decided 2026-11-19): it holds what belongs
-  to the computer and is shared by every project (now the master tool list and tool libraries;
-  later e.g. machine settings and the materials library). It is only for configuring things at
-  that level: nothing in it changes the open project, and project choices (such as which library
-  a project uses) are made in the Project tab. It shows no project information. Renaming or
-  deleting a library doesn't change any project either: a project using the old name shows it as
-  "not on this computer" until another library is chosen in its Machining properties.
-- **Active library**: each project chooses one in the Machining item's Properties (also the
-  Machining menu → Tool library); saved in the project file by name.
-- **Tools follow the Machining tree** (decided 2026-11-19):
-  - *Machining* Properties: Tool library and **Tool** (from that library).
-  - *Part* Properties: **Tool**, "Use Machining tool" by default, or a library tool to override
-    it for the part's operations. No library choice of its own.
-  - *Operation* Tool box, in this order: **Custom tool**, "Use part tool" / "Use Machining
-    tool" (the default for new operations), then the library's tools.
-  - **Custom tool** shows every tool setting from the Add tool window below the Tool box (tool
+  (roadmap) will fill them in from tool + material.
+
+**Tool libraries**
+- Named sets of master tools, each given a **tool number** (unique in the library, from 1), e.g.
+  "mm tooling" and "inch tooling" (values still in mm), or what is loaded in a tool changer. The
+  same master tool can be in several libraries under different numbers. Libraries belong to the
+  computer, like the master tool list.
+- The master tool list and libraries are kept in `tooling.json` in WHAM_CAM's settings folder on
+  the computer (the app layer reads and writes it; the engine only converts it to and from text).
+  Changes are saved straight away and are not undo steps. A damaged file is kept aside as
+  `tooling.json.damaged`, never overwritten.
+
+**Tools for operations**
+- **Tools follow the Machining tree** (5.4): an operation uses its own tool if it has one, else
+  its part's, else the Machining tool. The engine works this out before generating; the toolpath
+  maths is the same whichever level the tool comes from.
+- An operation's **Tool** box offers, in this order:
+  - **Custom tool**: every tool setting from the Add tool window appears below the Tool box (tool
     number, end type, flute type, helix angle, diameter, shank diameter, flutes, flute length,
-    overall length; no name, as it isn't saved to a library), starting from the tool the
-    operation was using. They are checked like a tool in the master list. Non-end-mill end
-    types are greyed out in v1.
-  - **One tool number, one tool** (decided 2026-11-19): a custom tool can't use a number from
-    the active library (on a tool changer that number is the library tool's pocket), nor a
-    number another, different tool in the project uses. Switching to Custom tool gives the first
-    free number. Generate toolpaths checks again across every enabled operation and refuses any
-    whose number clashes (the library may have changed since).
-  - **Checked against the library on this computer** (decided 2026-11-19): Generate toolpaths
-    compares each operation's tool with the same number in the project's tool library on the
-    computer it runs on (what is in that machine's tool changer). A different cutter under that
-    number is refused: "T3 in the tool library "Mill" on this computer is a different tool (…).
-    Pick it again from the library." If the project's library isn't on this computer, it still
-    generates, with a warning (amber pop-up, stays until closed) that tool numbers couldn't be
-    checked against it.
-  - With any other choice, the Tool number and Tool diameter are shown greyed out.
-  - The engine works out each operation's tool (own, else part's, else Machining's) before
-    generating; the toolpath maths is unchanged. Changing a Machining or part tool marks the
-    operations following it out of date (only the tool number and diameter count).
-  - An operation following the tree with no tool set anywhere: its Tool box says "No tool
-    selected" (or "No library selected"), and Generate toolpaths refuses it with the message
-    "No tool selected. Choose a tool for Machining, the part, or the operation."
-  - Every picked tool is copied into the project, so it opens and cuts the same on a computer
-    with different tooling. Only end mills (flat end) can be picked in v1; other end types are
-    greyed out, and the engine refuses to generate with them.
-- The tool number goes into the G-code (tool changes) when G-code output arrives.
+    overall length), but no name, as it isn't saved to a library. It starts from the tool the
+    operation was using and is checked like a tool in the master list.
+  - "Use part tool" / "Use Machining tool": the default for new operations.
+  - The library's tools.
+
+  With any choice other than Custom tool, the Tool number and Tool diameter are shown greyed out.
+- **One tool number, one cutter**:
+  - A custom tool can't use a number from the project's library (on a tool changer that number is
+    the library tool's pocket), nor a number another, different tool in the project uses.
+    Switching to Custom tool gives the first free number.
+  - Generate toolpaths checks again across every enabled operation and refuses any whose number
+    means two different cutters.
+  - Generate toolpaths also compares each operation's tool with the same number in the project's
+    library **on the computer it runs on** (what is in that machine's tool changer). A different
+    cutter under that number is refused: "T3 in the tool library "Mill" on this computer is a
+    different tool (…). Pick it again from the library." If the project's library isn't on this
+    computer, it still generates, with a warning that tool numbers couldn't be checked against it.
+- Changing the Machining or a part tool marks the operations following it out of date (only the
+  tool number and diameter count).
+- An operation following the tree with no tool set anywhere shows "No tool selected" (or "No
+  library selected") in its Tool box, and Generate toolpaths refuses it: "No tool selected.
+  Choose a tool for Machining, the part, or the operation."
+- Every picked tool is **copied into the project**, so it opens and cuts the same on a computer
+  with different tooling.
+- Only **end mills** (flat end) can be used in v1. Other end types can be recorded but are greyed
+  out in the Tool boxes, and the engine refuses to generate with them.
+- The tool number goes into the G-code for tool changes (section 7).
 
 ### 5.6 Toolpath preview
 - Cutting moves, plunges and rapids drawn in different colours (rapids dashed).
@@ -326,20 +368,21 @@ Decided with the user 2026-11-19.
   - Material removal simulation is not in v1 (see the roadmap).
 
 ### 5.7 G-code output
-Standard, widely compatible G-code through one generic post-processor (section 7), built together
-with G-code output: the toolpath moves become G-code text only through the post-processor, so a
-machine-specific one can replace it later without touching the toolpaths. Machine-specific
-post-processors, each with its own settings panel per machine type, come later.
-- Machining menu → **Produce G-code** (already in the menu, greyed out until built).
+Standard, widely compatible G-code through one generic post-processor (section 7). Toolpath moves
+become G-code text only through the post-processor, so a machine-specific one can replace it
+without touching the toolpaths. Machine-specific post-processors, each with its own settings panel
+per machine type, come after v1 (roadmap).
+- Machining menu (and toolbar) → **Produce G-code**.
 - The tool number of each operation comes from its tool (5.5): one number is one cutter.
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
-- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (1), `"saved_by"` (the WHAM_CAM
-  version) and the document: project name, grid spacing, layers (name, colour, shapes) and parts.
-  Operations, tools used and post-processor settings are added as they are built.
+- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (1), `"saved_by"` (the
+  WHAM_CAM version) and the document: project name, grid spacing, layers (name, colour, shapes),
+  the project's tool library (by name) and Machining tool, and parts with their tool and
+  operations (settings and tool). Post-processor settings are added with G-code output.
 - Numbers are written so they read back exactly. Files are written to a temporary file and then
   renamed, so a failed save never leaves a half-written project.
 - Opening checks the file (format, unique ids and layer names, valid colours and shapes) and gives
@@ -351,8 +394,8 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
 - Opening starts a fresh undo history, zooms to fit and resets the current layer to the first.
   The copy/paste clipboard is kept, so shapes can be copied between projects.
-- Not saved (yet): current layer, view position, snap settings. These wait for project
-  preferences (see `docs/roadmap.md`).
+- Not saved: current layer, view position, snap settings (project preferences, see
+  `docs/roadmap.md`).
 
 ## 6. Operation settings
 
@@ -392,28 +435,26 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 | Corner overcut | Dog-bone style corner relief | false | later |
 | Holding tabs | | none | later |
 
-Behaviour (observed in the reference output): outside corners get an arc of tool radius (G2/G3).
-Decided for when Profile is built (2026-11-16):
-- **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
-  walls clockwise; Climb is the reverse (matches the reference output).
-- **Start point**: the shape's first point. No start point setting.
-
-Decided when Profile was built (2026-11-16):
+Behaviour (decided 2026-11-16; the cut loop matches the reference Profile example move for move):
 - **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
   can only be cut **On line** (only that choice is offered). Splines, ellipses and point lists
   are refused.
+- **Corners:** outside corners get an arc of tool radius (G2/G3), as in the reference output.
+- **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
+  walls clockwise; Climb is the reverse (as in the reference output).
 - **On line direction:** closed shapes are cut like Outside (Conventional = anticlockwise, Climb
   = clockwise); open shapes follow their drawn direction from the first point.
 - **Each shape is cut on its own** with the chosen side; nesting is not used (a hole inside an
   outline needs its own Inside operation). An inside offset that splits into several loops cuts
   them all; if nothing is left the tool is too big and that's an error.
-- **Start point on an offset path:** the point nearest the shape's first point (the first one
-  along the cut on a tie, e.g. round an outside corner arc).
+- **Start point:** the shape's first point; there is no start point setting. On an offset path,
+  the point nearest the shape's first point (the first one along the cut on a tie, e.g. round an
+  outside corner arc).
 - **Several shapes:** the first listed, then always the nearest shape not yet cut (to its start).
-- **Entry:** straight plunge at the start point, as for Pocket (retract, rapid, rapid down to
-  fast plunge height above the last level, feed down). The reference Profile example uses a 15°
-  spiral lead-in that was set on purpose; its cut loop is matched move for move, the entry is
-  not (lead-ins are on the roadmap).
+- **Entry:** straight plunge at the start point, as for Pocket (retract, rapid, rapid down to fast
+  plunge height above the last level, feed down). The reference Profile example uses a 15° spiral
+  lead-in that was set on purpose; its cut loop is matched, the entry is not (lead-ins are on the
+  roadmap).
 
 ### 6.3 Pocket
 
@@ -426,7 +467,7 @@ Decided when Profile was built (2026-11-16):
 | Cut ordering | Depth first / Level first | Depth first | v1 |
 | Finish stepover | Light final wall pass | 0 | later |
 
-Behaviour (built 2026-11-16, matches the reference Pocket example move for move):
+Behaviour (decided 2026-11-16; matches the reference Pocket example move for move):
 - Select closed shapes (polylines, PolyRectangles, circles), then Pocket. The operation's
   **Shapes** in Properties lists their ids (e.g. `1, 2, 3`, as shown in the tree) and can be
   edited; ids that don't exist or can't be pocketed are refused. Nesting decides the
@@ -442,7 +483,7 @@ Behaviour (built 2026-11-16, matches the reference Pocket example move for move)
   next ring doesn't fit, a sliver down the middle can be left uncut. The extra-ring check above
   works on whole rings, so it misses a branch of a larger ring. At 0.5 or less everything is
   cleared (checked by the user 2026-11-16 on a complex pocket). Left as is for v1 and documented
-  (user's decision); the fix is on the roadmap.
+  (decided 2026-11-16); the fix is on the roadmap.
 - Rings are cut from the **inside out**, each starting at its point nearest to where the last
   ended. Conventional cuts the rings clockwise (and round islands anticlockwise); Climb reverses.
 - The move to the next ring is fed at the stepover feed rate when it is short (up to 2 ×
@@ -464,7 +505,7 @@ Behaviour (built 2026-11-16, matches the reference Pocket example move for move)
 | Depth per turn | Spiral only: the common Depth increment, shown under this name | 1 | v1 |
 | Dwell | Seconds at the bottom | 0 | later (needs a pause move; with G-code) |
 
-Decided and built 2026-11-16 (matches the reference Drill example, written out in full, move for
+Behaviour (decided 2026-11-16; matches the reference Drill example written out in full, move for
 move; the reference itself uses a canned cycle G81 with G98):
 - **Hole order:** the first listed hole, then always the nearest hole not yet drilled.
 - **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
@@ -474,20 +515,21 @@ move; the reference itself uses a canned cycle G81 with G98):
   the retract height to clear chips, rapid back down to fast plunge height above the last depth,
   and feed on.
 - **Spiral:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
-  centre. A circle is cut to its own diameter (user's decision, 2026-11-17); point lists and arcs
-  use the Hole diameter setting. A circle no bigger than the tool is refused with a message. Rapid over the wall position, down to the retract height, feed to the stock surface,
-  then a helix down in equal turns no deeper than the depth per turn (at the cut feed rate), one
-  flat full circle at the target depth to clean the floor. Then:
+  centre. A circle is cut to its own diameter (decided 2026-11-17); point lists and arcs use the
+  Hole diameter setting. A circle no bigger than the tool is refused with a message.
+  Rapid over the wall position, down to the retract height, feed to the stock surface, then a
+  helix down in equal turns no deeper than the depth per turn (at the cut feed rate), and one flat
+  full circle at the target depth to clean the floor. Then:
   - hole no more than twice the tool diameter (the centre is cleared): feed to the hole centre,
     off the wall, and rapid straight up;
   - bigger hole: a core of material is left in the middle, so the tool must not move inward at
-    the bottom (it would run into the core). It rapids straight up from the wall (user's decision,
+    the bottom (it would run into the core). It rapids straight up from the wall (decided
     2026-11-17). Clearing the core is not done; use a Pocket for that.
 - Depth increment (except as Spiral's depth per turn), final depth increment and roughing
   clearance don't apply to drilling and are hidden for Drill.
 
-The exact G-code format for drilling (written out in full, or canned cycles) is decided with the
-post-processors.
+**(?)** The G-code format for drilling (written out in full, or canned cycles) is decided with
+the post-processor (section 9).
 
 ## 7. G-code output
 
@@ -508,24 +550,26 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 - The program starts and ends at the clearance plane.
 - Nothing goes below the target depth.
 - Arcs never go up. They may go down as they turn (a helix, e.g. spiral drilling); changed from
-  "arcs stay flat" when spiral drilling was added (user's decision, 2026-11-16).
+  "arcs stay flat" when spiral drilling was added (decided 2026-11-16).
 
 ## 8. Testing
 
 - The engine has its own unit tests (`cargo test`) that run without the UI.
-- **Reference toolpath comparison**: the reference examples in `tests/reference/local/` (git-ignored,
-  kept on this machine only) are used to check toolpath **shape**: offsets, stepovers, depth levels
-  and cut order. They are not compared as exact text, because WHAM_CAM's G-code format differs from the reference program's.
+- **Reference toolpath comparison**: the reference examples in `tests/reference/local/`
+  (git-ignored, kept on this machine only) are used to check toolpath **shape**: offsets,
+  stepovers, depth levels and cut order. They are not compared as exact text, because WHAM_CAM's
+  G-code format differs from the reference program's.
 - **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
   with an air cut, it is committed to `tests/reference/` and later output is compared to it exactly.
-- **Safety checker**: a test helper that reads any G-code output and fails if it breaks the section 7 safety rules.
+- **Safety checker**: reads any toolpath or G-code output and fails if it breaks the section 7
+  safety rules.
 - The engine is also built for `wasm32-unknown-unknown` in CI.
 - Whenever toolpath or post-processor logic changes, the user re-checks output in a simulator
   (CAMotics or NC Viewer) and with an air cut.
 
 ## 9. Open questions
 
-To settle with the user before building G-code output (noted 2026-11-19):
+**G-code output and the post-processor** (5.7, 7; noted 2026-11-19):
 - **(?) Tool changes** in the generic post: `T3 M6` (tool changers), or a comment plus a pause
   (`M0`) for a manual change, or both? Many hobby controllers don't accept `M6`.
 - **(?) What one G-code file holds**: the whole job, one file per part, or one per tool?
@@ -533,14 +577,20 @@ To settle with the user before building G-code output (noted 2026-11-19):
   any dwell for the spindle to spin up, `M5` and `M30` at the end, and whether to park at a set
   position at the end.
 - **(?) Arc format**: centre offsets (`I J`, recommended: exact, no ambiguity) or radius (`R`).
+- **(?) Drilling format** (6.4): written out in full, or canned cycles (`G81`/`G83`).
 - **(?) Number format and file extension**: decimal places (3 suggested), `.nc`, `.gcode`,
   `.tap`, ...
 - **(?) Where known-good G-code lives**: section 8 says checked outputs go in `tests/reference/`,
   but the top-level `tests/` folder is git-ignored (this machine only). They could go in
   `engine/tests/reference/` (committed, checked by CI) instead.
 
-Answered 2026-11-16: fast plunge height is a setting, default 1 mm (6.1). Profile has no overlap
-setting (user's decision, 2026-11-16).
+**Drawing and import** (noted 2026-11-19):
+- **(?) Dimensions** (5.3): which kinds, how they look, whether they are saved and exported, and
+  whether they can drive the geometry or only show measurements.
+- **(?) Further DXF entities** (5.1): which ones, from the user's own drawings.
+
+Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
+(both decided 2026-11-16).
 
 ## 10. Out of scope for v1
 

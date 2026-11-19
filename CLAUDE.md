@@ -258,4 +258,4 @@ questions in spec 9 to settle with the user first):
 - This is toolpath/G-code logic: the user checks output in CAMotics or NC Viewer and with an air
   cut before cutting material.
 
-Later in v1: dimensions and more DXF features (user to list the DXF features).
+Later in v1: dimensions, more DXF features and SVG import (spec 5.1, 5.3; open points in spec 9).
