@@ -254,7 +254,9 @@ Decided with the user 2026-11-19.
   to the computer and is shared by every project (now the master tool list and tool libraries;
   later e.g. machine settings and the materials library). It is only for configuring things at
   that level: nothing in it changes the open project, and project choices (such as which library
-  a project uses) are made in the Project tab. It shows no project information.
+  a project uses) are made in the Project tab. It shows no project information. Renaming or
+  deleting a library doesn't change any project either: a project using the old name shows it as
+  "not on this computer" until another library is chosen in its Machining properties.
 - **Active library**: each project chooses one in the Machining item's Properties (also the
   Machining menu → Tool library); saved in the project file by name.
 - **Tools follow the Machining tree** (decided 2026-11-19):

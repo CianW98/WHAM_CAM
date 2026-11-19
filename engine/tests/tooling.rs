@@ -677,18 +677,6 @@ fn tools_at_every_level_are_saved_in_the_project() {
     assert_eq!(state(&other, op).tool_diameter, Some(3.0));
 }
 
-#[test]
-fn renaming_a_library_follows_in_the_project() {
-    let (mut proj, _) = project_with_pocket();
-    proj.set_active_library(Some("Mill".into()));
-    proj.library_renamed("Mill", "Router");
-    assert_eq!(proj.document().active_library.as_deref(), Some("Router"));
-    proj.undo();
-    assert_eq!(proj.document().active_library, None);
-    proj.redo();
-    assert_eq!(proj.document().active_library.as_deref(), Some("Router"));
-}
-
 // --- Tool numbers: one number, one tool ---------------------------------------------------------
 
 fn add_pocket(proj: &mut Project, x: f64) -> u32 {

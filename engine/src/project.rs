@@ -1081,19 +1081,6 @@ impl Project {
         }
     }
 
-    /// Follows a tool library being renamed on this computer: the project keeps using it
-    /// (throughout the undo history, so undo doesn't bring back the old name).
-    pub fn library_renamed(&mut self, old: &str, new: &str) {
-        for doc in std::iter::once(&mut self.doc)
-            .chain(&mut self.undo)
-            .chain(&mut self.redo)
-        {
-            if doc.active_library.as_deref() == Some(old) {
-                doc.active_library = Some(new.to_string());
-            }
-        }
-    }
-
     /// Sets which shapes an operation machines, as one undo step.
     pub fn set_operation_shapes(&mut self, id: u32, shape_ids: &[u32]) -> Result<(), String> {
         let (pi, oi) = self

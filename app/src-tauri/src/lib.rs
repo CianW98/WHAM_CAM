@@ -210,17 +210,16 @@ fn add_library(tooling: State<ToolingState>) -> Result<String, String> {
     change_tooling(&tooling, |t| Ok(t.add_library()))
 }
 
-/// Renames a library; a project using it keeps using it. Returns the new name.
+/// Renames a library. Returns the new name. Like everything in the Setup tab, it doesn't change
+/// the open project: a project using the old name shows it as not on this computer until
+/// another library is chosen in its Machining properties.
 #[tauri::command]
 fn rename_library(
     old: String,
     new: String,
     tooling: State<ToolingState>,
-    state: State<AppState>,
 ) -> Result<String, String> {
-    let name = change_tooling(&tooling, |t| t.rename_library(&old, &new))?;
-    state.0.lock().unwrap().library_renamed(&old, &name);
-    Ok(name)
+    change_tooling(&tooling, |t| t.rename_library(&old, &new))
 }
 
 #[tauri::command]
