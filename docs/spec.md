@@ -254,10 +254,9 @@ Decided with the user 2026-11-19.
   to the computer and is shared by every project (now the master tool list and tool libraries;
   later e.g. machine settings and the materials library). It is only for configuring things at
   that level: nothing in it changes the open project, and project choices (such as which library
-  a project uses) are made in the Project tab. The only project information it shows is the ✓
-  marking the open project's library, for display only.
+  a project uses) are made in the Project tab. It shows no project information.
 - **Active library**: each project chooses one in the Machining item's Properties (also the
-  Machining menu → Tool library); saved in the project file by name. The Setup tab marks it ✓.
+  Machining menu → Tool library); saved in the project file by name.
 - **Tools follow the Machining tree** (decided 2026-11-19):
   - *Machining* Properties: Tool library and **Tool** (from that library).
   - *Part* Properties: **Tool**, "Use Machining tool" by default, or a library tool to override

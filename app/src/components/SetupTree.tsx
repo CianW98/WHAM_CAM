@@ -8,8 +8,6 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 
 interface Props {
   tooling: Tooling | null;
-  /** The open project's active library (marked ✓; chosen in Machining properties). */
-  activeLibrary: string | null;
   selection: Selection;
   onSelect: (sel: Selection) => void;
   onOpenToolList: () => void;
@@ -24,7 +22,6 @@ interface Props {
 function LibraryItem({
   name,
   count,
-  active,
   selected,
   onClick,
   onContextMenu,
@@ -34,7 +31,6 @@ function LibraryItem({
 }: {
   name: string;
   count: number;
-  active: boolean;
   selected: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -70,14 +66,7 @@ function LibraryItem({
         onContextMenu={onContextMenu}
       >
         {editing === null ? (
-          <>
-            {`${name} (${count})`}
-            {active && (
-              <span className="current-layer" title="This project's tool library">
-                ✓
-              </span>
-            )}
-          </>
+          `${name} (${count})`
         ) : (
           <input
             className="tree-rename"
@@ -101,7 +90,6 @@ function LibraryItem({
 
 export default function SetupTree({
   tooling,
-  activeLibrary,
   selection,
   onSelect,
   onOpenToolList,
@@ -177,7 +165,6 @@ export default function SetupTree({
                   key={lib.name}
                   name={lib.name}
                   count={lib.tools.length}
-                  active={lib.name === activeLibrary}
                   selected={selection.kind === "library" && selection.name === lib.name}
                   onClick={() => onSelect({ kind: "library", name: lib.name })}
                   onContextMenu={(e) => openMenu(e, lib.name)}

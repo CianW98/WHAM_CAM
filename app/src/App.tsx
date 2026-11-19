@@ -1242,7 +1242,6 @@ export default function App() {
           {leftTab === "setup" ? (
             <SetupTree
               tooling={view?.tooling ?? null}
-              activeLibrary={view?.document.active_library ?? null}
               selection={selection}
               onSelect={onSelect}
               onOpenToolList={() => setShowToolList(true)}
