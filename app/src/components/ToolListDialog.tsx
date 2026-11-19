@@ -17,7 +17,7 @@ export const FLUTE_TYPES: [FluteType, string][] = [
   ["Downcut", "Downcut (reverse spiral)"],
 ];
 
-/** Spiral and downcut flutes have a helix angle; drills don't. */
+/** Spiral and downcut flutes have a helix angle. Drills have no flute type (or helix angle) in v1. */
 const usesHelix = (flute: FluteType, end: EndType) => flute !== "Straight" && end !== "Drill";
 
 export const endTypeLabel = (t: EndType) => END_TYPES.find(([v]) => v === t)?.[1] ?? t;
@@ -110,7 +110,8 @@ export default function ToolListDialog({ tooling, newTool, preview, onAdd, onEdi
                     <td>{num(t.diameter)}</td>
                     <td>{num(t.shank_diameter ?? t.diameter)}</td>
                     <td>
-                      {t.flutes} {t.flute_type.toLowerCase()}
+                      {t.flutes}
+                      {t.end_type !== "Drill" ? ` ${t.flute_type.toLowerCase()}` : ""}
                       {usesHelix(t.flute_type, t.end_type) ? ` ${num(t.helix_angle)}°` : ""}
                     </td>
                     <td>{num(t.flute_length)}</td>
@@ -302,6 +303,7 @@ function ToolForm({
                 {field("diameter", "Diameter (mm)")}
                 {field("shank", "Shank diameter (mm)", "same as diameter")}
                 {field("flutes", "Flutes")}
+                {endType !== "Drill" && (
                 <tr>
                   <th>Flute type</th>
                   <td>
@@ -318,6 +320,7 @@ function ToolForm({
                     </select>
                   </td>
                 </tr>
+                )}
                 {helix && field("helix_angle", "Helix angle (°)")}
                 {field("flute_length", "Flute length (mm)")}
                 {field("overall_length", "Overall length (mm)")}

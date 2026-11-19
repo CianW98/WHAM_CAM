@@ -90,7 +90,7 @@ pub struct Tool {
     #[serde(default)]
     pub flute_type: FluteType,
     /// Helix (spiral) angle from the tool's axis, in degrees: Spiral and Downcut flutes, not
-    /// drills.
+    /// drills. (Drills have no flute type in v1: `flute_type` is ignored for them.)
     #[serde(default = "default_helix_angle")]
     pub helix_angle: f64,
     pub flute_length: f64,
@@ -131,7 +131,8 @@ pub struct ToolDrawing {
 impl Tool {
     /// The automatic name: diameter, (V angle,) flutes, flute type, end type and flute length,
     /// e.g. "6mm 2F Spiral End Mill, 20mm flute" or "6mm 90° 2F Straight V-Bit, 10mm flute".
-    /// The helix angle is not part of the name.
+    /// The helix angle is not part of the name, nor the flute type for drills
+    /// ("6mm 2F Drill, 20mm flute").
     pub fn generated_name(&self) -> String {
         let kind = match self.end_type {
             EndType::Flat => "End Mill",
@@ -144,11 +145,16 @@ impl Tool {
         } else {
             String::new()
         };
+        // Drills have no flute type in v1.
+        let flute = if self.end_type == EndType::Drill {
+            String::new()
+        } else {
+            format!("{} ", self.flute_type.label())
+        };
         format!(
-            "{}mm{angle} {}F {} {kind}, {}mm flute",
+            "{}mm{angle} {}F {flute}{kind}, {}mm flute",
             short(self.diameter),
             self.flutes,
-            self.flute_type.label(),
             short(self.flute_length)
         )
     }
@@ -166,7 +172,8 @@ impl Tool {
     /// The cutting edges on the front half of the flutes between heights `y0` and `y1`, seen
     /// from the side. Edge k sits at angle 2πk/n round the tool (plus a turn along the helix);
     /// on the front half (cos > 0) it shows at x = r·sin(angle). A right-hand spiral rises to the
-    /// left (like a backslash), a downcut to the right ("/"). Drills are drawn with the common 30° helix.
+    /// left (like a backslash), a downcut to the right ("/"). Drills are drawn as twist drills: a
+    /// spiral at the common 30° helix, whatever their stored flute type.
     fn flute_edges(&self, r: f64, y0: f64, y1: f64) -> Vec<Vec<Point>> {
         use std::f64::consts::{PI, TAU};
         let n = self.flutes.max(1);
@@ -176,11 +183,17 @@ impl Tool {
             self.helix_angle
         };
         // Axial length of one full turn of a flute.
-        let lead = match self.flute_type {
+        // Drills have no flute type in v1: always drawn as a twist drill (spiral).
+        let flute_type = if self.end_type == EndType::Drill {
+            FluteType::Spiral
+        } else {
+            self.flute_type
+        };
+        let lead = match flute_type {
             FluteType::Straight => f64::INFINITY,
             _ => TAU * r / helix.to_radians().tan(),
         };
-        let hand = if self.flute_type == FluteType::Downcut {
+        let hand = if flute_type == FluteType::Downcut {
             1.0
         } else {
             -1.0

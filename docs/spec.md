@@ -222,11 +222,11 @@ Decided with the user 2026-11-19.
 - **Master tool list** (one per computer, shared by every project): every physical tool the user
   has. Each tool: name, end type (End mill, Ball nose, V-bit, Drill), diameter, shank
   diameter (blank = same as the diameter), flutes, flute type (Spiral = upcut, Straight, Downcut =
-  reverse spiral), helix angle (Spiral and Downcut, not drills; default 30°, the common
+  reverse spiral; not drills, decided 2026-11-19), helix angle (Spiral and Downcut, not drills; default 30°, the common
   general-purpose angle), flute length, overall length, V angle (V-bit
   only). All mm.
 - **Automatic tool names** (decided 2026-11-19): made from diameter, V angle (V-bits), flutes,
-  flute type, end type and flute length (not the helix angle), e.g. "6mm 2F Spiral End Mill, 20mm
+  flute type (not for drills), end type and flute length (not the helix angle), e.g. "6mm 2F Spiral End Mill, 20mm
   flute", and kept up to date when those
   change. Typing a name (or unticking *Automatic name*) keeps the typed name. Tools saved before
   this keep their names.

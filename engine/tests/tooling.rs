@@ -84,7 +84,7 @@ fn automatic_names_follow_the_values() {
         end_type: EndType::Drill,
         ..Tool::new_default()
     };
-    assert_eq!(drill.generated_name(), "6mm 2F Spiral Drill, 20mm flute");
+    assert_eq!(drill.generated_name(), "6mm 2F Drill, 20mm flute");
 }
 
 #[test]
@@ -251,6 +251,26 @@ fn flute_type_is_named_but_not_the_helix_angle() {
     assert_eq!(
         straight.generated_name(),
         "6mm 2F Straight End Mill, 20mm flute"
+    );
+}
+
+#[test]
+fn drills_have_no_flute_type() {
+    let drill = |flute_type| Tool {
+        end_type: EndType::Drill,
+        flute_type,
+        ..Tool::new_default()
+    };
+    // Not in the name, and always drawn as a twist drill.
+    assert_eq!(
+        drill(FluteType::Straight).generated_name(),
+        "6mm 2F Drill, 20mm flute"
+    );
+    assert_eq!(slope(&drill(FluteType::Straight)), -1.0);
+    assert_eq!(slope(&drill(FluteType::Downcut)), -1.0);
+    assert_eq!(
+        drill(FluteType::Straight).drawing(),
+        drill(FluteType::Spiral).drawing()
     );
 }
 
