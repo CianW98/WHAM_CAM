@@ -9,6 +9,7 @@ fn tool(name: &str, end_type: EndType, diameter: f64) -> Tool {
         name: name.into(),
         end_type,
         diameter,
+        auto_name: false,
         ..Tool::new_default()
     }
 }
@@ -53,6 +54,145 @@ fn tools_get_new_ids_and_are_checked() {
         .is_err()
     );
     assert_eq!(t.tools.len(), 3, "refused tools are not added");
+}
+
+#[test]
+fn automatic_names_follow_the_values() {
+    let mut t = Tooling::default();
+    let id = t.add_tool(Tool::new_default()).unwrap();
+    assert_eq!(t.tool(id).unwrap().name, "6mm 2F Flat End Mill, 20mm flute");
+    let mut edited = t.tool(id).unwrap().clone();
+    edited.diameter = 3.175;
+    edited.flutes = 1;
+    edited.end_type = EndType::Ball;
+    edited.flute_length = 12.5;
+    t.set_tool(edited).unwrap();
+    assert_eq!(
+        t.tool(id).unwrap().name,
+        "3.175mm 1F Ball Nose, 12.5mm flute"
+    );
+    let vbit = Tool {
+        end_type: EndType::VBit,
+        v_angle: 60.0,
+        ..Tool::new_default()
+    };
+    assert_eq!(vbit.generated_name(), "6mm 60° 2F V-Bit, 20mm flute");
+    let drill = Tool {
+        end_type: EndType::Drill,
+        ..Tool::new_default()
+    };
+    assert_eq!(drill.generated_name(), "6mm 2F Drill, 20mm flute");
+}
+
+#[test]
+fn a_typed_name_is_kept() {
+    let mut t = Tooling::default();
+    let id = t
+        .add_tool(Tool {
+            name: "  My roughing cutter ".into(),
+            auto_name: false,
+            ..Tool::new_default()
+        })
+        .unwrap();
+    let mut edited = t.tool(id).unwrap().clone();
+    edited.diameter = 8.0;
+    t.set_tool(edited).unwrap();
+    assert_eq!(t.tool(id).unwrap().name, "My roughing cutter");
+}
+
+#[test]
+fn tools_from_older_tooling_files_keep_their_names() {
+    let mut file: serde_json::Value = serde_json::from_str(&to_text(&sample())).unwrap();
+    for tool in file["tools"].as_array_mut().unwrap() {
+        tool.as_object_mut().unwrap().remove("auto_name");
+    }
+    let text = file.to_string();
+    assert!(!text.contains("auto_name"));
+    let t = from_text(&text).unwrap();
+    assert!(t.tools.iter().all(|x| !x.auto_name));
+    assert_eq!(t.tools[0].name, "6mm 2F");
+}
+
+fn max_x(d: &ToolDrawing) -> f64 {
+    d.outline.iter().map(|p| p.x).fold(f64::MIN, f64::max)
+}
+
+#[test]
+fn drawing_of_a_flat_end_mill() {
+    let t = Tool {
+        shank_diameter: Some(8.0),
+        ..Tool::new_default()
+    };
+    let d = t.drawing().unwrap();
+    // Tip flat at y = 0, 3 mm either side; shank 4 mm either side up to the overall length.
+    let has = |x: f64, y: f64| {
+        d.outline
+            .iter()
+            .any(|p| (p.x - x).abs() < 1e-9 && (p.y - y).abs() < 1e-9)
+    };
+    assert!(has(3.0, 0.0) && has(-3.0, 0.0));
+    assert!(has(3.0, 20.0) && has(4.0, 20.0) && has(4.0, 60.0) && has(-4.0, 60.0));
+    assert_eq!(d.flute_top, 20.0);
+    assert_eq!(max_x(&d), 4.0);
+    // Symmetric about the tool's centre line.
+    let min_x = d.outline.iter().map(|p| p.x).fold(f64::MAX, f64::min);
+    assert!((min_x + 4.0).abs() < 1e-9);
+    // Helix lines stay within the flutes.
+    assert!(!d.flute_lines.is_empty());
+    for (a, b) in &d.flute_lines {
+        for p in [a, b] {
+            assert!(p.y >= -1e-9 && p.y <= 20.0 + 1e-9 && p.x.abs() <= 3.0 + 1e-9);
+        }
+    }
+}
+
+#[test]
+fn drawing_tips_by_end_type() {
+    // V-bit 90°, 6 mm: point at the origin, full diameter 3 mm up.
+    let v = Tool {
+        end_type: EndType::VBit,
+        ..Tool::new_default()
+    }
+    .drawing()
+    .unwrap();
+    assert!(v.outline.iter().any(|p| p.x == 0.0 && p.y == 0.0));
+    assert!(
+        v.outline
+            .iter()
+            .any(|p| (p.x - 3.0).abs() < 1e-9 && (p.y - 3.0).abs() < 1e-9)
+    );
+    // Ball: a half circle of radius 3, every tip point 3 from (0, 3).
+    let b = Tool {
+        end_type: EndType::Ball,
+        ..Tool::new_default()
+    }
+    .drawing()
+    .unwrap();
+    let tip: Vec<_> = b.outline.iter().filter(|p| p.y < 3.0 - 1e-9).collect();
+    assert!(tip.len() > 10);
+    for p in tip {
+        assert!((p.distance_to(Point::new(0.0, 3.0)) - 3.0).abs() < 1e-9);
+    }
+    // A V point longer than the flutes is cut off at the flute top.
+    let long = Tool {
+        end_type: EndType::VBit,
+        v_angle: 20.0,
+        flute_length: 5.0,
+        ..Tool::new_default()
+    }
+    .drawing()
+    .unwrap();
+    assert!(long.outline.iter().all(|p| p.y >= 0.0));
+    assert!(long.flute_top_radius < 3.0);
+}
+
+#[test]
+fn no_drawing_for_invalid_values() {
+    let t = Tool {
+        diameter: 0.0,
+        ..Tool::new_default()
+    };
+    assert!(t.drawing().is_none());
 }
 
 #[test]

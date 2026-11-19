@@ -732,7 +732,66 @@ button.primary {
   text-align: left;
 }
 .tool-form {
-  width: 380px;
+  width: 620px;
+  max-width: 640px;
+}
+.tool-form-body {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.tool-form-fields {
+  flex: 1;
+  min-width: 0;
+}
+.prop-input.auto {
+  color: var(--muted);
+}
+.auto-name {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--muted);
+}
+/* Live side view of the tool */
+.tool-picture {
+  flex: none;
+  width: 190px;
+  height: 330px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+}
+.empty-picture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+}
+.tool-picture .tool-body {
+  fill: #d9dde4;
+  stroke: #4a4f5a;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+.tool-picture .flute-line {
+  stroke: #8a92a0;
+  stroke-width: 1;
+}
+.tool-picture .flute-top {
+  stroke: #4a4f5a;
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+.tool-picture .dim line {
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.tool-picture .dim text,
+.tool-picture .dim-text {
+  fill: var(--accent);
+  font-size: 11px;
 }
 .tool-form .props {
   margin-bottom: 10px;

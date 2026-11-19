@@ -1,8 +1,8 @@
 // The Master tool list window: every physical tool on this computer, with Add / Edit / Delete.
 // The engine checks and stores the values; this only shows them and collects the form.
 
-import { useState } from "react";
-import type { EndType, Tool, Tooling } from "../engine";
+import { useEffect, useRef, useState } from "react";
+import type { EndType, Tool, ToolDrawing, Tooling, ToolPreview } from "../engine";
 
 export const END_TYPES: [EndType, string][] = [
   ["Flat", "Flat end mill"],
@@ -22,13 +22,15 @@ interface Props {
   tooling: Tooling;
   /** Starting values for a new tool. */
   newTool: () => Promise<Tool>;
+  /** The name and side view a tool would get (from the engine). */
+  preview: (tool: Tool) => Promise<ToolPreview>;
   onAdd: Save;
   onEdit: Save;
   onDelete: (tool: Tool) => void;
   onClose: () => void;
 }
 
-export default function ToolListDialog({ tooling, newTool, onAdd, onEdit, onDelete, onClose }: Props) {
+export default function ToolListDialog({ tooling, newTool, preview, onAdd, onEdit, onDelete, onClose }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
   const [form, setForm] = useState<{ tool: Tool; isNew: boolean } | null>(null);
   const current = tooling.tools.find((t) => t.id === selected) ?? null;
@@ -43,6 +45,7 @@ export default function ToolListDialog({ tooling, newTool, onAdd, onEdit, onDele
       <ToolForm
         tool={form.tool}
         isNew={form.isNew}
+        preview={preview}
         onSave={async (t) => {
           const error = await (form.isNew ? onAdd(t) : onEdit(t));
           if (error === null) setForm(null);
@@ -127,19 +130,22 @@ export default function ToolListDialog({ tooling, newTool, onAdd, onEdit, onDele
   );
 }
 
-/** The Add tool / Edit tool form. Number boxes are kept as text until OK. */
+/** The Add tool / Edit tool form, with a live side view of the tool on the right. */
 function ToolForm({
   tool,
   isNew,
+  preview,
   onSave,
   onCancel,
 }: {
   tool: Tool;
   isNew: boolean;
+  preview: (tool: Tool) => Promise<ToolPreview>;
   onSave: Save;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(tool.name);
+  const [autoName, setAutoName] = useState(tool.auto_name);
   const [endType, setEndType] = useState<EndType>(tool.end_type);
   const [text, setText] = useState({
     diameter: num(tool.diameter),
@@ -150,6 +156,7 @@ function ToolForm({
     v_angle: num(tool.v_angle),
   });
   const [error, setError] = useState<string | null>(null);
+  const [shown, setShown] = useState<ToolPreview | null>(null);
   type Key = keyof typeof text;
   const parse = (s: string) => (s.trim() !== "" && Number.isFinite(Number(s)) ? Number(s) : NaN);
   const bad = (k: Key) => {
@@ -159,7 +166,43 @@ function ToolForm({
     return Number.isNaN(parse(text[k]));
   };
   const keys: Key[] = ["diameter", "shank", "flutes", "flute_length", "overall_length", "v_angle"];
-  const ok = name.trim() !== "" && !keys.some(bad);
+  const numbersOk = !keys.some(bad);
+
+  /** The tool as the form stands, or null while a number box isn't a number. */
+  const current = (): Tool | null =>
+    numbersOk
+      ? {
+          ...tool,
+          name: name.trim(),
+          auto_name: autoName,
+          end_type: endType,
+          diameter: parse(text.diameter),
+          shank_diameter: text.shank.trim() === "" ? null : parse(text.shank),
+          flutes: Number(text.flutes),
+          flute_length: parse(text.flute_length),
+          overall_length: parse(text.overall_length),
+          v_angle: endType === "VBit" ? parse(text.v_angle) : tool.v_angle,
+        }
+      : null;
+
+  // Ask the engine for the name and picture whenever a value changes (latest answer wins).
+  const formKey = JSON.stringify([name, autoName, endType, text]);
+  const latest = useRef(formKey);
+  useEffect(() => {
+    latest.current = formKey;
+    const t = current();
+    if (!t) {
+      setShown((p) => (p ? { ...p, drawing: null } : p));
+      return;
+    }
+    preview(t).then(
+      (p) => latest.current === formKey && setShown(p),
+      () => {},
+    );
+  }, [formKey]);
+
+  const nameShown = autoName ? (shown?.name ?? name) : name;
+  const ok = numbersOk && (autoName || name.trim() !== "");
 
   const field = (k: Key, label: string, hint?: string) => (
     <tr>
@@ -185,64 +228,76 @@ function ToolForm({
         aria-labelledby="tool-form-title"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!ok) return;
-          setError(
-            await onSave({
-              ...tool,
-              name: name.trim(),
-              end_type: endType,
-              diameter: parse(text.diameter),
-              shank_diameter: text.shank.trim() === "" ? null : parse(text.shank),
-              flutes: Number(text.flutes),
-              flute_length: parse(text.flute_length),
-              overall_length: parse(text.overall_length),
-              v_angle: endType === "VBit" ? parse(text.v_angle) : tool.v_angle,
-            }),
-          );
+          const t = current();
+          if (!ok || !t) return;
+          setError(await onSave(t));
         }}
       >
         <h3 id="tool-form-title">{isNew ? "Add tool" : `Edit tool: ${tool.name}`}</h3>
-        <table className="props">
-          <tbody>
-            <tr>
-              <th>Name</th>
-              <td>
-                <input
-                  className={`prop-input${name.trim() === "" ? " bad" : ""}`}
-                  value={name}
-                  autoFocus
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </td>
-            </tr>
-            <tr>
-              <th>End type</th>
-              <td>
-                <select className="prop-input" value={endType} onChange={(e) => setEndType(e.target.value as EndType)}>
-                  {END_TYPES.map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </td>
-            </tr>
-            {endType === "VBit" && field("v_angle", "V angle (°)")}
-            {field("diameter", "Diameter (mm)")}
-            {field("shank", "Shank diameter (mm)", `same as diameter`)}
-            {field("flutes", "Flutes")}
-            {field("flute_length", "Flute length (mm)")}
-            {field("overall_length", "Overall length (mm)")}
-          </tbody>
-        </table>
-        {endType !== "Flat" && (
-          <p className="muted tool-note">
-            v1 toolpaths are for flat end mills only: this tool can be kept in the list and libraries, but not picked
-            for an operation yet.
-          </p>
-        )}
-        {error && <p className="prop-error">{error}</p>}
+        <div className="tool-form-body">
+          <div className="tool-form-fields">
+            <table className="props">
+              <tbody>
+                <tr>
+                  <th>Name</th>
+                  <td>
+                    <input
+                      className={`prop-input${ok || autoName || name.trim() !== "" ? "" : " bad"}${autoName ? " auto" : ""}`}
+                      value={nameShown}
+                      title={autoName ? "Made from the values below. Type to give your own name." : ""}
+                      onChange={(e) => {
+                        setAutoName(false);
+                        setName(e.target.value);
+                      }}
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <th />
+                  <td>
+                    <label className="auto-name">
+                      <input
+                        type="checkbox"
+                        checked={autoName}
+                        onChange={(e) => {
+                          if (!e.target.checked && shown) setName(shown.name);
+                          setAutoName(e.target.checked);
+                        }}
+                      />
+                      Automatic name
+                    </label>
+                  </td>
+                </tr>
+                <tr>
+                  <th>End type</th>
+                  <td>
+                    <select className="prop-input" value={endType} onChange={(e) => setEndType(e.target.value as EndType)}>
+                      {END_TYPES.map(([v, label]) => (
+                        <option key={v} value={v}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+                {endType === "VBit" && field("v_angle", "V angle (°)")}
+                {field("diameter", "Diameter (mm)")}
+                {field("shank", "Shank diameter (mm)", "same as diameter")}
+                {field("flutes", "Flutes")}
+                {field("flute_length", "Flute length (mm)")}
+                {field("overall_length", "Overall length (mm)")}
+              </tbody>
+            </table>
+            {endType !== "Flat" && (
+              <p className="muted tool-note">
+                v1 toolpaths are for flat end mills only: this tool can be kept in the list and libraries, but not
+                picked for an operation yet.
+              </p>
+            )}
+            {error && <p className="prop-error">{error}</p>}
+          </div>
+          <ToolPicture drawing={shown?.drawing ?? null} tool={current()} />
+        </div>
         <div className="modal-buttons">
           <button type="submit" className="primary" disabled={!ok}>
             OK
@@ -253,5 +308,74 @@ function ToolForm({
         </div>
       </form>
     </div>
+  );
+}
+
+/** Size of the picture box in pixels. */
+const PIC_W = 190;
+const PIC_H = 330;
+
+/**
+ * The side view from the engine, scaled to fit, with the diameters and lengths marked.
+ * Only display scaling here: the shape itself comes from the engine.
+ */
+function ToolPicture({ drawing, tool }: { drawing: ToolDrawing | null; tool: Tool | null }) {
+  if (!drawing || !tool) {
+    return (
+      <div className="tool-picture empty-picture">
+        <span className="muted">Enter valid values to see the tool.</span>
+      </div>
+    );
+  }
+  const halfWidth = Math.max(...drawing.outline.map((p) => Math.abs(p.x)));
+  const length = Math.max(...drawing.outline.map((p) => p.y));
+  // Room for the length marks on the right and the diameter labels above and below.
+  const left = 12;
+  const right = 62;
+  const top = 22;
+  const bottom = 24;
+  const k = Math.min((PIC_H - top - bottom) / length, (PIC_W - left - right) / (2 * halfWidth));
+  const cx = left + halfWidth * k;
+  const base = PIC_H - bottom;
+  const X = (x: number) => cx + x * k;
+  const Y = (y: number) => base - y * k;
+  const path = drawing.outline.map((p, i) => `${i === 0 ? "M" : "L"}${X(p.x).toFixed(2)},${Y(p.y).toFixed(2)}`).join(" ") + " Z";
+  const edge = X(halfWidth);
+  const flute = Y(drawing.flute_top);
+  const shank = tool.shank_diameter ?? tool.diameter;
+  // A vertical length mark from the tip to `y`, at `x`, labelled.
+  const mark = (x: number, yTop: number, label: string) => (
+    <g className="dim">
+      <line x1={x} y1={base} x2={x} y2={yTop} />
+      <line x1={x - 4} y1={base} x2={x + 4} y2={base} />
+      <line x1={x - 4} y1={yTop} x2={x + 4} y2={yTop} />
+      <text x={x + 5} y={(base + yTop) / 2} dominantBaseline="middle">
+        {label}
+      </text>
+    </g>
+  );
+  return (
+    <svg className="tool-picture" width={PIC_W} height={PIC_H} viewBox={`0 0 ${PIC_W} ${PIC_H}`}>
+      <path className="tool-body" d={path} />
+      {drawing.flute_lines.map(([a, b], i) => (
+        <line key={i} className="flute-line" x1={X(a.x)} y1={Y(a.y)} x2={X(b.x)} y2={Y(b.y)} />
+      ))}
+      <line
+        className="flute-top"
+        x1={X(-drawing.flute_top_radius)}
+        y1={flute}
+        x2={X(drawing.flute_top_radius)}
+        y2={flute}
+      />
+      {mark(edge + 10, flute, num(tool.flute_length))}
+      {mark(edge + 34, Y(length), num(tool.overall_length))}
+      <text className="dim-text" x={cx} y={base + 16} textAnchor="middle">
+        Ø{num(tool.diameter)}
+        {tool.end_type === "VBit" ? ` ${num(tool.v_angle)}°` : ""}
+      </text>
+      <text className="dim-text" x={cx} y={Y(length) - 8} textAnchor="middle">
+        Ø{num(shank)}
+      </text>
+    </svg>
   );
 }

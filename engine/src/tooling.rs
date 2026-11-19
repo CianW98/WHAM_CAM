@@ -15,6 +15,8 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::geometry::{Point, on_circle};
+
 /// The shape of a tool's cutting end. v1 toolpaths are for flat end mills only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EndType {
@@ -56,9 +58,161 @@ pub struct Tool {
     /// Included angle of the point (V-bit only).
     #[serde(default = "default_v_angle")]
     pub v_angle: f64,
+    /// The name is made from the tool's values ([`Tool::generated_name`]) and follows them when
+    /// they change. False once the user types their own name (and for tools saved before
+    /// automatic names existed, so their names stay as they were).
+    #[serde(default)]
+    pub auto_name: bool,
+}
+
+/// Point angle drawn for drills (the common 118°); drills have no angle setting in v1.
+const DRILL_POINT_ANGLE: f64 = 118.0;
+
+/// A number for a tool name: up to 3 decimals, trailing zeros trimmed (6, 3.175, 0.5).
+fn short(n: f64) -> String {
+    let s = format!("{n:.3}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// The side view of a tool for the tool form's picture, tip down at (0, 0), in mm.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolDrawing {
+    /// The tool's silhouette, closed (last point joins the first).
+    pub outline: Vec<Point>,
+    /// Height where the flutes end (the shank starts).
+    pub flute_top: f64,
+    /// Radius of the flutes at `flute_top` (to draw the line between flutes and shank).
+    pub flute_top_radius: f64,
+    /// Helix lines drawn across the flutes, as (from, to).
+    pub flute_lines: Vec<(Point, Point)>,
 }
 
 impl Tool {
+    /// The automatic name: diameter, (V angle,) flutes, end type and flute length, e.g.
+    /// "6mm 2F Flat End Mill, 20mm flute" or "6mm 90° 2F V-Bit, 10mm flute".
+    pub fn generated_name(&self) -> String {
+        let kind = match self.end_type {
+            EndType::Flat => "Flat End Mill",
+            EndType::Ball => "Ball Nose",
+            EndType::VBit => "V-Bit",
+            EndType::Drill => "Drill",
+        };
+        let angle = if self.end_type == EndType::VBit {
+            format!(" {}°", short(self.v_angle))
+        } else {
+            String::new()
+        };
+        format!(
+            "{}mm{angle} {}F {kind}, {}mm flute",
+            short(self.diameter),
+            self.flutes,
+            short(self.flute_length)
+        )
+    }
+
+    /// The tool with its automatic name filled in (if it uses one) and its name trimmed.
+    pub fn named(mut self) -> Self {
+        self.name = if self.auto_name {
+            self.generated_name()
+        } else {
+            self.name.trim().to_string()
+        };
+        self
+    }
+
+    /// The side view for the tool form's picture. None if the values aren't valid.
+    pub fn drawing(&self) -> Option<ToolDrawing> {
+        Tool {
+            name: "x".into(),
+            ..self.clone()
+        }
+        .validate()
+        .ok()?;
+        let r = self.diameter / 2.0;
+        let s = self.shank() / 2.0;
+        let fl = self.flute_length;
+        let len = self.overall_length;
+
+        // Right-hand side, from the tip up to the top of the flutes.
+        let mut right = vec![Point::new(0.0, 0.0)];
+        let point_angle = match self.end_type {
+            EndType::VBit => Some(self.v_angle),
+            EndType::Drill => Some(DRILL_POINT_ANGLE),
+            _ => None,
+        };
+        // Height where the full diameter starts.
+        let mut tip_top = match (self.end_type, point_angle) {
+            (EndType::Ball, _) => {
+                let centre = Point::new(0.0, r);
+                for i in 1..=16 {
+                    let a = -90.0 + 90.0 * f64::from(i) / 16.0;
+                    right.push(on_circle(centre, r, a));
+                }
+                r
+            }
+            (_, Some(angle)) => {
+                let half = (angle / 2.0).to_radians().tan();
+                let h = r / half;
+                if h <= fl {
+                    right.push(Point::new(r, h));
+                } else {
+                    // The point is longer than the flutes: it is cut off at the flute top.
+                    right.push(Point::new(fl * half, fl));
+                }
+                h
+            }
+            _ => {
+                right.push(Point::new(r, 0.0));
+                0.0
+            }
+        };
+        tip_top = tip_top.min(fl);
+        let top_radius = right.last().map_or(r, |p| p.x);
+        if tip_top < fl {
+            right.push(Point::new(r, fl));
+        }
+        right.push(Point::new(s, fl));
+        right.push(Point::new(s, len));
+
+        // Left side: the mirror image, top down.
+        let left: Vec<Point> = right.iter().rev().map(|p| Point::new(-p.x, p.y)).collect();
+        let mut outline: Vec<Point> = Vec::new();
+        for p in right.into_iter().chain(left) {
+            if outline.last().is_none_or(|q| q.distance_to(p) > 1e-9) {
+                outline.push(p);
+            }
+        }
+        if outline.len() > 1 && outline[0].distance_to(*outline.last().unwrap()) < 1e-9 {
+            outline.pop();
+        }
+
+        // Helix lines across the straight part of the flutes, clipped to it.
+        let mut flute_lines = Vec::new();
+        if tip_top < fl {
+            let rise = 0.5 * self.diameter;
+            let spacing = 1.5 * self.diameter / f64::from(self.flutes.max(1));
+            let mut y0 = tip_top - rise;
+            while y0 < fl && flute_lines.len() < 200 {
+                let (a, b) = (Point::new(-r, y0), Point::new(r, y0 + rise));
+                // Clip to tip_top <= y <= fl.
+                let t0 = ((tip_top - a.y) / rise).clamp(0.0, 1.0);
+                let t1 = ((fl - a.y) / rise).clamp(0.0, 1.0);
+                if t1 > t0 {
+                    let at = |t: f64| Point::new(a.x + (b.x - a.x) * t, a.y + rise * t);
+                    flute_lines.push((at(t0), at(t1)));
+                }
+                y0 += spacing;
+            }
+        }
+
+        Some(ToolDrawing {
+            outline,
+            flute_top: fl,
+            flute_top_radius: if tip_top < fl { r } else { top_radius },
+            flute_lines,
+        })
+    }
+
     /// A new tool with sensible starting values, for the Add tool form.
     pub fn new_default() -> Self {
         Self {
@@ -71,7 +225,9 @@ impl Tool {
             flute_length: 20.0,
             overall_length: 60.0,
             v_angle: default_v_angle(),
+            auto_name: true,
         }
+        .named()
     }
 
     /// The shank diameter, or the cutting diameter if it isn't set.
@@ -160,8 +316,8 @@ impl Tooling {
     }
 
     /// Adds a tool to the master list (its `id` is ignored). Returns its new id.
-    pub fn add_tool(&mut self, mut tool: Tool) -> Result<u32, String> {
-        tool.name = tool.name.trim().to_string();
+    pub fn add_tool(&mut self, tool: Tool) -> Result<u32, String> {
+        let mut tool = tool.named();
         tool.validate()?;
         tool.id = self.tools.iter().map(|t| t.id).max().unwrap_or(0) + 1;
         let id = tool.id;
@@ -170,8 +326,8 @@ impl Tooling {
     }
 
     /// Replaces a master tool's values (matched by id).
-    pub fn set_tool(&mut self, mut tool: Tool) -> Result<(), String> {
-        tool.name = tool.name.trim().to_string();
+    pub fn set_tool(&mut self, tool: Tool) -> Result<(), String> {
+        let tool = tool.named();
         tool.validate()?;
         let slot = self
             .tools

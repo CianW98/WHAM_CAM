@@ -1347,6 +1347,7 @@ export default function App() {
         <ToolListDialog
           tooling={view.tooling}
           newTool={engine.newTool}
+          preview={engine.toolPreview}
           onAdd={(tool) => toolingEdit(() => engine.addTool(tool))}
           onEdit={(tool) => toolingEdit(() => engine.setTool(tool))}
           onDelete={(tool) => void deleteTool(tool)}

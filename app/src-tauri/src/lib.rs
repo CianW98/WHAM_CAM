@@ -10,7 +10,7 @@ use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
     GenerateReport, ImportReport, JoinReport, Operation, OperationState, Playback, Point, Project,
-    Shape, Snap, SnapOptions, Tool, Tooling, ToolpathDisplay, TransformOp,
+    Shape, Snap, SnapOptions, Tool, ToolDrawing, Tooling, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -169,6 +169,24 @@ fn tooling_problem(tooling: State<ToolingState>) -> Option<String> {
 #[tauri::command]
 fn new_tool() -> Tool {
     Tool::new_default()
+}
+
+/// What the tool form shows while it is being filled in.
+#[derive(Serialize)]
+struct ToolPreview {
+    /// The name the tool will get (the automatic one if it uses it).
+    name: String,
+    /// The side view, or None while the values aren't valid.
+    drawing: Option<ToolDrawing>,
+}
+
+#[tauri::command]
+fn tool_preview(tool: Tool) -> ToolPreview {
+    let tool = tool.named();
+    ToolPreview {
+        drawing: tool.drawing(),
+        name: tool.name,
+    }
 }
 
 #[tauri::command]
@@ -576,6 +594,7 @@ pub fn run() {
             get_view,
             tooling_problem,
             new_tool,
+            tool_preview,
             add_tool,
             set_tool,
             delete_tool,

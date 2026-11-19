@@ -211,6 +211,27 @@ export interface Tool {
   overall_length: number;
   /** Included angle (V-bit only). */
   v_angle: number;
+  /** Name made from the values (and kept up to date); false once a name is typed in. */
+  auto_name: boolean;
+}
+
+/** Side view of a tool, tip down at (0, 0), in mm. */
+export interface ToolDrawing {
+  /** Closed silhouette. */
+  outline: Point[];
+  /** Height where the flutes end. */
+  flute_top: number;
+  /** Flute radius at that height. */
+  flute_top_radius: number;
+  /** Helix lines across the flutes. */
+  flute_lines: [Point, Point][];
+}
+
+/** What the tool form shows while being filled in. */
+export interface ToolPreview {
+  name: string;
+  /** Null while the values aren't valid. */
+  drawing: ToolDrawing | null;
 }
 
 /** A master tool in a library, with its tool number there. */
@@ -379,6 +400,11 @@ export function toolingProblem(): Promise<string | null> {
 /** Starting values for a new tool. */
 export function newTool(): Promise<Tool> {
   return invoke<Tool>("new_tool");
+}
+
+/** The name and side view a tool would have (for the tool form; changes nothing). */
+export function toolPreview(tool: Tool): Promise<ToolPreview> {
+  return invoke<ToolPreview>("tool_preview", { tool });
 }
 
 /** Adds a tool to the master list. Returns its id. Rejects with a plain-English message. */

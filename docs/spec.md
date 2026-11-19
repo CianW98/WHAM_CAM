@@ -223,6 +223,13 @@ Decided with the user 2026-11-19.
   has. Each tool: name, end type (Flat end mill, Ball nose, V-bit, Drill), diameter, shank
   diameter (blank = same as the diameter), flutes, flute length, overall length, V angle (V-bit
   only). All mm.
+- **Automatic tool names** (decided 2026-11-19): made from diameter, V angle (V-bits), flutes, end
+  type and flute length, e.g. "6mm 2F Flat End Mill, 20mm flute", and kept up to date when those
+  change. Typing a name (or unticking *Automatic name*) keeps the typed name. Tools saved before
+  this keep their names.
+- The Add/Edit tool form shows a **live side view** of the tool on the right (silhouette from the
+  engine: flat, ball, V point; drills drawn with a 118° point), with the diameters and the flute
+  and overall lengths marked.
 - **Tools hold no feeds or speeds**: those depend on the material as well as the tool. In v1 each
   operation keeps its own feeds, speeds, depth increment and stepover; the materials library
   (roadmap) will later fill them in from tool + material.

@@ -36,5 +36,5 @@ pub use project::{
     BoxMode, BreakReport, DxfInfo, GenerateReport, ImportReport, JoinReport, OperationState,
     Project,
 };
-pub use tooling::{EndType, LibraryTool, Tool, ToolLibrary, Tooling};
+pub use tooling::{EndType, LibraryTool, Tool, ToolDrawing, ToolLibrary, Tooling};
 pub use transform::{TransformOp, shape_bounds};
