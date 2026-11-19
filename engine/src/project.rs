@@ -855,7 +855,7 @@ impl Project {
 
     /// Gives an operation a tool from a tool library as one undo step: its tool number and
     /// diameter, plus a copy of the tool kept in the project. `None` keeps the number and
-    /// diameter but drops the copy (values typed in directly). Only flat end mills can be
+    /// diameter but drops the copy (values typed in directly). Only end mills can be
     /// used in v1.
     pub fn set_operation_tool(&mut self, id: u32, tool: Option<(u32, Tool)>) -> Result<(), String> {
         let (pi, oi) = self
@@ -865,7 +865,7 @@ impl Project {
             && t.end_type != EndType::Flat
         {
             return Err(format!(
-                "{} is a {}: v1 toolpaths are for flat end mills only.",
+                "{} is a {}: v1 toolpaths are for end mills only.",
                 t.name,
                 t.end_type.label()
             ));

@@ -343,15 +343,15 @@ function ShapeRows({
 
 // --- Operations -----------------------------------------------------------------------------
 
-/** "T3: 6mm 2F (Ø6, flat end mill)" */
-const toolText = (number: number, t: Tool) => `T${number}: ${t.name} (Ø${num(t.diameter)}, ${endTypeLabel(t.end_type).toLowerCase()})`;
+/** "T3: 6mm 2F Spiral End Mill, 20mm flute (Ø6)" */
+const toolText = (number: number, t: Tool) => `T${number}: ${t.name} (Ø${num(t.diameter)})`;
 
 /** Same tool values (ignoring the master-list id, which differs between computers). */
 const sameTool = (a: Tool, b: Tool) => JSON.stringify({ ...a, id: 0 }) === JSON.stringify({ ...b, id: 0 });
 
 /**
  * The operation's Tool drop-down: the tools of the project's active library. Picking one copies
- * its number and diameter in (done by the engine). Only flat end mills can be picked in v1.
+ * its number and diameter in (done by the engine). Only end mills can be picked in v1.
  */
 function ToolPicker({
   op,
@@ -390,7 +390,7 @@ function ToolPicker({
         {entries.map((e) => (
           <option key={e.number} value={String(e.number)} disabled={e.tool.end_type !== "Flat"}>
             {toolText(e.number, e.tool)}
-            {e.tool.end_type !== "Flat" ? " – not supported in v1" : ""}
+            {e.tool.end_type !== "Flat" ? ` – ${endTypeLabel(e.tool.end_type).toLowerCase()}, not supported in v1` : ""}
           </option>
         ))}
       </select>

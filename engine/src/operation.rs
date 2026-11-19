@@ -237,7 +237,7 @@ impl Operation {
             ok(
                 tool.end_type == EndType::Flat,
                 &format!(
-                    "{} is a {}: v1 toolpaths are for flat end mills only.",
+                    "{} is a {}: v1 toolpaths are for end mills only.",
                     tool.name,
                     tool.end_type.label()
                 ),

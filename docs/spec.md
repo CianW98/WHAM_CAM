@@ -220,15 +220,19 @@ Profile (inside / outside / on line), Pocket, Drill. Settings in section 6.
 ### 5.5 Tool library
 Decided with the user 2026-11-19.
 - **Master tool list** (one per computer, shared by every project): every physical tool the user
-  has. Each tool: name, end type (Flat end mill, Ball nose, V-bit, Drill), diameter, shank
-  diameter (blank = same as the diameter), flutes, flute length, overall length, V angle (V-bit
+  has. Each tool: name, end type (End mill, Ball nose, V-bit, Drill), diameter, shank
+  diameter (blank = same as the diameter), flutes, flute type (Spiral = upcut, Straight, Downcut =
+  reverse spiral), helix angle (Spiral and Downcut, not drills; default 30°, the common
+  general-purpose angle), flute length, overall length, V angle (V-bit
   only). All mm.
-- **Automatic tool names** (decided 2026-11-19): made from diameter, V angle (V-bits), flutes, end
-  type and flute length, e.g. "6mm 2F Flat End Mill, 20mm flute", and kept up to date when those
+- **Automatic tool names** (decided 2026-11-19): made from diameter, V angle (V-bits), flutes,
+  flute type, end type and flute length (not the helix angle), e.g. "6mm 2F Spiral End Mill, 20mm
+  flute", and kept up to date when those
   change. Typing a name (or unticking *Automatic name*) keeps the typed name. Tools saved before
   this keep their names.
 - The Add/Edit tool form shows a **live side view** of the tool on the right (silhouette from the
-  engine: flat, ball, V point; drills drawn with a 118° point), with the diameters and the flute
+  engine: flat, ball, V point; drills drawn with a 118° point; flute edges drawn by flute type
+  and helix angle), with the diameters and the flute
   and overall lengths marked.
 - **Tools hold no feeds or speeds**: those depend on the material as well as the tool. In v1 each
   operation keeps its own feeds, speeds, depth increment and stepover; the materials library
@@ -251,7 +255,7 @@ Decided with the user 2026-11-19.
 - **Picking a tool**: an operation's Tool drop-down lists the active library's tools. Picking one
   copies its tool number and diameter into the operation, plus a copy of the tool kept in the
   project, so the project opens and cuts the same on a computer with different tooling. Typing a
-  different diameter drops the copy ("typed in"). Only flat end mills can be picked in v1; other
+  different diameter drops the copy ("typed in"). Only end mills (flat end) can be picked in v1; other
   end types can be recorded but are greyed out, and the engine refuses to generate with them.
 - The tool number goes into the G-code (tool changes) when G-code output arrives.
 

@@ -2,14 +2,23 @@
 // The engine checks and stores the values; this only shows them and collects the form.
 
 import { useEffect, useRef, useState } from "react";
-import type { EndType, Tool, ToolDrawing, Tooling, ToolPreview } from "../engine";
+import type { EndType, FluteType, Tool, ToolDrawing, Tooling, ToolPreview } from "../engine";
 
 export const END_TYPES: [EndType, string][] = [
-  ["Flat", "Flat end mill"],
+  ["Flat", "End mill"],
   ["Ball", "Ball nose"],
   ["VBit", "V-bit"],
   ["Drill", "Drill"],
 ];
+
+export const FLUTE_TYPES: [FluteType, string][] = [
+  ["Spiral", "Spiral (upcut)"],
+  ["Straight", "Straight"],
+  ["Downcut", "Downcut (reverse spiral)"],
+];
+
+/** Spiral and downcut flutes have a helix angle; drills don't. */
+const usesHelix = (flute: FluteType, end: EndType) => flute !== "Straight" && end !== "Drill";
 
 export const endTypeLabel = (t: EndType) => END_TYPES.find(([v]) => v === t)?.[1] ?? t;
 
@@ -100,7 +109,10 @@ export default function ToolListDialog({ tooling, newTool, preview, onAdd, onEdi
                     </td>
                     <td>{num(t.diameter)}</td>
                     <td>{num(t.shank_diameter ?? t.diameter)}</td>
-                    <td>{t.flutes}</td>
+                    <td>
+                      {t.flutes} {t.flute_type.toLowerCase()}
+                      {usesHelix(t.flute_type, t.end_type) ? ` ${num(t.helix_angle)}°` : ""}
+                    </td>
                     <td>{num(t.flute_length)}</td>
                     <td>{num(t.overall_length)}</td>
                     <td className="muted">{libraries(t.id)}</td>
@@ -147,6 +159,8 @@ function ToolForm({
   const [name, setName] = useState(tool.name);
   const [autoName, setAutoName] = useState(tool.auto_name);
   const [endType, setEndType] = useState<EndType>(tool.end_type);
+  const [fluteType, setFluteType] = useState<FluteType>(tool.flute_type);
+  const helix = usesHelix(fluteType, endType);
   const [text, setText] = useState({
     diameter: num(tool.diameter),
     shank: tool.shank_diameter === null ? "" : num(tool.shank_diameter),
@@ -154,6 +168,7 @@ function ToolForm({
     flute_length: num(tool.flute_length),
     overall_length: num(tool.overall_length),
     v_angle: num(tool.v_angle),
+    helix_angle: num(tool.helix_angle),
   });
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState<ToolPreview | null>(null);
@@ -162,10 +177,11 @@ function ToolForm({
   const bad = (k: Key) => {
     if (k === "shank" && text.shank.trim() === "") return false;
     if (k === "v_angle" && endType !== "VBit") return false;
+    if (k === "helix_angle" && !helix) return false;
     if (k === "flutes") return !/^\d+$/.test(text.flutes.trim());
     return Number.isNaN(parse(text[k]));
   };
-  const keys: Key[] = ["diameter", "shank", "flutes", "flute_length", "overall_length", "v_angle"];
+  const keys: Key[] = ["diameter", "shank", "flutes", "flute_length", "overall_length", "v_angle", "helix_angle"];
   const numbersOk = !keys.some(bad);
 
   /** The tool as the form stands, or null while a number box isn't a number. */
@@ -182,11 +198,13 @@ function ToolForm({
           flute_length: parse(text.flute_length),
           overall_length: parse(text.overall_length),
           v_angle: endType === "VBit" ? parse(text.v_angle) : tool.v_angle,
+          flute_type: fluteType,
+          helix_angle: helix ? parse(text.helix_angle) : tool.helix_angle,
         }
       : null;
 
   // Ask the engine for the name and picture whenever a value changes (latest answer wins).
-  const formKey = JSON.stringify([name, autoName, endType, text]);
+  const formKey = JSON.stringify([name, autoName, endType, fluteType, text]);
   const latest = useRef(formKey);
   useEffect(() => {
     latest.current = formKey;
@@ -284,13 +302,30 @@ function ToolForm({
                 {field("diameter", "Diameter (mm)")}
                 {field("shank", "Shank diameter (mm)", "same as diameter")}
                 {field("flutes", "Flutes")}
+                <tr>
+                  <th>Flute type</th>
+                  <td>
+                    <select
+                      className="prop-input"
+                      value={fluteType}
+                      onChange={(e) => setFluteType(e.target.value as FluteType)}
+                    >
+                      {FLUTE_TYPES.map(([v, label]) => (
+                        <option key={v} value={v}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+                {helix && field("helix_angle", "Helix angle (°)")}
                 {field("flute_length", "Flute length (mm)")}
                 {field("overall_length", "Overall length (mm)")}
               </tbody>
             </table>
             {endType !== "Flat" && (
               <p className="muted tool-note">
-                v1 toolpaths are for flat end mills only: this tool can be kept in the list and libraries, but not
+                v1 toolpaths are for end mills only: this tool can be kept in the list and libraries, but not
                 picked for an operation yet.
               </p>
             )}
@@ -312,7 +347,7 @@ function ToolForm({
 }
 
 /** Size of the picture box in pixels. */
-const PIC_W = 190;
+const PIC_W = 220;
 const PIC_H = 330;
 
 /**
@@ -329,13 +364,13 @@ function ToolPicture({ drawing, tool }: { drawing: ToolDrawing | null; tool: Too
   }
   const halfWidth = Math.max(...drawing.outline.map((p) => Math.abs(p.x)));
   const length = Math.max(...drawing.outline.map((p) => p.y));
-  // Room for the length marks on the right and the diameter labels above and below.
-  const left = 12;
-  const right = 62;
+  // The tool is centred, with room on both sides for the length marks on the right, and
+  // above and below for the diameter labels.
+  const side = 62;
   const top = 22;
   const bottom = 24;
-  const k = Math.min((PIC_H - top - bottom) / length, (PIC_W - left - right) / (2 * halfWidth));
-  const cx = left + halfWidth * k;
+  const k = Math.min((PIC_H - top - bottom) / length, (PIC_W - 2 * side) / (2 * halfWidth));
+  const cx = PIC_W / 2;
   const base = PIC_H - bottom;
   const X = (x: number) => cx + x * k;
   const Y = (y: number) => base - y * k;
@@ -357,8 +392,12 @@ function ToolPicture({ drawing, tool }: { drawing: ToolDrawing | null; tool: Too
   return (
     <svg className="tool-picture" width={PIC_W} height={PIC_H} viewBox={`0 0 ${PIC_W} ${PIC_H}`}>
       <path className="tool-body" d={path} />
-      {drawing.flute_lines.map(([a, b], i) => (
-        <line key={i} className="flute-line" x1={X(a.x)} y1={Y(a.y)} x2={X(b.x)} y2={Y(b.y)} />
+      {drawing.flute_lines.map((line, i) => (
+        <polyline
+          key={i}
+          className="flute-line"
+          points={line.map((p) => `${X(p.x).toFixed(2)},${Y(p.y).toFixed(2)}`).join(" ")}
+        />
       ))}
       <line
         className="flute-top"

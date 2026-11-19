@@ -732,8 +732,8 @@ button.primary {
   text-align: left;
 }
 .tool-form {
-  width: 620px;
-  max-width: 640px;
+  width: 660px;
+  max-width: 680px;
 }
 .tool-form-body {
   display: flex;
@@ -756,7 +756,7 @@ button.primary {
 /* Live side view of the tool */
 .tool-picture {
   flex: none;
-  width: 190px;
+  width: 220px;
   height: 330px;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -776,6 +776,7 @@ button.primary {
   stroke-linejoin: round;
 }
 .tool-picture .flute-line {
+  fill: none;
   stroke: #8a92a0;
   stroke-width: 1;
 }

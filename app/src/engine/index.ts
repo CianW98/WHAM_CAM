@@ -197,6 +197,8 @@ export interface Document {
 // --- Tooling (spec 5.5) -------------------------------------------------------------------------
 
 export type EndType = "Flat" | "Ball" | "VBit" | "Drill";
+/** Spiral = right-hand (upcut); Downcut = reverse spiral. */
+export type FluteType = "Spiral" | "Straight" | "Downcut";
 
 /** A physical tool in the master tool list. Lengths in mm. */
 export interface Tool {
@@ -207,6 +209,9 @@ export interface Tool {
   /** Null = same as the diameter. */
   shank_diameter: number | null;
   flutes: number;
+  flute_type: FluteType;
+  /** Helix angle in degrees (Spiral and Downcut; not drills). */
+  helix_angle: number;
   flute_length: number;
   overall_length: number;
   /** Included angle (V-bit only). */
@@ -223,8 +228,8 @@ export interface ToolDrawing {
   flute_top: number;
   /** Flute radius at that height. */
   flute_top_radius: number;
-  /** Helix lines across the flutes. */
-  flute_lines: [Point, Point][];
+  /** Cutting edges seen on the flutes, each a line through its points. */
+  flute_lines: Point[][];
 }
 
 /** What the tool form shows while being filled in. */

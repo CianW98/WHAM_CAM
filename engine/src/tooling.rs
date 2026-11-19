@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::geometry::{Point, on_circle};
 
-/// The shape of a tool's cutting end. v1 toolpaths are for flat end mills only.
+/// The shape of a tool's cutting end. v1 toolpaths are for end mills (`Flat`) only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EndType {
     Flat,
@@ -29,12 +29,46 @@ pub enum EndType {
 impl EndType {
     pub fn label(self) -> &'static str {
         match self {
-            EndType::Flat => "flat end mill",
+            EndType::Flat => "end mill",
             EndType::Ball => "ball nose",
             EndType::VBit => "V-bit",
             EndType::Drill => "drill",
         }
     }
+}
+
+/// How the flutes run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FluteType {
+    /// Right-hand spiral: lifts chips up out of the cut (upcut).
+    #[default]
+    Spiral,
+    /// Straight flutes, along the tool.
+    Straight,
+    /// Reverse (left-hand) spiral: pushes chips down, for a clean top edge.
+    Downcut,
+}
+
+impl FluteType {
+    pub fn label(self) -> &'static str {
+        match self {
+            FluteType::Spiral => "Spiral",
+            FluteType::Straight => "Straight",
+            FluteType::Downcut => "Downcut",
+        }
+    }
+
+    /// Spiral and downcut flutes have a helix angle.
+    pub fn has_helix(self) -> bool {
+        self != FluteType::Straight
+    }
+}
+
+/// The most common helix angle for general-purpose end mills and spiral router bits.
+pub const DEFAULT_HELIX_ANGLE: f64 = 30.0;
+
+fn default_helix_angle() -> f64 {
+    DEFAULT_HELIX_ANGLE
 }
 
 fn default_v_angle() -> f64 {
@@ -53,6 +87,12 @@ pub struct Tool {
     #[serde(default)]
     pub shank_diameter: Option<f64>,
     pub flutes: u32,
+    #[serde(default)]
+    pub flute_type: FluteType,
+    /// Helix (spiral) angle from the tool's axis, in degrees: Spiral and Downcut flutes, not
+    /// drills.
+    #[serde(default = "default_helix_angle")]
+    pub helix_angle: f64,
     pub flute_length: f64,
     pub overall_length: f64,
     /// Included angle of the point (V-bit only).
@@ -83,16 +123,18 @@ pub struct ToolDrawing {
     pub flute_top: f64,
     /// Radius of the flutes at `flute_top` (to draw the line between flutes and shank).
     pub flute_top_radius: f64,
-    /// Helix lines drawn across the flutes, as (from, to).
-    pub flute_lines: Vec<(Point, Point)>,
+    /// The cutting edges seen on the front of the flutes, as lines (each a list of points):
+    /// helices for spiral and downcut flutes, straight lines for straight flutes.
+    pub flute_lines: Vec<Vec<Point>>,
 }
 
 impl Tool {
-    /// The automatic name: diameter, (V angle,) flutes, end type and flute length, e.g.
-    /// "6mm 2F Flat End Mill, 20mm flute" or "6mm 90° 2F V-Bit, 10mm flute".
+    /// The automatic name: diameter, (V angle,) flutes, flute type, end type and flute length,
+    /// e.g. "6mm 2F Spiral End Mill, 20mm flute" or "6mm 90° 2F Straight V-Bit, 10mm flute".
+    /// The helix angle is not part of the name.
     pub fn generated_name(&self) -> String {
         let kind = match self.end_type {
-            EndType::Flat => "Flat End Mill",
+            EndType::Flat => "End Mill",
             EndType::Ball => "Ball Nose",
             EndType::VBit => "V-Bit",
             EndType::Drill => "Drill",
@@ -103,9 +145,10 @@ impl Tool {
             String::new()
         };
         format!(
-            "{}mm{angle} {}F {kind}, {}mm flute",
+            "{}mm{angle} {}F {} {kind}, {}mm flute",
             short(self.diameter),
             self.flutes,
+            self.flute_type.label(),
             short(self.flute_length)
         )
     }
@@ -118,6 +161,52 @@ impl Tool {
             self.name.trim().to_string()
         };
         self
+    }
+
+    /// The cutting edges on the front half of the flutes between heights `y0` and `y1`, seen
+    /// from the side. Edge k sits at angle 2πk/n round the tool (plus a turn along the helix);
+    /// on the front half (cos > 0) it shows at x = r·sin(angle). A right-hand spiral rises to the
+    /// left (like a backslash), a downcut to the right ("/"). Drills are drawn with the common 30° helix.
+    fn flute_edges(&self, r: f64, y0: f64, y1: f64) -> Vec<Vec<Point>> {
+        use std::f64::consts::{PI, TAU};
+        let n = self.flutes.max(1);
+        let helix = if self.end_type == EndType::Drill {
+            DEFAULT_HELIX_ANGLE
+        } else {
+            self.helix_angle
+        };
+        // Axial length of one full turn of a flute.
+        let lead = match self.flute_type {
+            FluteType::Straight => f64::INFINITY,
+            _ => TAU * r / helix.to_radians().tan(),
+        };
+        let hand = if self.flute_type == FluteType::Downcut {
+            1.0
+        } else {
+            -1.0
+        };
+        const STEPS: u32 = 240;
+        let mut lines = Vec::new();
+        for k in 0..n {
+            // Offset by a quarter pitch so straight flutes don't sit on the outline.
+            let start = TAU * f64::from(k) / f64::from(n) + PI / (2.0 * f64::from(n));
+            let mut run: Vec<Point> = Vec::new();
+            for i in 0..=STEPS {
+                let y = y0 + (y1 - y0) * f64::from(i) / f64::from(STEPS);
+                let angle = start + TAU * (y - y0) / lead;
+                if angle.cos() > 0.0 {
+                    run.push(Point::new(hand * r * angle.sin(), y));
+                } else if run.len() > 1 {
+                    lines.push(std::mem::take(&mut run));
+                } else {
+                    run.clear();
+                }
+            }
+            if run.len() > 1 {
+                lines.push(run);
+            }
+        }
+        lines
     }
 
     /// The side view for the tool form's picture. None if the values aren't valid.
@@ -145,7 +234,8 @@ impl Tool {
             (EndType::Ball, _) => {
                 let centre = Point::new(0.0, r);
                 for i in 1..=16 {
-                    let a = -90.0 + 90.0 * f64::from(i) / 16.0;
+                    // A quarter circle on this side, from straight below the centre to level.
+                    let a = (-90.0 + 90.0 * f64::from(i) / 16.0_f64).to_radians();
                     right.push(on_circle(centre, r, a));
                 }
                 r
@@ -186,24 +276,11 @@ impl Tool {
             outline.pop();
         }
 
-        // Helix lines across the straight part of the flutes, clipped to it.
-        let mut flute_lines = Vec::new();
-        if tip_top < fl {
-            let rise = 0.5 * self.diameter;
-            let spacing = 1.5 * self.diameter / f64::from(self.flutes.max(1));
-            let mut y0 = tip_top - rise;
-            while y0 < fl && flute_lines.len() < 200 {
-                let (a, b) = (Point::new(-r, y0), Point::new(r, y0 + rise));
-                // Clip to tip_top <= y <= fl.
-                let t0 = ((tip_top - a.y) / rise).clamp(0.0, 1.0);
-                let t1 = ((fl - a.y) / rise).clamp(0.0, 1.0);
-                if t1 > t0 {
-                    let at = |t: f64| Point::new(a.x + (b.x - a.x) * t, a.y + rise * t);
-                    flute_lines.push((at(t0), at(t1)));
-                }
-                y0 += spacing;
-            }
-        }
+        let flute_lines = if tip_top < fl {
+            self.flute_edges(r, tip_top, fl)
+        } else {
+            Vec::new()
+        };
 
         Some(ToolDrawing {
             outline,
@@ -222,12 +299,19 @@ impl Tool {
             diameter: 6.0,
             shank_diameter: None,
             flutes: 2,
+            flute_type: FluteType::Spiral,
+            helix_angle: DEFAULT_HELIX_ANGLE,
             flute_length: 20.0,
             overall_length: 60.0,
             v_angle: default_v_angle(),
             auto_name: true,
         }
         .named()
+    }
+
+    /// True if the helix angle applies: spiral or downcut flutes, and not a drill.
+    pub fn uses_helix_angle(&self) -> bool {
+        self.flute_type.has_helix() && self.end_type != EndType::Drill
     }
 
     /// The shank diameter, or the cutting diameter if it isn't set.
@@ -264,6 +348,12 @@ impl Tool {
             self.overall_length >= self.flute_length,
             "The overall length can't be less than the flute length.",
         )?;
+        if self.uses_helix_angle() {
+            ok(
+                self.helix_angle.is_finite() && self.helix_angle > 0.0 && self.helix_angle < 90.0,
+                "The helix angle must be more than 0° and less than 90°.",
+            )?;
+        }
         if self.end_type == EndType::VBit {
             ok(
                 self.v_angle > 0.0 && self.v_angle < 180.0,

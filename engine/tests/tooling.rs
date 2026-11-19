@@ -60,7 +60,10 @@ fn tools_get_new_ids_and_are_checked() {
 fn automatic_names_follow_the_values() {
     let mut t = Tooling::default();
     let id = t.add_tool(Tool::new_default()).unwrap();
-    assert_eq!(t.tool(id).unwrap().name, "6mm 2F Flat End Mill, 20mm flute");
+    assert_eq!(
+        t.tool(id).unwrap().name,
+        "6mm 2F Spiral End Mill, 20mm flute"
+    );
     let mut edited = t.tool(id).unwrap().clone();
     edited.diameter = 3.175;
     edited.flutes = 1;
@@ -69,19 +72,19 @@ fn automatic_names_follow_the_values() {
     t.set_tool(edited).unwrap();
     assert_eq!(
         t.tool(id).unwrap().name,
-        "3.175mm 1F Ball Nose, 12.5mm flute"
+        "3.175mm 1F Spiral Ball Nose, 12.5mm flute"
     );
     let vbit = Tool {
         end_type: EndType::VBit,
         v_angle: 60.0,
         ..Tool::new_default()
     };
-    assert_eq!(vbit.generated_name(), "6mm 60° 2F V-Bit, 20mm flute");
+    assert_eq!(vbit.generated_name(), "6mm 60° 2F Spiral V-Bit, 20mm flute");
     let drill = Tool {
         end_type: EndType::Drill,
         ..Tool::new_default()
     };
-    assert_eq!(drill.generated_name(), "6mm 2F Drill, 20mm flute");
+    assert_eq!(drill.generated_name(), "6mm 2F Spiral Drill, 20mm flute");
 }
 
 #[test]
@@ -137,12 +140,10 @@ fn drawing_of_a_flat_end_mill() {
     // Symmetric about the tool's centre line.
     let min_x = d.outline.iter().map(|p| p.x).fold(f64::MAX, f64::min);
     assert!((min_x + 4.0).abs() < 1e-9);
-    // Helix lines stay within the flutes.
+    // Flute edges stay within the flutes.
     assert!(!d.flute_lines.is_empty());
-    for (a, b) in &d.flute_lines {
-        for p in [a, b] {
-            assert!(p.y >= -1e-9 && p.y <= 20.0 + 1e-9 && p.x.abs() <= 3.0 + 1e-9);
-        }
+    for p in d.flute_lines.iter().flatten() {
+        assert!(p.y >= -1e-9 && p.y <= 20.0 + 1e-9 && p.x.abs() <= 3.0 + 1e-9);
     }
 }
 
@@ -173,6 +174,19 @@ fn drawing_tips_by_end_type() {
     for p in tip {
         assert!((p.distance_to(Point::new(0.0, 3.0)) - 3.0).abs() < 1e-9);
     }
+    // Only the lower half circle: no outline point inside the sides above the ball's centre
+    // except the shank top (a full circle would put points there).
+    for p in &b.outline {
+        if p.y > 3.0 + 1e-9 && p.y < 60.0 - 1e-9 {
+            assert!(
+                (p.x.abs() - 3.0).abs() < 1e-9,
+                "point inside the tool: {p:?}"
+            );
+        }
+    }
+    // The tip runs once across, from right to left, through the bottom point.
+    let bottom = b.outline.iter().filter(|p| p.y.abs() < 1e-9).count();
+    assert_eq!(bottom, 1);
     // A V point longer than the flutes is cut off at the flute top.
     let long = Tool {
         end_type: EndType::VBit,
@@ -184,6 +198,94 @@ fn drawing_tips_by_end_type() {
     .unwrap();
     assert!(long.outline.iter().all(|p| p.y >= 0.0));
     assert!(long.flute_top_radius < 3.0);
+}
+
+/// How x changes going up the first flute edge: + rises to the right, - to the left, 0 straight.
+fn slope(t: &Tool) -> f64 {
+    let d = t.drawing().unwrap();
+    let line = &d.flute_lines[0];
+    let (a, b) = (line[0], line[line.len() - 1]);
+    (b.x - a.x).signum() * f64::from(u8::from((b.x - a.x).abs() > 1e-9))
+}
+
+#[test]
+fn flute_types_are_drawn_their_way() {
+    let spiral = Tool::new_default();
+    assert_eq!(slope(&spiral), -1.0, "right-hand spiral rises to the left");
+    let down = Tool {
+        flute_type: FluteType::Downcut,
+        ..Tool::new_default()
+    };
+    assert_eq!(slope(&down), 1.0, "downcut rises to the right");
+    let straight = Tool {
+        flute_type: FluteType::Straight,
+        ..Tool::new_default()
+    };
+    assert_eq!(slope(&straight), 0.0);
+    // A steeper helix angle gives a shorter lead: more edges over the same flute length.
+    let count = |angle: f64| {
+        Tool {
+            helix_angle: angle,
+            ..Tool::new_default()
+        }
+        .drawing()
+        .unwrap()
+        .flute_lines
+        .len()
+    };
+    assert!(count(45.0) > count(15.0));
+}
+
+#[test]
+fn flute_type_is_named_but_not_the_helix_angle() {
+    let t = Tool {
+        flute_type: FluteType::Downcut,
+        helix_angle: 38.0,
+        ..Tool::new_default()
+    };
+    assert_eq!(t.generated_name(), "6mm 2F Downcut End Mill, 20mm flute");
+    let straight = Tool {
+        flute_type: FluteType::Straight,
+        ..Tool::new_default()
+    };
+    assert_eq!(
+        straight.generated_name(),
+        "6mm 2F Straight End Mill, 20mm flute"
+    );
+}
+
+#[test]
+fn helix_angle_checked_only_where_it_applies() {
+    let bad = |flute_type, end_type| Tool {
+        flute_type,
+        end_type,
+        helix_angle: 95.0,
+        ..Tool::new_default()
+    };
+    assert!(bad(FluteType::Spiral, EndType::Flat).validate().is_err());
+    assert!(bad(FluteType::Downcut, EndType::Ball).validate().is_err());
+    assert!(bad(FluteType::Straight, EndType::Flat).validate().is_ok());
+    assert!(
+        bad(FluteType::Spiral, EndType::Drill).validate().is_ok(),
+        "drills have no helix angle"
+    );
+    assert_eq!(Tool::new_default().helix_angle, 30.0);
+}
+
+#[test]
+fn older_tools_get_spiral_flutes_at_30_degrees() {
+    let mut file: serde_json::Value = serde_json::from_str(&to_text(&sample())).unwrap();
+    for tool in file["tools"].as_array_mut().unwrap() {
+        let tool = tool.as_object_mut().unwrap();
+        tool.remove("flute_type");
+        tool.remove("helix_angle");
+    }
+    let t = from_text(&file.to_string()).unwrap();
+    assert!(
+        t.tools
+            .iter()
+            .all(|x| x.flute_type == FluteType::Spiral && x.helix_angle == 30.0)
+    );
 }
 
 #[test]
@@ -355,7 +457,7 @@ fn only_flat_end_mills_can_be_picked() {
     let (mut proj, op) = project_with_pocket();
     let ball = t.library_tool("Mill", 5).unwrap().clone();
     let err = proj.set_operation_tool(op, Some((5, ball))).unwrap_err();
-    assert!(err.contains("flat end mills only"), "{err}");
+    assert!(err.contains("end mills only"), "{err}");
     assert!(proj.operation(op).unwrap().common.tool.is_none());
     assert!(!proj.can_undo() || proj.operation(op).unwrap().common.tool_number == 0);
 }
@@ -370,7 +472,7 @@ fn a_non_flat_tool_in_a_project_file_fails_to_generate() {
     proj.set_operation(o).unwrap();
     let report = proj.generate(&[op]);
     assert_eq!(report.generated, 0);
-    assert!(report.errors[0].1.contains("flat end mills only"));
+    assert!(report.errors[0].1.contains("end mills only"));
 }
 
 #[test]
