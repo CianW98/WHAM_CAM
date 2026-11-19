@@ -128,7 +128,9 @@ function playbackSignature(pb: Playback): string {
     const p = st.points[st.points.length - 1];
     sum += st.operation_id + p[0] * 1.3 + p[1] * 1.7 + p[2] * 1.9 + st.tool_diameter;
   }
-  return `${pb.steps.length}|${pb.total_s}|${sum}`;
+  // A changed cutter (e.g. another shank) with the same moves still counts as new.
+  const tools = JSON.stringify(pb.tools);
+  return `${pb.steps.length}|${pb.total_s}|${sum}|${tools}`;
 }
 
 const samePoint = (a: Point | undefined, b: Point) => a !== undefined && a.x === b.x && a.y === b.y;

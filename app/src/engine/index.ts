@@ -192,6 +192,17 @@ export interface PlaybackStep {
 export interface Playback {
   steps: PlaybackStep[];
   total_s: number;
+  /** Each operation's cutter, to draw in 3D. */
+  tools: PlaybackTool[];
+}
+
+/** One operation's cutter for the 3D playback: its outline turned round its axis. */
+export interface PlaybackTool {
+  operation_id: number;
+  /** Tip on the axis, out and up the side, to the shank top on the axis (x = radius, y = height, mm). */
+  profile: Point[];
+  /** Height where the flutes end. */
+  flute_length: number;
 }
 
 export interface GenerateReport {

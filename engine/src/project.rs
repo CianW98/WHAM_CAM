@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::display::{
-    CutWidthStep, Playback, ToolpathDisplay, cut_width_steps, playback, toolpath_display,
+    CutWidthStep, Playback, PlaybackTool, ToolpathDisplay, cut_width_steps, playback,
+    toolpath_display,
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
@@ -123,6 +124,8 @@ pub struct GenerateReport {
 #[derive(Debug, Clone)]
 struct Generated {
     operation: Operation,
+    /// The tool it was generated with (its own, its part's or Machining's), if it had one.
+    tool: Option<Tool>,
     shapes: Vec<Option<Shape>>,
     result: Result<Toolpath, String>,
 }
@@ -1224,10 +1227,12 @@ impl Project {
             }
             let shapes = self.current_shapes(&op);
             let operation = self.generated_from(pi, &op);
+            let tool = self.tool_source(pi, &op).1.map(|p| p.tool);
             self.toolpaths.insert(
                 op.id,
                 Generated {
                     operation,
+                    tool,
                     shapes,
                     result,
                 },
@@ -1295,7 +1300,26 @@ impl Project {
     /// The tool playback of the drawn toolpaths: the same operations as `toolpaths_display`, in
     /// tree order.
     pub fn playback(&self) -> Playback {
-        playback(&self.shown_toolpaths())
+        let mut pb = playback(&self.shown_toolpaths());
+        // The cutter of each shown operation, as it was when generated.
+        pb.tools = self
+            .doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .filter(|op| op.enabled && op.show_toolpath)
+            .filter_map(|op| {
+                let g = self.toolpaths.get(&op.id)?;
+                g.result.as_ref().ok()?;
+                let tool = g.tool.as_ref()?;
+                Some(PlaybackTool {
+                    operation_id: op.id,
+                    profile: tool.profile()?,
+                    flute_length: tool.flute_length,
+                })
+            })
+            .collect();
+        pb
     }
 
     /// The width the cutter sweeps along each step of `playback()` (same steps, same order), so

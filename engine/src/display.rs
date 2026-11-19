@@ -458,6 +458,19 @@ pub struct PlaybackStep {
 pub struct Playback {
     pub steps: Vec<PlaybackStep>,
     pub total_s: f64,
+    /// The cutter each operation uses, to draw it in 3D.
+    pub tools: Vec<PlaybackTool>,
+}
+
+/// The cutter of one operation for the 3D playback: its outline turned round its axis.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaybackTool {
+    pub operation_id: u32,
+    /// From the tip on the axis, out and up the side, to the shank top back on the axis.
+    /// x = radius, y = height above the tip, in mm (see [`crate::Tool::profile`]).
+    pub profile: Vec<crate::geometry::Point>,
+    /// Height where the flutes end and the shank starts.
+    pub flute_length: f64,
 }
 
 /// Builds the playback of `toolpaths` (each with its tool diameter), in order. Each operation's
@@ -515,7 +528,11 @@ pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
             at = Some(to);
         }
     }
-    Playback { steps, total_s: t }
+    Playback {
+        steps,
+        total_s: t,
+        tools: Vec::new(),
+    }
 }
 
 fn dist3(a: Point3, b: Point3) -> f64 {

@@ -120,7 +120,14 @@ interface Scene3 {
   /** Playback: the part of the current segment done so far. */
   current: THREE.Line;
   /** Playback: the cutter (outline in 2D and 3D, solid body in 3D only). */
-  tool: { group: THREE.Group; outline: THREE.LineLoop; body: THREE.Group };
+  tool: {
+    group: THREE.Group;
+    outline: THREE.LineLoop;
+    /** Holds the 3D cutters; only the current operation's is visible. */
+    body: THREE.Group;
+    /** The 3D cutter of each operation, by operation id. */
+    bodies: Map<number, THREE.Group>;
+  };
   grid: THREE.Group;
   /** The dashed preview of whatever is being placed. */
   preview: THREE.Group;
@@ -234,8 +241,8 @@ function clearGroup(group: THREE.Group) {
 const KINDS: MoveKind[] = ["Cut", "Plunge", "Rapid"];
 
 /**
- * The playback cutter, 1 mm in diameter (scaled to the tool), tip at the origin: an outline
- * circle, and in 3D a flat-end cutter body with a slightly thinner shank above it.
+ * The playback cutter, tip at the origin: an outline circle 1 mm across (scaled to the tool
+ * diameter), and in 3D the operation's real cutter (built per playback by `buildToolBodies`).
  */
 function buildTool(): Scene3["tool"] {
   const group = new THREE.Group();
@@ -252,18 +259,70 @@ function buildTool(): Scene3["tool"] {
   outline.renderOrder = 8;
   group.add(outline);
   const body = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: TOOL_COLOR, transparent: true, opacity: 0.45, depthWrite: false });
-  // Cylinders in three.js stand along Y; turn them to stand along Z.
-  const cutter = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2, 32), mat);
-  cutter.rotation.x = Math.PI / 2;
-  cutter.position.z = 1;
-  const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 3, 32), mat);
-  shank.rotation.x = Math.PI / 2;
-  shank.position.z = 3.5;
-  body.add(cutter, shank);
-  for (const m of [cutter, shank]) m.renderOrder = 7;
   group.add(body);
-  return { group, outline, body };
+  return { group, outline, body, bodies: new Map() };
+}
+
+/** Turns a profile (x = radius, y = height) round the tool axis, standing along +Z. */
+function lathe(points: [number, number][], opacity: number): THREE.Mesh {
+  const geom = new THREE.LatheGeometry(
+    points.map(([x, y]) => new THREE.Vector2(x, y)),
+    48,
+  );
+  const mat = new THREE.MeshBasicMaterial({
+    color: TOOL_COLOR,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  // LatheGeometry turns round Y; turn it to stand along Z.
+  mesh.rotation.x = Math.PI / 2;
+  mesh.renderOrder = 7;
+  return mesh;
+}
+
+/**
+ * The 3D cutter of each operation in the playback, from the tool outline the engine sends:
+ * the fluted part a little stronger, the shank fainter. Real size (not scaled).
+ */
+function buildToolBodies(s: Scene3, pb: Playback | null) {
+  const { body, bodies } = s.tool;
+  // Free the old cutters' meshes (they sit one level down, in a group per operation).
+  for (const g of bodies.values()) clearGroup(g);
+  clearGroup(body);
+  bodies.clear();
+  for (const t of pb?.tools ?? []) {
+    const pts = t.profile.map((p) => [p.x, p.y] as [number, number]);
+    if (pts.length < 3) continue;
+    const fl = t.flute_length;
+    const eps = 1e-6;
+    const top = pts[pts.length - 1][1];
+    // Flutes: from the tip up to the flute top, closed back to the axis there.
+    const flutes = pts.filter(([, y]) => y <= fl + eps);
+    flutes.push([0, Math.min(fl, top)]);
+    const g = new THREE.Group();
+    g.add(lathe(flutes, 0.55));
+    // Shank: a plain cylinder from the flute top to the top of the tool.
+    const shankRadius = Math.max(0, ...pts.filter(([x, y]) => y > fl + eps && x > 0).map(([x]) => x));
+    if (shankRadius > 0 && top > fl) {
+      g.add(
+        lathe(
+          [
+            [0, fl],
+            [shankRadius, fl],
+            [shankRadius, top],
+            [0, top],
+          ],
+          0.35,
+        ),
+      );
+    }
+    g.visible = false;
+    body.add(g);
+    bodies.set(t.operation_id, g);
+  }
 }
 
 /**
@@ -406,7 +465,8 @@ function showPlayback(s: Scene3, pb: Playback | null, t: number) {
   }
   const d = Math.max(step.tool_diameter, 0.01);
   s.tool.group.position.set(at.point[0], at.point[1], at.point[2]);
-  s.tool.group.scale.set(d, d, d);
+  s.tool.outline.scale.set(d, d, d);
+  for (const [id, g] of s.tool.bodies) g.visible = id === step.operation_id;
   s.tool.body.visible = s.mode === "3D";
 }
 
@@ -883,6 +943,7 @@ export default function Viewport({
     const s = sceneRef.current;
     if (!s) return;
     buildDone(s, playback);
+    buildToolBodies(s, playback);
     showPlayback(s, playback, playTime);
     s.render();
   }, [playback]);

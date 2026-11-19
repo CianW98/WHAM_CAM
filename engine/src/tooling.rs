@@ -222,8 +222,10 @@ impl Tool {
         lines
     }
 
-    /// The side view for the tool form's picture. None if the values aren't valid.
-    pub fn drawing(&self) -> Option<ToolDrawing> {
+    /// The right-hand half of the tool's side view, tip at (0, 0) up the axis: tip, flutes,
+    /// shank, ending at the outside top corner. Also the height where the full diameter starts
+    /// and the flute radius at the flute top. None if the values aren't valid.
+    fn half_profile(&self) -> Option<(Vec<Point>, f64, f64)> {
         Tool {
             name: "x".into(),
             ..self.clone()
@@ -276,6 +278,25 @@ impl Tool {
         }
         right.push(Point::new(s, fl));
         right.push(Point::new(s, len));
+
+        Some((right, tip_top, top_radius))
+    }
+
+    /// The tool's outline for a solid model turned round its axis (the 3D playback cutter):
+    /// from the tip on the axis, out and up the side, to the top of the shank back on the axis.
+    /// x = radius, y = height above the tip, mm. None if the values aren't valid.
+    pub fn profile(&self) -> Option<Vec<Point>> {
+        let (mut right, _, _) = self.half_profile()?;
+        right.push(Point::new(0.0, self.overall_length));
+        right.dedup_by(|a, b| a.distance_to(*b) < 1e-9);
+        Some(right)
+    }
+
+    /// The side view for the tool form's picture. None if the values aren't valid.
+    pub fn drawing(&self) -> Option<ToolDrawing> {
+        let (right, tip_top, top_radius) = self.half_profile()?;
+        let r = self.diameter / 2.0;
+        let fl = self.flute_length;
 
         // Left side: the mirror image, top down.
         let left: Vec<Point> = right.iter().rev().map(|p| Point::new(-p.x, p.y)).collect();

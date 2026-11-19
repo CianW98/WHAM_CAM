@@ -304,7 +304,9 @@ Decided with the user 2026-11-19.
   - Real time follows the feed rates (arcs by their true length). Rapids use an **assumed rapid
     rate of 5000 mm/min** until machine settings exist, so the run time is shown as an estimate.
   - The readout shows operation, move number (as in safety checker messages), kind, feed and X Y Z.
-  - The tool is a circle of the tool diameter in 2D, and a flat-end cutter with shank in 3D.
+  - The tool is a circle of the tool diameter in 2D. In 3D it is the operation's real cutter
+    (from the tool it was generated with: end shape, flute length, shank diameter, overall
+    length), the flutes drawn a little stronger than the shank.
   - All shown operations play one after another in tree order. Once started, moves still to come
     are faded and moves done are in full colour. New or changed toolpaths start again from the
     beginning.

@@ -797,3 +797,75 @@ fn generate_refuses_one_number_for_two_different_tools() {
     assert_eq!(proj.generate(&[]).generated, 2);
     let _ = (a, c);
 }
+
+// --- The 3D playback cutter -----------------------------------------------------------------------
+
+#[test]
+fn profile_runs_from_tip_to_shank_top_on_the_axis() {
+    let t = Tool {
+        diameter: 3.0,
+        shank_diameter: Some(6.0),
+        flute_length: 12.0,
+        overall_length: 50.0,
+        ..Tool::new_default()
+    };
+    let p = t.profile().unwrap();
+    let pt = |x: f64, y: f64| Point::new(x, y);
+    assert_eq!(
+        p,
+        vec![
+            pt(0.0, 0.0),
+            pt(1.5, 0.0),
+            pt(1.5, 12.0),
+            pt(3.0, 12.0),
+            pt(3.0, 50.0),
+            pt(0.0, 50.0)
+        ]
+    );
+    // Shank the same as the cutter: straight up the side, no step at the flute top.
+    assert_eq!(
+        Tool::new_default().profile().unwrap(),
+        vec![
+            pt(0.0, 0.0),
+            pt(3.0, 0.0),
+            pt(3.0, 20.0),
+            pt(3.0, 60.0),
+            pt(0.0, 60.0)
+        ]
+    );
+    assert!(
+        Tool {
+            diameter: -1.0,
+            ..Tool::new_default()
+        }
+        .profile()
+        .is_none()
+    );
+}
+
+#[test]
+fn playback_carries_each_operations_real_tool() {
+    let mut proj = Project::new();
+    let a = add_pocket(&mut proj, 0.0);
+    let b = add_pocket(&mut proj, 50.0);
+    proj.set_machining_tool(Some(picked(1))).unwrap();
+    proj.set_operation_tool(b, ToolSetting::Custom).unwrap();
+    let mut o = proj.operation(b).unwrap().clone();
+    let t = o.common.tool.as_mut().unwrap();
+    t.diameter = 3.0;
+    t.shank_diameter = Some(8.0);
+    t.overall_length = 75.0;
+    proj.set_operation(o).unwrap();
+    assert_eq!(proj.generate(&[]).generated, 2);
+    let pb = proj.playback();
+    let tool = |id: u32| pb.tools.iter().find(|t| t.operation_id == id).unwrap();
+    assert_eq!(tool(a).profile, picked(1).tool.profile().unwrap());
+    let bp = &tool(b).profile;
+    assert_eq!(
+        bp.iter().map(|p| p.x).fold(0.0, f64::max),
+        4.0,
+        "8 mm shank"
+    );
+    assert_eq!(bp.last().unwrap().y, 75.0);
+    assert_eq!(tool(b).flute_length, 20.0);
+}
