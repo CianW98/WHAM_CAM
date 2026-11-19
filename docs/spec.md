@@ -154,10 +154,16 @@ A classic CAD/CAM layout, with a toolbar:
 
   Everything else (TEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and the
   import message lists what was skipped. Binary DXF and broken files give a clear error.
-- **(?) Further DXF entities**: v1 also reads the extra entities the user needs from their own
-  drawings. Which ones is still to decide; candidates are the ones skipped today, e.g. TEXT and
-  MTEXT (as shapes to engrave or as reference), HATCH boundaries (as closed shapes) and DIMENSION
-  (as dimensions, 5.3). Each becomes ordinary drawing objects, so operations work on it as usual.
+- **TEXT and MTEXT** (decided 2026-11-19) are imported as outlines: closed shapes for each
+  letter, on the entity's layer, so they can be engraved, profiled or pocketed like any shape.
+  **(?)** The font used to turn letters into outlines is decided when this is built: a font
+  bundled with WHAM_CAM (its licence must allow that) and a font reader that builds for
+  WebAssembly.
+- **DIMENSION** (decided 2026-11-19): aligned, radius, diameter and angular DXF dimensions become
+  WHAM_CAM dimensions (5.3) on their layer, keeping the DXF's measured value. Other kinds (e.g.
+  horizontal/vertical "rotated" and ordinate dimensions) are skipped and listed in the import
+  message.
+- HATCH is skipped (its outline isn't imported).
 - **Splines and ellipses stay exact** in the drawing. They are converted to arcs and lines only
   when a toolpath is made (conversion tolerance is a toolpath setting). A **Convert to polyline**
   command turns them into polylines, to edit like any other polyline.
@@ -242,11 +248,19 @@ A classic CAD/CAM layout, with a toolbar:
   opens at the cut. A shape is not cut where it crosses itself.
 - **Close polyline**: closes open polylines; a last point on top of the first is dropped.
 - Each of these is one undo step, and the results become the selection.
-- **(?) Dimensions** (v1 scope: "basic dimensioning"): measured dimensions shown on the drawing,
-  such as lengths, radii and diameters, snapped to the shapes they measure and kept on the grid.
-  Still to decide with the user: which kinds, how they look, whether they are saved with the
-  project and printed/exported, and whether typing a new value changes the shape (driving
-  dimensions) or they only show measurements.
+- **Dimensions** (v1 scope: "basic dimensioning"; decided 2026-11-19):
+  - Kinds: **aligned** (the distance between two snapped points, measured along the line between
+    them), **radius** and **diameter** (click an arc or circle), and **angle** (between two
+    lines).
+  - **Measure only**: a dimension shows a size; it never drives the geometry. Shapes are changed
+    in Properties as usual (keeping to "no parametric history").
+  - Dimensions are drawing objects **on a layer** (the current layer when placed): saved in the
+    project, drawn in the layer's colour, selectable, deletable and undoable like other objects.
+    They are **never machined**: operations refuse them, like other unsuitable shapes.
+  - The value is measured when the dimension is placed and is read-only. A dimension isn't linked
+    to the shape it measured: moving or editing that shape doesn't update it (delete and place it
+    again to re-measure).
+  - One look in v1: values in mm with 2 decimals, a fixed text size.
 
 ### 5.4 Operations and the Machining tree
 The Machining branch of the Project tree holds the project's machining, in three levels: the
@@ -584,13 +598,13 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   but the top-level `tests/` folder is git-ignored (this machine only). They could go in
   `engine/tests/reference/` (committed, checked by CI) instead.
 
-**Drawing and import** (noted 2026-11-19):
-- **(?) Dimensions** (5.3): which kinds, how they look, whether they are saved and exported, and
-  whether they can drive the geometry or only show measurements.
-- **(?) Further DXF entities** (5.1): which ones, from the user's own drawings.
+**Drawing and import**:
+- **(?) Font for text outlines** (5.1): which font DXF TEXT/MTEXT letters are turned into
+  outlines with, and the font reader. Decided when DXF text import is built.
 
 Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
-(both decided 2026-11-16).
+(both decided 2026-11-16). Dimensions (5.3) and the further DXF entities, TEXT/MTEXT and DIMENSION
+(5.1), decided 2026-11-19.
 
 ## 10. Out of scope for v1
 

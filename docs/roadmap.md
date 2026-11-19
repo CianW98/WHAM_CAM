@@ -61,6 +61,9 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
     speeds and depths per tool, so picking a tool and a material fills in sensible values.
   - To be worked out together, keeping the "every setting visible" rule: a library only fills
     in values, which stay editable on the operation.
+- **Horizontal / vertical dimensions and HATCH import**, if needed later: not chosen for v1
+  (2026-11-19), which has aligned, radius/diameter and angle dimensions and DXF TEXT/MTEXT and
+  DIMENSION import.
 - **Predefined styles in the library** for common kinds of CNC work, e.g. PCB cutting, V-carving
   and other common uses. List to be filled in.
 
