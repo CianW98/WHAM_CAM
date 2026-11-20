@@ -1,6 +1,6 @@
 //! Turns the document into simple point lists the interface can draw.
-//! Arcs, circles, splines and ellipses are approximated with short straight segments for the
-//! screen only; the drawing itself (and later the toolpaths) keep the exact curves.
+//! Arcs and circles are approximated with short straight segments for the screen only; the
+//! drawing itself and the toolpaths keep the exact arcs.
 
 use std::f64::consts::TAU;
 

@@ -796,7 +796,7 @@ impl Project {
     }
 
     /// Adds a Pocket of the given shapes to the first part, as one undo step. Returns its id.
-    /// Refuses shapes that can't be pocketed (open, splines, ...).
+    /// Refuses shapes that can't be pocketed (open shapes, point lists, ...).
     pub fn add_pocket(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
         if shape_ids.is_empty() {
             return Err("Select the closed shapes to pocket first.".into());
@@ -810,7 +810,7 @@ impl Project {
 
     /// Adds a Profile of the given shapes to the first part, as one undo step. Returns its id.
     /// It cuts Outside, or On line if any of the shapes are open. Refuses shapes that can't be
-    /// profiled (points, splines, ...).
+    /// profiled (point lists).
     pub fn add_profile(&mut self, shape_ids: &[u32]) -> Result<u32, String> {
         if shape_ids.is_empty() {
             return Err("Select the shapes to profile first.".into());
