@@ -389,6 +389,10 @@ become G-code text only through the post-processor, so a machine-specific one ca
 without touching the toolpaths. Machine-specific post-processors, each with its own settings panel
 per machine type, come after v1 (roadmap).
 - Machining menu (and toolbar) → **Produce G-code**: one `.nc` file for the whole job (section 7).
+  It is written only from toolpaths as generated: if any enabled operation's toolpath is out of
+  date, failed or was never generated, it refuses and names them ("Press Generate toolpaths and
+  check them first", decided 2026-11-20). After saving, a pop-up reminds the user to check the
+  file in a simulator and with an air cut.
 - The tool number of each operation comes from its tool (5.5): one number is one cutter.
 - **Machines** (decided 2026-11-20): a machine list in the Setup tab (global, like the tool
   libraries). Each machine has a name and its post-processor; v1 has only the **Generic**
@@ -582,11 +586,15 @@ Principles:
 - **File**: one file for the whole job: every enabled operation, in tree order. Extension `.nc`.
 - **Numbers**: coordinates to 3 decimals with trailing zeros trimmed (e.g. `X12.5`); feeds and
   spindle speeds as whole numbers.
-- **Start**: header comments (program name, date, and the WHAM_CAM version, e.g.
-  `( WHAM_CAM 0.4.0 )`), then `G21 G90 G17` (mm, absolute, XY plane), then a rapid to the
-  clearance plane.
-- **Each operation**: a comment with its name, tool and depths. When the tool changes: a comment
-  naming the tool, then `T3 M6`. When the spindle starts or its speed changes: `S10000 M3` (`M4`
+- **Layout** (as in the reference output): the motion code (`G0`/`G1`/`G2`/`G3`) on every line,
+  only the axis words that change, `F` only when the feed changes.
+- **Start**: header comments (the WHAM_CAM version, e.g. `( WHAM_CAM 0.4.0 )`, project name and
+  date, post-processor and machine, and one line per tool used: `( T1: <name>, D6 )`), then
+  `G21 G90 G17` (mm, absolute, XY plane), then a rapid to the clearance plane. Comments never
+  contain `(` or `)` (written as `[ ]`).
+- **Each operation**: a comment with its name, type, tool and depths. If its clearance plane is
+  higher than where the tool is, first a rapid straight up to it. When the tool changes: `M5` if
+  the spindle is on, a comment naming the tool, then `T3 M6`. When the spindle starts or its speed changes: `S10000 M3` (`M4`
   for CCW, `M5` for Off), then `G4 P2` (2 s for the spindle to come up to speed).
 - **Moves**: `G0` rapids, `G1` feeds, `G2`/`G3` arcs with `I J` centre offsets (relative to the
   arc's start); a helix (e.g. spiral drilling) is an arc with a `Z` end.
@@ -598,7 +606,14 @@ Principles:
   so a later post-processor can write the moves out in full for controllers without cycles.
   With `G83` the controller sets how far above the last depth it stops before feeding on; the
   preview uses the fast plunge height for this, so the machine can differ slightly there.
-- **End**: retract to the clearance plane, `M5`, `M30`. No park move.
+- **End**: at the clearance plane (where every toolpath ends), `M5`, `M30`. No park move.
+
+**Read-back check** (before any file is written): the program is read back the way a controller
+would read it (canned cycles expanded by the same function as the preview), and must do exactly
+what the toolpaths say: the same moves within the rounding, arc start and end radii within 0.002
+mm, the safety rules below, the right tool and the spindle on before cutting, only straight up or
+down moves between operations, and the right end. If anything is wrong no file is written and the
+message asks the user to report it.
 
 Safety rules (from CLAUDE.md; tests check these on every output):
 - Every rapid move happens at or above the clearance plane, **except** the final approach:

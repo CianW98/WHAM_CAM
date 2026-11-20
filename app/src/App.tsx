@@ -399,6 +399,28 @@ export default function App() {
     [refresh, notify],
   );
 
+  /** Writes the job's G-code to a file the user picks (refused with the reason if not ready). */
+  const produceGcode = useCallback(async () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    let suggested: string;
+    try {
+      suggested = await engine.checkGcode(date);
+    } catch (err) {
+      notify("error", String(err));
+      return;
+    }
+    const path = await engine.chooseGcodePath(suggested);
+    if (!path) return;
+    try {
+      const name = await engine.saveGcode(path, date);
+      notify("info", `Saved ${name}. Check it in a simulator and with an air cut before cutting material.`);
+    } catch (err) {
+      notify("error", String(err));
+    }
+  }, [notify]);
+
   const operationById = useCallback(
     (id: number) => view?.document.parts.flatMap((p) => p.operations).find((o) => o.id === id),
     [view],
@@ -953,6 +975,8 @@ export default function App() {
         return toggleToolpaths();
       case "Show cut width":
         return toggleCutWidth();
+      case "Produce G-code":
+        return void produceGcode();
       default:
         notify("info", `${name} is not built yet.`);
     }
@@ -1221,7 +1245,7 @@ export default function App() {
                   ],
           },
           c.sep({ label: "Generate toolpaths", action: () => run(() => generateToolpaths()) }),
-          c.later("Produce G-code"),
+          { label: "Produce G-code", action: () => void produceGcode() },
         ],
       },
     ];

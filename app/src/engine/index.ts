@@ -427,6 +427,29 @@ export async function chooseSavePath(defaultName: string): Promise<string | null
   return (await save({ title: "Save project as", defaultPath: defaultName, filters: [PROJECT_FILTER] })) ?? null;
 }
 
+// --- G-code ----------------------------------------------------------------------------------
+
+/** Checks the G-code can be written. Resolves to the suggested file name; rejects with the reason. */
+export function checkGcode(date: string): Promise<string> {
+  return invoke<string>("check_gcode", { date });
+}
+
+/** Asks where to save the G-code. Null if cancelled. */
+export async function chooseGcodePath(defaultName: string): Promise<string | null> {
+  return (
+    (await save({
+      title: "Produce G-code",
+      defaultPath: defaultName,
+      filters: [{ name: "G-code", extensions: ["nc"] }],
+    })) ?? null
+  );
+}
+
+/** Writes the G-code to `path`. Resolves to the file name written. */
+export function saveGcode(path: string, date: string): Promise<string> {
+  return invoke<string>("save_gcode", { path, date });
+}
+
 /** Sets the window's title bar text. */
 export function setWindowTitle(title: string): Promise<void> {
   return getCurrentWindow().setTitle(title);

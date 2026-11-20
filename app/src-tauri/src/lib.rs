@@ -678,6 +678,38 @@ fn delete_operation(id: u32, state: State<AppState>) -> bool {
     state.0.lock().unwrap().delete_operation(id)
 }
 
+// --- G-code -------------------------------------------------------------------------------------
+
+/// Checks the G-code can be written (toolpaths generated and up to date, read-back check passed).
+/// Returns the suggested file name, or the reason it can't be written.
+#[tauri::command]
+fn check_gcode(
+    date: String,
+    state: State<AppState>,
+    tooling: State<ToolingState>,
+) -> Result<String, String> {
+    let mut project = state.0.lock().unwrap();
+    tell_library_numbers(&mut project, &tooling);
+    project.gcode(&date)?;
+    Ok(format!("{}.nc", project.document().name))
+}
+
+/// Writes the G-code to `path` (adding `.nc` if it has no extension). Returns the file name.
+#[tauri::command]
+fn save_gcode(path: String, date: String, state: State<AppState>) -> Result<String, String> {
+    let program = state.0.lock().unwrap().gcode(&date)?;
+    let mut path = PathBuf::from(path);
+    if path.extension().is_none() {
+        path.set_extension("nc");
+    }
+    write_safely(&path, &program.text())
+        .map_err(|e| format!("Could not save {}: {e}", path.display()))?;
+    Ok(path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default())
+}
+
 #[tauri::command]
 fn generate_toolpaths(
     ids: Vec<u32>,
@@ -776,6 +808,8 @@ pub fn run() {
             delete_machine,
             set_machine_post,
             set_project_machine,
+            check_gcode,
+            save_gcode,
             new_tool,
             tool_preview,
             add_tool,
