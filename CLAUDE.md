@@ -245,6 +245,8 @@ Done:
     Generate refuses clashes and compares each tool with the library on this computer (warns if
     the project's library isn't on this computer).
   - 3D playback cutter modelled from the real tool outline (`Tool::profile`).
+- Checked reference G-code: `tests/reference/wham/` (local only), compared by
+  `engine/tests/reference_gcode.rs`.
 - Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
   Machining tree, tool number checks, real 3D cutter). No G-code yet.
 
