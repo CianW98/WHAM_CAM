@@ -12,7 +12,9 @@ export type Selection =
   | { kind: "machining" }
   | { kind: "operation"; id: number }
   /** A tool library (Setup tab), by name. */
-  | { kind: "library"; name: string };
+  | { kind: "library"; name: string }
+  /** A machine (Setup tab), by name. */
+  | { kind: "machine"; name: string };
 
 export const NOTHING: Selection = { kind: "objects", ids: [] };
 

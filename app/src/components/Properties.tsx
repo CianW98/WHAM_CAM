@@ -20,8 +20,10 @@ import type {
   ProfileSettings,
   ProfileSide,
   Shape,
+  Machines,
   OperationTool,
   PickedTool,
+  PostProcessor,
   Tool,
   Tooling,
 } from "../engine";
@@ -796,6 +798,13 @@ interface Edits {
   /** Sets the Machining tool / a part's tool to a library tool number (null = none). */
   onSetMachiningTool: (number: number | null) => Promise<boolean>;
   onSetPartTool: (part: number, number: number | null) => Promise<boolean>;
+  /** This computer's machines. */
+  machines: Machines;
+  /** Resolves false if the rename was rejected. */
+  onRenameMachine: (oldName: string, newName: string) => Promise<boolean>;
+  onSetMachinePost: (name: string, post: PostProcessor) => Promise<boolean>;
+  /** Sets the project's machine (null = generic post-processor). */
+  onSetProjectMachine: (name: string | null) => Promise<boolean>;
   onSetActiveLibrary: (name: string | null) => Promise<boolean>;
   /** Resolves false if the rename was rejected. */
   onRenameLibrary: (oldName: string, newName: string) => Promise<boolean>;
@@ -824,6 +833,23 @@ function LibraryChoice({ doc, tooling, onSet }: { doc: Document; tooling: Toolin
         ))}
       </select>
     </>
+  );
+}
+
+/** The project's machine drop-down (none = the generic post-processor). */
+function MachineChoice({ doc, machines, onSet }: { doc: Document; machines: Machines; onSet: (n: string | null) => void }) {
+  const chosen = doc.machine;
+  const missing = chosen !== null && !machines.machines.some((m) => m.name === chosen);
+  return (
+    <select className="prop-input" value={chosen ?? ""} onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}>
+      <option value="">None (Generic post-processor)</option>
+      {missing && <option value={chosen!}>{chosen} – not on this computer</option>}
+      {machines.machines.map((m) => (
+        <option key={m.name} value={m.name}>
+          {m.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -1009,6 +1035,9 @@ function Content({
               onPick={(n) => void edits.onSetMachiningTool(n)}
             />
           </Row>
+          <Row label="Machine">
+            <MachineChoice doc={doc} machines={edits.machines} onSet={(n) => void edits.onSetProjectMachine(n)} />
+          </Row>
         </Grid>
       );
     case "part": {
@@ -1055,6 +1084,29 @@ function Content({
     }
     case "library":
       return <LibraryRows key={selection.name} name={selection.name} edits={edits} />;
+    case "machine": {
+      const m = edits.machines.machines.find((x) => x.name === selection.name);
+      return m ? (
+        <Grid>
+          <Row label="Name">
+            <TextField
+              shown={m.name}
+              parse={(t) => (t.trim() ? t : null)}
+              onSave={(n) => edits.onRenameMachine(m.name, n)}
+            />
+          </Row>
+          <Row label="Post-processor">
+            <ChoiceField<PostProcessor>
+              value={m.post}
+              choices={[["Generic", "Generic"]]}
+              onSave={(post) => void edits.onSetMachinePost(m.name, post)}
+            />
+          </Row>
+        </Grid>
+      ) : (
+        nothing
+      );
+    }
     case "objects": {
       if (selection.ids.length > 1) return <div className="empty">{selection.ids.length} objects selected.</div>;
       for (const layer of doc.layers) {

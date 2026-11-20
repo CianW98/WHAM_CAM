@@ -9,9 +9,9 @@ use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
-    GenerateReport, ImportReport, JoinReport, Operation, OperationState, PickedTool, Playback,
-    Point, Project, Shape, Snap, SnapOptions, Tool, ToolDrawing, ToolSetting, Tooling,
-    ToolpathDisplay, TransformOp,
+    GenerateReport, ImportReport, JoinReport, Machines, Operation, OperationState, PickedTool,
+    Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, Tool, ToolDrawing,
+    ToolSetting, Tooling, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -20,82 +20,103 @@ struct AppState(Mutex<Project>);
 /// Where the open project was last saved or opened from (None until it is first saved).
 struct OpenFile(Mutex<Option<PathBuf>>);
 
-/// This computer's master tool list and tool libraries, and the file they are kept in
-/// (None if the settings folder couldn't be found: changes then last until WHAM_CAM closes).
-struct ToolingState(Mutex<ToolingFile>);
-
-struct ToolingFile {
-    tooling: Tooling,
+/// A settings file of this computer (shared by every project), held in memory with the path it
+/// is kept at (None if the settings folder couldn't be found: changes then last until WHAM_CAM
+/// closes).
+struct SettingsFile<T> {
+    value: T,
     path: Option<PathBuf>,
+    /// What it is, for messages ("tool list", "machine list").
+    what: &'static str,
+    to_text: fn(&T) -> String,
     /// A problem found when loading, shown to the user once.
     problem: Option<String>,
 }
 
-const TOOLING_FILE: &str = "tooling.json";
+/// This computer's master tool list and tool libraries (`tooling.json`).
+struct ToolingState(Mutex<SettingsFile<Tooling>>);
 
-/// Loads the tooling file from the app's settings folder. A missing file means no tools yet.
+/// This computer's machines (`machines.json`).
+struct MachinesState(Mutex<SettingsFile<Machines>>);
+
+/// Loads a settings file from the app's settings folder. A missing file means an empty one.
 /// A file that can't be read is kept aside (renamed `.damaged`), never overwritten.
-fn load_tooling(dir: Option<PathBuf>) -> ToolingFile {
+fn load_settings<T: Default>(
+    dir: Option<&Path>,
+    file_name: &str,
+    what: &'static str,
+    from_text: fn(&str) -> Result<T, String>,
+    to_text: fn(&T) -> String,
+) -> SettingsFile<T> {
     let Some(dir) = dir else {
-        return ToolingFile {
-            tooling: Tooling::default(),
+        return SettingsFile {
+            value: T::default(),
             path: None,
-            problem: Some(
-                "WHAM_CAM couldn't find its settings folder, so tool changes won't be kept.".into(),
-            ),
+            what,
+            to_text,
+            problem: Some(format!(
+                "WHAM_CAM couldn't find its settings folder, so changes to the {what} won't be kept."
+            )),
         };
     };
-    let path = dir.join(TOOLING_FILE);
-    let (tooling, problem) = match std::fs::read_to_string(&path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Tooling::default(), None),
+    let path = dir.join(file_name);
+    let (value, problem) = match std::fs::read_to_string(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (T::default(), None),
         Err(e) => (
-            Tooling::default(),
-            Some(format!(
-                "Could not read the tool list {}: {e}",
-                path.display()
-            )),
+            T::default(),
+            Some(format!("Could not read the {what} {}: {e}", path.display())),
         ),
-        Ok(text) => match wham_engine::tooling::from_text(&text) {
-            Ok(t) => (t, None),
+        Ok(text) => match from_text(&text) {
+            Ok(v) => (v, None),
             Err(e) => {
                 let mut aside = path.clone().into_os_string();
                 aside.push(".damaged");
                 let _ = std::fs::rename(&path, &aside);
                 (
-                    Tooling::default(),
+                    T::default(),
                     Some(format!(
-                        "{e} It was kept as {} and an empty tool list started.",
+                        "{e} It was kept as {} and an empty {what} started.",
                         PathBuf::from(aside).display()
                     )),
                 )
             }
         },
     };
-    ToolingFile {
-        tooling,
+    SettingsFile {
+        value,
         path: Some(path),
+        what,
+        to_text,
         problem,
     }
 }
 
-/// Runs a change on the tooling and writes the file. On any error nothing changes.
-fn change_tooling<T>(
-    state: &State<ToolingState>,
-    change: impl FnOnce(&mut Tooling) -> Result<T, String>,
-) -> Result<T, String> {
-    let mut file = state.0.lock().unwrap();
-    let mut tooling = file.tooling.clone();
-    let result = change(&mut tooling)?;
+/// Runs a change on a settings file and writes it. On any error nothing changes.
+fn change_settings<T: Clone, R>(
+    file: &Mutex<SettingsFile<T>>,
+    change: impl FnOnce(&mut T) -> Result<R, String>,
+) -> Result<R, String> {
+    let mut file = file.lock().unwrap();
+    let mut value = file.value.clone();
+    let result = change(&mut value)?;
     if let Some(path) = &file.path {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)
                 .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
         }
-        write_safely(path, &wham_engine::tooling::to_text(&tooling))
-            .map_err(|e| format!("Could not save the tool list {}: {e}", path.display()))?;
+        write_safely(path, &(file.to_text)(&value))
+            .map_err(|e| format!("Could not save the {} {}: {e}", file.what, path.display()))?;
     }
-    file.tooling = tooling;
+    file.value = value;
     Ok(result)
+}
+
+/// Runs a change on the tooling and writes the file.
+fn change_tooling<T>(
+    state: &State<ToolingState>,
+    change: impl FnOnce(&mut Tooling) -> Result<T, String>,
+) -> Result<T, String> {
+    change_settings(&state.0, change)
 }
 
 /// Everything the interface needs to redraw after a change.
@@ -116,9 +137,11 @@ struct View {
     toolpaths: Vec<ToolpathDisplay>,
     /// This computer's master tool list and tool libraries.
     tooling: Tooling,
+    /// This computer's machines.
+    machines: Machines,
 }
 
-fn view(p: &Project, file: Option<&Path>, tooling: &Tooling) -> View {
+fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines) -> View {
     View {
         document: p.document().clone(),
         display: p.display().clone(),
@@ -131,6 +154,7 @@ fn view(p: &Project, file: Option<&Path>, tooling: &Tooling) -> View {
         operations: p.operation_states(),
         toolpaths: p.toolpaths_display(),
         tooling: tooling.clone(),
+        machines: machines.clone(),
     }
 }
 
@@ -150,20 +174,73 @@ fn read_text(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn get_view(state: State<AppState>, file: State<OpenFile>, tooling: State<ToolingState>) -> View {
+fn get_view(
+    state: State<AppState>,
+    file: State<OpenFile>,
+    tooling: State<ToolingState>,
+    machines: State<MachinesState>,
+) -> View {
     view(
         &state.0.lock().unwrap(),
         file.0.lock().unwrap().as_deref(),
-        &tooling.0.lock().unwrap().tooling,
+        &tooling.0.lock().unwrap().value,
+        &machines.0.lock().unwrap().value,
     )
+}
+
+// --- Machines -----------------------------------------------------------------------------------
+
+#[tauri::command]
+fn add_machine(machines: State<MachinesState>) -> Result<String, String> {
+    change_settings(&machines.0, |m| Ok(m.add_machine()))
+}
+
+/// Renames a machine. Returns the new name. Like everything in the Setup tab, it doesn't change
+/// the open project.
+#[tauri::command]
+fn rename_machine(
+    old: String,
+    new: String,
+    machines: State<MachinesState>,
+) -> Result<String, String> {
+    change_settings(&machines.0, |m| m.rename_machine(&old, &new))
+}
+
+#[tauri::command]
+fn delete_machine(name: String, machines: State<MachinesState>) -> Result<bool, String> {
+    change_settings(&machines.0, |m| Ok(m.delete_machine(&name)))
+}
+
+#[tauri::command]
+fn set_machine_post(
+    name: String,
+    post: PostProcessor,
+    machines: State<MachinesState>,
+) -> Result<(), String> {
+    change_settings(&machines.0, |m| m.set_post(&name, post))
+}
+
+/// Sets the project's machine (None = the generic post-processor). An undo step.
+#[tauri::command]
+fn set_project_machine(name: Option<String>, state: State<AppState>) {
+    state.0.lock().unwrap().set_machine(name);
 }
 
 // --- Tooling ------------------------------------------------------------------------------------
 
-/// A problem found loading the tool list, once (None after the first call).
+/// Problems found loading the settings files (tool list, machine list), once each.
 #[tauri::command]
-fn tooling_problem(tooling: State<ToolingState>) -> Option<String> {
-    tooling.0.lock().unwrap().problem.take()
+fn settings_problems(tooling: State<ToolingState>, machines: State<MachinesState>) -> Vec<String> {
+    let mut problems: Vec<String> = tooling
+        .0
+        .lock()
+        .unwrap()
+        .problem
+        .take()
+        .into_iter()
+        .collect();
+    problems.extend(machines.0.lock().unwrap().problem.take());
+    problems
 }
 
 /// Starting values for the Add tool form.
@@ -274,7 +351,7 @@ fn library_pick(
         .ok_or("Choose a tool library first (Machining properties).")?;
     let tooling = tooling.0.lock().unwrap();
     let tool = tooling
-        .tooling
+        .value
         .library_tool(&library, number)
         .ok_or_else(|| {
             format!("There is no tool {number} in the tool library \"{library}\" on this computer.")
@@ -570,7 +647,7 @@ fn tell_library_numbers(project: &mut Project, tooling: &State<ToolingState>) {
     let tools = match project.document().active_library.as_deref() {
         None => Some(Vec::new()),
         Some(name) => {
-            let tooling = &tooling.0.lock().unwrap().tooling;
+            let tooling = &tooling.0.lock().unwrap().value;
             tooling.library(name).map(|lib| {
                 lib.tools
                     .iter()
@@ -675,12 +752,30 @@ pub fn run() {
         .manage(OpenFile(Mutex::new(None)))
         .setup(|app| {
             let dir = app.path().app_config_dir().ok();
-            app.manage(ToolingState(Mutex::new(load_tooling(dir))));
+            app.manage(ToolingState(Mutex::new(load_settings(
+                dir.as_deref(),
+                "tooling.json",
+                "tool list",
+                wham_engine::tooling::from_text,
+                wham_engine::tooling::to_text,
+            ))));
+            app.manage(MachinesState(Mutex::new(load_settings(
+                dir.as_deref(),
+                "machines.json",
+                "machine list",
+                wham_engine::machine::from_text,
+                wham_engine::machine::to_text,
+            ))));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_view,
-            tooling_problem,
+            settings_problems,
+            add_machine,
+            rename_machine,
+            delete_machine,
+            set_machine_post,
+            set_project_machine,
             new_tool,
             tool_preview,
             add_tool,

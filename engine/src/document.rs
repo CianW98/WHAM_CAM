@@ -21,6 +21,10 @@ pub struct Document {
     /// The tool every part and operation uses unless it picks its own. None = not chosen.
     #[serde(default)]
     pub machining_tool: Option<PickedTool>,
+    /// The machine the G-code is for (by name; machines belong to the computer). None = the
+    /// generic post-processor.
+    #[serde(default)]
+    pub machine: Option<String>,
 }
 
 /// Grid spacing for new projects (and older project files that don't have one), in mm.
@@ -97,6 +101,7 @@ impl Document {
             grid_spacing: DEFAULT_GRID_SPACING,
             active_library: None,
             machining_tool: None,
+            machine: None,
         }
     }
 

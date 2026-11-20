@@ -223,6 +223,22 @@ export interface Document {
   active_library: string | null;
   /** The tool every part and operation uses unless it has its own; null = none. */
   machining_tool: PickedTool | null;
+  /** The machine the G-code is for (by name); null = the generic post-processor. */
+  machine: string | null;
+}
+
+// --- Machines (spec 5.7) ------------------------------------------------------------------------
+
+export type PostProcessor = "Generic";
+
+export interface Machine {
+  name: string;
+  post: PostProcessor;
+}
+
+/** This computer's machines. */
+export interface Machines {
+  machines: Machine[];
 }
 
 // --- Tooling (spec 5.5) -------------------------------------------------------------------------
@@ -323,6 +339,8 @@ export interface View {
   toolpaths: ToolpathDisplay[];
   /** This computer's master tool list and tool libraries. */
   tooling: Tooling;
+  /** This computer's machines. */
+  machines: Machines;
 }
 
 export interface DxfUnits {
@@ -428,9 +446,32 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
 // The master tool list and libraries belong to this computer and are saved straight away
 // (not undo steps). The active library and an operation's tool are part of the project.
 
-/** A problem found loading the tool list (only reported once), or null. */
-export function toolingProblem(): Promise<string | null> {
-  return invoke<string | null>("tooling_problem");
+/** Problems found loading the tool list and machine list (each reported once). */
+export function settingsProblems(): Promise<string[]> {
+  return invoke<string[]>("settings_problems");
+}
+
+/** Adds a machine ("Machine 1", ...) with the generic post-processor. Returns its name. */
+export function addMachine(): Promise<string> {
+  return invoke<string>("add_machine");
+}
+
+/** Renames a machine. Resolves to the name as stored. */
+export function renameMachine(oldName: string, newName: string): Promise<string> {
+  return invoke<string>("rename_machine", { old: oldName, new: newName });
+}
+
+export function deleteMachine(name: string): Promise<boolean> {
+  return invoke<boolean>("delete_machine", { name });
+}
+
+export function setMachinePost(name: string, post: PostProcessor): Promise<void> {
+  return invoke<void>("set_machine_post", { name, post });
+}
+
+/** Sets the project's machine (null = the generic post-processor). An undo step. */
+export function setProjectMachine(name: string | null): Promise<void> {
+  return invoke<void>("set_project_machine", { name });
 }
 
 /** Starting values for a new tool. */

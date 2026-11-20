@@ -14,6 +14,7 @@ import {
   type SnapOptions,
   type Tool,
   type Tooling,
+  type Machines,
   type ToolpathDisplay,
   type TransformOp,
   type View,
@@ -118,6 +119,7 @@ function specialHint(sp: Special): string {
 const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
 const EMPTY_CUT_WIDTHS: CutWidthStep[] = [];
 const EMPTY_TOOLING: Tooling = { tools: [], libraries: [] };
+const EMPTY_MACHINES: Machines = { machines: [] };
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
@@ -227,7 +229,7 @@ export default function App() {
   useEffect(() => {
     refresh().catch((err) => notify("error", `Could not reach the CAM engine: ${String(err)}`));
     engine.hasClipboard().then(setHasClipboard, () => {});
-    engine.toolingProblem().then((p) => p && notify("error", p), () => {});
+    engine.settingsProblems().then((ps) => ps.forEach((p) => notify("error", p)), () => {});
   }, [refresh, notify]);
 
   const importDxf = useCallback(async () => {
@@ -594,6 +596,32 @@ export default function App() {
       if (answer !== "Delete") return;
       if (await toolingTry(() => engine.deleteLibrary(name)))
         setSelection((sel) => (sel.kind === "library" && sel.name === name ? NOTHING : sel));
+    },
+    [ask, toolingTry],
+  );
+
+  const renameMachine = useCallback(
+    async (oldName: string, newName: string) => {
+      let stored = newName.trim();
+      const ok = await toolingTry(async () => {
+        stored = await engine.renameMachine(oldName, newName);
+      });
+      if (ok) setSelection((sel) => (sel.kind === "machine" && sel.name === oldName ? { kind: "machine", name: stored } : sel));
+      return ok;
+    },
+    [toolingTry],
+  );
+
+  const deleteMachine = useCallback(
+    async (name: string) => {
+      const answer = await ask({
+        title: "Delete machine",
+        message: `Delete the machine "${name}"? Projects that use it will show it as not on this computer. This can't be undone.`,
+        options: ["Delete"],
+      });
+      if (answer !== "Delete") return;
+      if (await toolingTry(() => engine.deleteMachine(name)))
+        setSelection((sel) => (sel.kind === "machine" && sel.name === name ? NOTHING : sel));
     },
     [ask, toolingTry],
   );
@@ -1249,6 +1277,14 @@ export default function App() {
               onAddLibrary={addLibrary}
               onRenameLibrary={renameLibrary}
               onDeleteLibrary={(name) => void deleteLibrary(name)}
+              machines={view?.machines ?? null}
+              onAddMachine={async () => {
+                const name = await engine.addMachine();
+                await refresh();
+                return name;
+              }}
+              onRenameMachine={renameMachine}
+              onDeleteMachine={(name) => void deleteMachine(name)}
             />
           ) : (
           <Tree
@@ -1286,6 +1322,10 @@ export default function App() {
             onPickTool={pickTool}
             onSetMachiningTool={(n) => tryEdit(() => engine.setMachiningTool(n))}
             onSetPartTool={(part, n) => tryEdit(() => engine.setPartTool(part, n))}
+            machines={view?.machines ?? EMPTY_MACHINES}
+            onRenameMachine={renameMachine}
+            onSetMachinePost={(name, post) => toolingTry(() => engine.setMachinePost(name, post))}
+            onSetProjectMachine={(name) => tryEdit(() => engine.setProjectMachine(name))}
             onSetActiveLibrary={setActiveLibrary}
             onRenameLibrary={renameLibrary}
             onAddLibraryTool={(library, toolId, number) =>

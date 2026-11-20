@@ -1105,6 +1105,13 @@ impl Project {
         }
     }
 
+    /// Sets the project's machine (by name; None = generic post-processor) as one undo step.
+    pub fn set_machine(&mut self, name: Option<String>) {
+        if self.doc.machine != name {
+            self.edit(|doc| doc.machine = name);
+        }
+    }
+
     /// Sets the project's active tool library (by name; None = none) as one undo step.
     pub fn set_active_library(&mut self, name: Option<String>) {
         if self.doc.active_library != name {
