@@ -38,8 +38,18 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   (with the offsetting library) and add a ring or a centre-line cut only there, instead of the
   current whole-ring check. Maybe also a warning in Properties for stepovers over 0.5. Changes
   toolpath output, so it needs tests and a simulator re-check.
-- **Drill dwell** (seconds at the bottom of a hole). Needs a pause move through the safety
-  checker, preview and playback; add it with G-code output.
+- **Drill dwell** (seconds at the bottom of a hole), written as the **G82** canned cycle (G81 with
+  a dwell, `P` = seconds). Needs a pause move through the safety checker, preview and playback,
+  and G82 in the read-back check. v1 has G81 and G83 only (noted 2026-11-20).
+- **Chip-break peck (G73)**: a Drill method that pecks like G83 but backs off only a little
+  after each peck (chip breaking) instead of returning to the R plane; quicker in deep holes. The
+  back-off is set in the controller, so the preview would use an assumed amount, as the G83
+  re-entry does with the fast plunge height (noted 2026-11-20).
+- **Spiral drilling: feed rate of the plunge to the stock surface.** Spiral drilling feeds from
+  the retract height down to the stock surface at the plunge rate (decided 2026-11-16), which can
+  be a slow feed through air when the retract height is well above the stock. To revisit, e.g.
+  rapid to fast plunge height above the stock, then feed, as Pocket and Profile do (user's
+  request, 2026-11-20). A toolpath change: tests and a simulator re-check.
 - **Pocketing splines and ellipses**, by converting them to arcs within a tolerance. v1 refuses
   them with a message.
 
