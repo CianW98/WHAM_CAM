@@ -206,7 +206,7 @@ interface Props {
   onPlacePoint: (p: Point, click: engine.DimensionClick | null) => void;
   /** Colour of the layer new shapes go on (for previews). */
   drawColor: string;
-  /** The zoom changed: `mmPerPx` millimetres per screen pixel (dimensions are laid out for it). */
+  /** The zoom has settled at `mmPerPx` millimetres per screen pixel (the engine already knows). */
   onScale: (mmPerPx: number) => void;
   /** A dimension was dragged to `p`: move where it sits. */
   onRepositionDimension: (id: number, p: Point) => void;
@@ -257,6 +257,83 @@ function clearGroup(group: THREE.Group) {
     }
     group.remove(child);
   }
+}
+
+/** Removes one drawn object of a shape from the scene, freeing what it used. */
+function disposeShapeObject(s: Scene3, child: THREE.Object3D) {
+  (child as THREE.Line).geometry.dispose();
+  if (child.userData.label) {
+    const m = (child as THREE.Mesh).material as THREE.MeshBasicMaterial;
+    m.map?.dispose();
+    m.dispose();
+  }
+  s.shapes.remove(child);
+}
+
+/** Draws one shape (or dimension) from the engine's display data. */
+function addShape(s: Scene3, shape: DisplayShape) {
+  const objs: THREE.Object3D[] = [];
+  if (shape.markers) {
+    const positions: number[] = [];
+    for (const [x, y] of shape.points) positions.push(x, y, 0);
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    objs.push(new THREE.Points(geom, s.materials.marker(shape.color)));
+  } else {
+    for (const path of paths(shape)) {
+      const positions: number[] = [];
+      for (const [x, y] of path.points) positions.push(x, y, 0);
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const mat = s.materials.line(shape.color);
+      objs.push(path.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat));
+    }
+  }
+  if (shape.label) {
+    const label = makeLabel(shape.label, shape.color);
+    label.userData.label = true;
+    objs.push(label);
+  }
+  for (const obj of objs) {
+    obj.renderOrder = 10;
+    obj.userData.markers = shape.markers;
+    obj.userData.color = shape.color;
+    s.shapes.add(obj);
+  }
+  const list = s.byId.get(shape.id) ?? [];
+  list.push(...objs);
+  s.byId.set(shape.id, list);
+}
+
+/** Colours a shape's drawn objects as selected or in their own colour. */
+function colourShape(s: Scene3, objs: THREE.Object3D[], selected: boolean) {
+  for (const obj of objs) {
+    const o = obj as THREE.Line | THREE.Points;
+    const color: string = obj.userData.color;
+    o.renderOrder = selected ? 11 : 10;
+    if (obj.userData.label) {
+      ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(selected ? COLORS.selected : color);
+      continue;
+    }
+    o.material = obj.userData.markers
+      ? selected
+        ? s.materials.markerSelected
+        : s.materials.marker(color)
+      : selected
+        ? s.materials.lineSelected
+        : s.materials.line(color);
+  }
+}
+
+/** Swaps in dimensions laid out for a new zoom (while zooming, without a full redraw). */
+function replaceDimensions(s: Scene3, shapes: DisplayShape[], selected: Set<number>) {
+  for (const shape of shapes) {
+    for (const obj of s.byId.get(shape.id) ?? []) disposeShapeObject(s, obj);
+    s.byId.delete(shape.id);
+    addShape(s, shape);
+    colourShape(s, s.byId.get(shape.id) ?? [], selected.has(shape.id));
+  }
+  s.render();
 }
 
 /** Canvas pixels per text height for label textures. */
@@ -672,6 +749,7 @@ export default function Viewport({
     drawColor,
     onScale,
     onRepositionDimension,
+    selectedIds,
   });
   live.current = {
     onPick,
@@ -684,6 +762,7 @@ export default function Viewport({
     drawColor,
     onScale,
     onRepositionDimension,
+    selectedIds,
   };
 
   // Create the WebGL scene once.
@@ -792,14 +871,33 @@ export default function Viewport({
      * (undefined while the engine is being asked, null for none). Dragging a dimension moves
      * it; dragging anywhere else draws a selection box. */
     let leftDown: { x: number; y: number; dragging: boolean; dimension?: number | null } | null = null;
-    /** The zoom changed: tell the app a moment after it settles (dimension sizes follow it). */
+    /** The zoom changed: redraw the dimensions for it straight away (one engine request at a
+     * time, going again if the zoom moved meanwhile), and tell the app once it settles. */
     let scaleTimer: ReturnType<typeof setTimeout> | undefined;
-    const scaleChanged = () => {
+    let scaleBusy = false;
+    let scaleAgain = false;
+    const scaleChanged = async () => {
       clearTimeout(scaleTimer);
-      scaleTimer = setTimeout(() => live.current.onScale(s.view.scale), 120);
+      scaleTimer = setTimeout(() => live.current.onScale(s.view.scale), 250);
+      if (scaleBusy) {
+        scaleAgain = true;
+        return;
+      }
+      scaleBusy = true;
+      try {
+        do {
+          scaleAgain = false;
+          const shapes = await engine.setViewScale(s.view.scale);
+          if (!scaleAgain) replaceDimensions(s, shapes, live.current.selectedIds);
+        } while (scaleAgain);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        scaleBusy = false;
+      }
     };
-    s.scaleChanged = scaleChanged;
-    scaleChanged();
+    s.scaleChanged = () => void scaleChanged();
+    void scaleChanged();
     /** While dragging a dimension: show it at the cursor (one engine request at a time). */
     let dragBusy = false;
     let dragAgain: Point | null = null;
@@ -919,7 +1017,7 @@ export default function Viewport({
       applyOrtho(s);
       s.render();
       s.hover();
-      scaleChanged();
+      void scaleChanged();
     };
     const onPointerDown = (e: PointerEvent) => {
       if (e.button === 2) rightDown = { x: e.clientX, y: e.clientY, moved: false };
@@ -1054,49 +1152,9 @@ export default function Viewport({
   useEffect(() => {
     const s = sceneRef.current;
     if (!s) return;
-    for (const child of [...s.shapes.children]) {
-      (child as THREE.Line).geometry.dispose();
-      if (child.userData.label) {
-        const m = (child as THREE.Mesh).material as THREE.MeshBasicMaterial;
-        m.map?.dispose();
-        m.dispose();
-      }
-      s.shapes.remove(child);
-    }
+    for (const child of [...s.shapes.children]) disposeShapeObject(s, child);
     s.byId.clear();
-    for (const shape of display?.shapes ?? []) {
-      const objs: THREE.Object3D[] = [];
-      if (shape.markers) {
-        const positions: number[] = [];
-        for (const [x, y] of shape.points) positions.push(x, y, 0);
-        const geom = new THREE.BufferGeometry();
-        geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        objs.push(new THREE.Points(geom, s.materials.marker(shape.color)));
-      } else {
-        for (const path of paths(shape)) {
-          const positions: number[] = [];
-          for (const [x, y] of path.points) positions.push(x, y, 0);
-          const geom = new THREE.BufferGeometry();
-          geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-          const mat = s.materials.line(shape.color);
-          objs.push(path.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat));
-        }
-      }
-      if (shape.label) {
-        const label = makeLabel(shape.label, shape.color);
-        label.userData.label = true;
-        objs.push(label);
-      }
-      for (const obj of objs) {
-        obj.renderOrder = 10;
-        obj.userData.markers = shape.markers;
-        obj.userData.color = shape.color;
-        s.shapes.add(obj);
-      }
-      const list = s.byId.get(shape.id) ?? [];
-      list.push(...objs);
-      s.byId.set(shape.id, list);
-    }
+    for (const shape of display?.shapes ?? []) addShape(s, shape);
     s.render();
   }, [display]);
 
@@ -1158,26 +1216,7 @@ export default function Viewport({
   useEffect(() => {
     const s = sceneRef.current;
     if (!s) return;
-    for (const [id, objs] of s.byId) {
-      const selected = selectedIds.has(id);
-      for (const obj of objs) {
-        const o = obj as THREE.Line | THREE.Points;
-        const color: string = obj.userData.color;
-        if (obj.userData.label) {
-          ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(selected ? COLORS.selected : color);
-          o.renderOrder = selected ? 11 : 10;
-          continue;
-        }
-        o.material = obj.userData.markers
-          ? selected
-            ? s.materials.markerSelected
-            : s.materials.marker(color)
-          : selected
-            ? s.materials.lineSelected
-            : s.materials.line(color);
-        o.renderOrder = selected ? 11 : 10;
-      }
-    }
+    for (const [id, objs] of s.byId) colourShape(s, objs, selectedIds.has(id));
     s.render();
   }, [display, selectedIds]);
 

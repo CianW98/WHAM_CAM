@@ -566,8 +566,8 @@ fn set_layer_color(name: String, color: String, state: State<AppState>) -> Resul
 
 /// The zoom in mm per screen pixel, so dimensions keep their size on screen.
 #[tauri::command]
-fn set_view_scale(mm_per_px: f64, state: State<AppState>) {
-    state.0.lock().unwrap().set_view_scale(mm_per_px);
+fn set_view_scale(mm_per_px: f64, state: State<AppState>) -> Vec<DisplayShape> {
+    state.0.lock().unwrap().set_view_scale(mm_per_px)
 }
 
 /// Shows or hides every dimension (a view setting: not saved, not an undo step).

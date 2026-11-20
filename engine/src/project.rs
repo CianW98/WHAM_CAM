@@ -835,11 +835,20 @@ impl Project {
 
     /// Sets the zoom (millimetres per screen pixel), so dimension text and arrows keep the same
     /// size on screen. A view setting: not saved, not an undo step.
-    pub fn set_view_scale(&mut self, mm_per_px: f64) {
+    ///
+    /// Returns the dimensions as now drawn, so the view can redraw just them while zooming.
+    pub fn set_view_scale(&mut self, mm_per_px: f64) -> Vec<DisplayShape> {
         if mm_per_px.is_finite() && mm_per_px > 0.0 && mm_per_px != self.mm_per_px {
             self.mm_per_px = mm_per_px;
             self.refresh_display();
         }
+        let ids: HashSet<u32> = self.doc.dimensions.iter().map(|d| d.id).collect();
+        self.display
+            .shapes
+            .iter()
+            .filter(|s| ids.contains(&s.id))
+            .cloned()
+            .collect()
     }
 
     /// Shows or hides every dimension (a view setting: not saved, not an undo step).

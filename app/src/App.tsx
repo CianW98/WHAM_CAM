@@ -1511,10 +1511,7 @@ export default function App() {
         onPick={onPick}
         onBox={onBox}
         onPlacePoint={placePoint}
-        onScale={(mmPerPx) => run(async () => {
-          await engine.setViewScale(mmPerPx);
-          await refresh();
-        })}
+        onScale={() => run(refresh)}
         onRepositionDimension={(id, p) => run(async () => {
           await engine.repositionDimension(id, p.x, p.y);
           await refresh();

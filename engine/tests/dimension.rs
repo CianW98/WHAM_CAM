@@ -346,9 +346,10 @@ fn text_and_arrows_keep_their_size_on_screen() {
             .unwrap()
             .height
     };
-    proj.set_view_scale(0.1);
+    // (Both well inside the zoomed-out limit for a 40 mm length.)
+    proj.set_view_scale(0.01);
     let near = height(&proj);
-    proj.set_view_scale(1.0);
+    proj.set_view_scale(0.1);
     let far = height(&proj);
     assert!(close(far, near * 10.0), "{near} vs {far}");
 }
@@ -389,4 +390,34 @@ fn dimensions_are_saved_and_opened() {
     dimension_by_clicks(&mut proj, &[p(20.0, 0.0), p(24.0, 3.0), p(29.0, 9.0)]).unwrap();
     let text = to_text(proj.document());
     assert_eq!(&from_text(&text).unwrap(), proj.document());
+}
+
+#[test]
+fn zoomed_far_out_text_stops_shrinking_in_proportion_to_what_it_measures() {
+    let mut proj = Project::new();
+    line(&mut proj, p(0.0, 0.0), p(5.0, 0.0));
+    line(&mut proj, p(0.0, 20.0), p(500.0, 20.0));
+    let small = dimension_by_clicks(&mut proj, &[p(2.5, 0.0), p(2.5, -2.0)]).unwrap();
+    let big = dimension_by_clicks(&mut proj, &[p(250.0, 20.0), p(250.0, 40.0)]).unwrap();
+    let heights = |proj: &mut Project, mm_per_px: f64| {
+        let shapes = proj.set_view_scale(mm_per_px);
+        let h = |id: u32| {
+            shapes
+                .iter()
+                .find(|s| s.id == id)
+                .and_then(|s| s.label.clone())
+                .unwrap()
+                .height
+        };
+        (h(small), h(big))
+    };
+    // Close in: both 12 px tall.
+    let (s, b) = heights(&mut proj, 0.01);
+    assert!(close(s, 0.12) && close(b, 0.12));
+    // Further out: the 5 mm one has stopped at 1 mm (a fifth of 5), the 500 mm one hasn't.
+    let (s, b) = heights(&mut proj, 0.5);
+    assert!(close(s, 1.0) && close(b, 6.0), "{s} {b}");
+    // Far out: both stopped, at a fifth of what they measure.
+    let (s, b) = heights(&mut proj, 100.0);
+    assert!(close(s, 1.0) && close(b, 100.0), "{s} {b}");
 }

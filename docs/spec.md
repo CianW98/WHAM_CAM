@@ -293,7 +293,10 @@ A classic CAD/CAM layout, with a toolbar:
   - **Dragging** a dimension's line or value moves where it sits (freely; one undo step);
     dragging elsewhere still draws a selection box.
   - **Look**: values in mm with 2 decimals (`50.00`, `R12.50`, `Ø25.00`, `45.00°`); text and
-    arrowheads keep the same size on screen at every zoom (text 12 px).
+    arrowheads keep the same size on screen at every zoom (text 12 px), redrawn live while
+    zooming. Zoomed far out they stop shrinking: text is never taller than a fifth of what the
+    dimension measures (length, diameter, or angle arc radius), so small features' dimensions
+    reach that limit sooner than big ones' (decided 2026-11-20).
   - Project files: format version 2 (no compatibility with dimensions saved before 2026-11-20).
 
 ### 5.4 Operations and the Machining tree

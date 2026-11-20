@@ -780,9 +780,12 @@ export function setLayerColor(name: string, color: string): Promise<void> {
   return invoke<void>("set_layer_color", { name, color });
 }
 
-/** The zoom, in mm per screen pixel: dimension text and arrows keep their size on screen. */
-export function setViewScale(mmPerPx: number): Promise<void> {
-  return invoke<void>("set_view_scale", { mmPerPx });
+/**
+ * The zoom, in mm per screen pixel: dimension text and arrows keep their size on screen.
+ * Resolves the dimensions laid out for it, to redraw just them while zooming.
+ */
+export function setViewScale(mmPerPx: number): Promise<DisplayShape[]> {
+  return invoke<DisplayShape[]>("set_view_scale", { mmPerPx });
 }
 
 /** Shows or hides every dimension (a view setting: not saved, not an undo step). */

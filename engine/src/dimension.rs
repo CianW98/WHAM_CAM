@@ -36,6 +36,8 @@ const EXTENSION_GAP_PX: f64 = 4.0;
 const EXTENSION_BEYOND_PX: f64 = 6.0;
 /// Space between a line and its label.
 const LABEL_GAP_PX: f64 = 4.0;
+/// Zoomed out, a dimension's text is never taller than this fraction of what it measures.
+const MAX_TEXT_FRACTION: f64 = 0.2;
 /// Rough width of one character as a fraction of the text height (for the label's box).
 const CHAR_WIDTH: f64 = 0.6;
 /// Points closer than this (mm) count as the same point.
@@ -676,9 +678,26 @@ fn readable(deg: f64) -> f64 {
     }
 }
 
-/// Lays a dimension out for a zoom of `mm_per_px` millimetres per screen pixel.
+/// The size a dimension measures: its length, its diameter, or its angle arc's radius. Its text
+/// is never taller than [`MAX_TEXT_FRACTION`] of this.
+fn own_size(d: &Dimension) -> f64 {
+    match *d {
+        Dimension::Aligned { value, .. } => value,
+        Dimension::Radius { radius, .. } | Dimension::Diameter { radius, .. } => 2.0 * radius,
+        Dimension::Angle { vertex, start, .. } => vertex.distance_to(start),
+    }
+}
+
+/// Lays a dimension out for a zoom of `mm_per_px` millimetres per screen pixel. Text and arrows
+/// keep their size on screen, except that zoomed far enough out they stop shrinking at a size in
+/// proportion to what they measure (decided 2026-11-20): small features reach that point sooner.
 pub fn layout(d: &Dimension, mm_per_px: f64) -> Layout {
-    let px = mm_per_px;
+    let cap = own_size(d) * MAX_TEXT_FRACTION / TEXT_PX;
+    let px = if cap > 0.0 {
+        mm_per_px.min(cap)
+    } else {
+        mm_per_px
+    };
     let text = d.text();
     let height = TEXT_PX * px;
     let gap = LABEL_GAP_PX * px;
