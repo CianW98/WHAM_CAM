@@ -1,6 +1,6 @@
 [package]
 name = "wham_cam_app"
-version = "0.4.0"
+version = "0.5.0"
 description = "WHAM_CAM desktop app (Tauri layer: windows, files, and the bridge to the engine)"
 edition.workspace = true
 license.workspace = true
