@@ -808,7 +808,7 @@ function MachineChoice({ doc, machines, onSet }: { doc: Document; machines: Mach
   const missing = chosen !== null && !machines.machines.some((m) => m.name === chosen);
   return (
     <select className="prop-input" value={chosen ?? ""} onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}>
-      <option value="">None (Generic post-processor)</option>
+      <option value="">Generic</option>
       {missing && <option value={chosen!}>{chosen} – not on this computer</option>}
       {machines.machines.map((m) => (
         <option key={m.name} value={m.name}>
