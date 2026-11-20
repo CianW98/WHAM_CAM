@@ -155,11 +155,8 @@ A classic CAD/CAM layout, with a toolbar:
 
   Everything else (TEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and the
   import message lists what was skipped. Binary DXF and broken files give a clear error.
-- **TEXT and MTEXT** (decided 2026-11-19) are imported as outlines: closed shapes for each
-  letter, on the entity's layer, so they can be engraved, profiled or pocketed like any shape.
-  **(?)** The font used to turn letters into outlines is decided when this is built: a font
-  bundled with WHAM_CAM (its licence must allow that) and a font reader that builds for
-  WebAssembly.
+- **TEXT and MTEXT** entities are skipped in v1 and listed in the import message. Importing
+  them as letter outlines moved to the roadmap (user's decision, 2026-11-20).
 - **DIMENSION** entities are skipped in v1 and listed in the import message. Importing them as
   WHAM_CAM dimensions moved to the roadmap (user's decision, 2026-11-20).
 - HATCH is skipped (its outline isn't imported).
@@ -672,13 +669,11 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 9. Open questions
 
-**Drawing and import**:
-- **(?) Font for text outlines** (5.1): which font DXF TEXT/MTEXT letters are turned into
-  outlines with, and the font reader. Decided when DXF text import is built.
+None open for v1.
 
 Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
-(both decided 2026-11-16). Dimensions (5.3) and the further DXF entities, TEXT/MTEXT and DIMENSION (now on the roadmap)
-(5.1), decided 2026-11-19. The generic post-processor and machines (5.7, 7), decided 2026-11-20.
+(both decided 2026-11-16). Dimensions (5.3), decided 2026-11-19. DXF TEXT/MTEXT and DIMENSION import
+(5.1) moved to the roadmap, 2026-11-20 (with the font question for text). The generic post-processor and machines (5.7, 7), decided 2026-11-20.
 
 ## 10. Out of scope for v1
 

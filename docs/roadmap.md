@@ -5,6 +5,11 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 
 ## Soon after v1
 
+- **DXF text as outlines** (moved out of v1, 2026-11-20): TEXT and MTEXT become closed outline
+  shapes for each letter, on the entity's layer, to engrave, profile or pocket like any shape
+  (as decided 2026-11-19). Needs a font bundled with WHAM_CAM (its licence must allow that) and
+  a font reader that builds for WebAssembly: both chosen with the user when this is built. v1
+  skips TEXT and MTEXT.
 - **DXF dimensions** (moved out of v1, 2026-11-20): aligned, radius, diameter and angular DXF
   DIMENSION entities become WHAM_CAM dimensions on their layer, keeping the DXF's measured value
   (as decided 2026-11-19); other kinds (horizontal/vertical "rotated", ordinate) skipped and
@@ -84,8 +89,7 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   - To be worked out together, keeping the "every setting visible" rule: a library only fills
     in values, which stay editable on the operation.
 - **Horizontal / vertical dimensions and HATCH import**, if needed later: not chosen for v1
-  (2026-11-19), which has aligned, radius/diameter and angle dimensions and DXF TEXT/MTEXT and
-  DIMENSION import.
+  (2026-11-19), which has aligned, radius/diameter and angle dimensions.
 - **Predefined styles in the library** for common kinds of CNC work, e.g. PCB cutting, V-carving
   and other common uses. List to be filled in.
 
