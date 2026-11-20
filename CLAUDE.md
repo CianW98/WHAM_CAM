@@ -250,11 +250,13 @@ Done:
 - Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
   Machining tree, tool number checks, real 3D cutter). No G-code yet.
 
-- G-code output (spec 5.7, 7), on the `gcode-output` branch (pushed, not merged, 2026-11-20):
-  generic post-processor (`post.rs`), read-back check (`gcode_read.rs`), drill holes as G81/G83
-  cycles (Peck now follows G83), machine list in the Setup tab, Produce G-code.
+- G-code output (spec 5.7, 7), merged into `main` 2026-11-20, not released yet: generic
+  post-processor (`post.rs`), read-back check (`gcode_read.rs`), drill holes as G81/G83 cycles
+  (Peck now follows G83), machine list in the Setup tab, Produce G-code. Arc test shape (square
+  corners, convex, concave) checks G2/G3. CAMotics and NC Viewer don't simulate `G83`.
 
-Next: merge `gcode-output` into `main` when the user is happy, then release 0.5.0 (notes need a
-"G-code output changed" section: G-code is new and Peck toolpaths changed).
+Next: release 0.5.0 when the user asks, after their Peck air cut (notes need a "G-code output
+changed" section: G-code is new and Peck toolpaths changed).
 
-Later in v1: dimensions, DXF text and dimensions, and SVG import (spec 5.1, 5.3).
+Later in v1: Convert to polyline, dimensions, DXF dimensions, then SVG import and DXF text (each
+needs a library choice first) (spec 5.1, 5.3).
