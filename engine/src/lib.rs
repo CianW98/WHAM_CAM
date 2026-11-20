@@ -5,6 +5,7 @@
 //! no OS calls, no threads, so it also builds for WebAssembly.
 
 pub mod curve;
+pub mod dimension;
 pub mod display;
 pub mod document;
 pub mod draw;
@@ -27,6 +28,7 @@ pub mod tooling;
 pub mod toolpath;
 pub mod transform;
 
+pub use dimension::{Dimension, DimensionKind};
 pub use display::{
     ASSUMED_RAPID_RATE, CutWidthStep, DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape,
     Playback, PlaybackStep, PlaybackTool, ToolpathDisplay, display_data,

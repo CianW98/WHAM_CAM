@@ -153,6 +153,12 @@ pub fn shape_bounds(shape: &Shape) -> Option<Bounds> {
                 grow(&mut b, *p);
             }
         }
+        Shape::Dimension(_) => {
+            // Everything drawn: lines, arrowheads and the value's box.
+            for p in crate::display::display_shape(0, shape).all_points() {
+                grow(&mut b, Point::new(p[0], p[1]));
+            }
+        }
         Shape::Rectangle {
             lower_left,
             width,

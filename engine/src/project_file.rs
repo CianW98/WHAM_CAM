@@ -14,7 +14,8 @@ pub const FORMAT_NAME: &str = "WHAM_CAM project";
 
 /// The file format version written by this WHAM_CAM. Bump it when the format changes in a way
 /// older versions can't read, and upgrade older files in [`from_text`].
-pub const FORMAT_VERSION: u32 = 1;
+/// 2: dimensions (2026-11-20). Version 1 files open unchanged (they have none).
+pub const FORMAT_VERSION: u32 = 2;
 
 /// The file extension for project files (without the dot).
 pub const EXTENSION: &str = "whamcam";

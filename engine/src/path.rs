@@ -10,9 +10,15 @@ use crate::geometry::{
 use crate::operation::CommonSettings;
 use crate::toolpath::{Move, Point3};
 
+/// Why a dimension can't be used by an operation.
+pub fn not_machined(id: u32) -> String {
+    format!("Shape {id} is a dimension: dimensions are never machined.")
+}
+
 /// A selected shape as a closed outline, or why it can't be pocketed.
 pub fn closed_outline(id: u32, shape: &Shape) -> Result<Polyline, String> {
     match shape {
+        Shape::Dimension(_) => Err(not_machined(id)),
         Shape::Polyline(pl) if pl.closed && pl.vertices.len() >= 2 => Ok(pl.clone()),
         Shape::Polyline(_) => Err(format!(
             "Shape {id} is an open polyline. Pockets need closed shapes (use Close polyline or Join)."
@@ -239,6 +245,7 @@ impl Builder<'_> {
 /// polylines as open paths. Errors say why a shape can't be profiled.
 pub fn profile_path(id: u32, shape: &Shape) -> Result<Polyline, String> {
     match shape {
+        Shape::Dimension(_) => Err(not_machined(id)),
         Shape::Line { start, end } => Ok(Polyline {
             vertices: vec![Vertex::line(start.x, start.y), Vertex::line(end.x, end.y)],
             closed: false,

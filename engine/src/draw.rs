@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::dimension;
 use crate::document::Document;
 use crate::geometry::{
     Point, Polyline, Shape, Vertex, angle_deg, arc_sweep_deg, bulge_arc, cross, dot, mid,
@@ -31,6 +32,14 @@ pub enum DrawTool {
     Polyline,
     /// Any number of points, making one point list.
     Points,
+    /// Aligned dimension: two points, then where the dimension line sits.
+    DimAligned,
+    /// Radius dimension: click an arc or circle, then where the value goes.
+    DimRadius,
+    /// Diameter dimension: click an arc or circle, then where the value goes.
+    DimDiameter,
+    /// Angle dimension: click two lines, then inside the angle to measure.
+    DimAngle,
 }
 
 impl DrawTool {
@@ -38,10 +47,37 @@ impl DrawTool {
     pub fn clicks_needed(self) -> Option<usize> {
         match self {
             DrawTool::Line | DrawTool::Circle | DrawTool::Rectangle => Some(2),
-            DrawTool::Arc => Some(3),
+            DrawTool::DimRadius | DrawTool::DimDiameter => Some(2),
+            DrawTool::Arc | DrawTool::DimAligned | DrawTool::DimAngle => Some(3),
             DrawTool::Polyline | DrawTool::Points => None,
         }
     }
+
+    /// What the click at step `step` (0 = first) must land on: an existing circle/arc or line
+    /// (picked, not snapped), or `None` for an ordinary snapped point.
+    pub fn pick_at(self, step: usize) -> Option<PickKind> {
+        match (self, step) {
+            (DrawTool::DimRadius | DrawTool::DimDiameter, 0) => Some(PickKind::Circle),
+            (DrawTool::DimAngle, 0 | 1) => Some(PickKind::Line),
+            _ => None,
+        }
+    }
+
+    pub fn is_dimension(self) -> bool {
+        matches!(
+            self,
+            DrawTool::DimAligned | DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle
+        )
+    }
+}
+
+/// What a dimension click must pick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PickKind {
+    /// A circle, an arc, or an arc segment of a polyline.
+    Circle,
+    /// A line, a straight segment of a polyline, or a side of a rectangle.
+    Line,
 }
 
 /// A shape being drawn: the points clicked so far.
@@ -57,6 +93,10 @@ pub struct Draft {
     /// tangent arc.
     #[serde(default)]
     pub arc_next: bool,
+    /// Dimensions only: the ids of the objects picked so far (circle/arc, or lines), in click
+    /// order. Their click points are in `points`.
+    #[serde(default)]
+    pub picks: Vec<u32>,
 }
 
 /// What a point snapped to.
@@ -208,6 +248,13 @@ pub fn preview(draft: &Draft, cursor: Option<Point>) -> Option<Shape> {
             (pts.len() >= 2).then(|| Shape::Polyline(polyline_from(&pts, &arcs, false)))
         }
         DrawTool::Points => Some(Shape::Points { points: pts }),
+        DrawTool::DimAligned => match pts[..] {
+            [a, b] => dimension::aligned(a, b, b).map(Shape::Dimension),
+            [a, b, at, ..] => dimension::aligned(a, b, at).map(Shape::Dimension),
+            _ => None,
+        },
+        // Radius, diameter and angle dimensions need the picked objects: see `Project::preview`.
+        DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle => None,
     }
 }
 
@@ -316,6 +363,7 @@ pub fn validate(shape: &Shape) -> Result<(), String> {
             ok(points.iter().all(|p| finite(*p)), NOT_NUMBER)?;
             ok(!points.is_empty(), "A point list needs at least 1 point.")
         }
+        Shape::Dimension(d) => d.problem().map_or(Ok(()), |m| Err(m.to_string())),
     }
 }
 
@@ -369,6 +417,8 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
             }
         }
         Shape::Points { points } => out.extend(points.iter().map(|p| (*p, End))),
+        // Dimensions offer nothing to snap to: they describe the drawing, they aren't part of it.
+        Shape::Dimension(_) => {}
     }
 }
 

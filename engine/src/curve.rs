@@ -10,7 +10,8 @@
 use std::f64::consts::{FRAC_PI_2, TAU};
 
 use crate::geometry::{
-    Point, Polyline, Transform, Vertex, bulge_arc, bulge_from_sweep, cross, dot, mid, sub,
+    Point, Polyline, Transform, Vertex, bulge_from_sweep, cross, distance_to_segment, dot, mid,
+    point_along_segment, sub,
 };
 
 /// A NURBS curve as stored in a DXF SPLINE.
@@ -288,7 +289,7 @@ impl Curve {
         curve_ok
             && pieces.iter().all(|&(s, e, bulge)| {
                 (1..CHECKS).all(|i| {
-                    let p = point_along(s, e, bulge, i as f64 / CHECKS as f64);
+                    let p = point_along_segment(s, e, bulge, i as f64 / CHECKS as f64);
                     samples
                         .windows(2)
                         .map(|w| distance_to_segment(p, w[0], w[1], 0.0))
@@ -297,35 +298,6 @@ impl Curve {
                 })
             })
     }
-}
-
-/// The point a fraction `f` of the way along a polyline segment.
-fn point_along(s: Point, e: Point, bulge: f64, f: f64) -> Point {
-    match bulge_arc(s, e, bulge) {
-        Some(arc) => crate::geometry::on_circle(arc.center, arc.radius, arc.start + arc.sweep * f),
-        None => Point::new(s.x + (e.x - s.x) * f, s.y + (e.y - s.y) * f),
-    }
-}
-
-/// Distance from `p` to a polyline segment (straight when `bulge` is 0).
-fn distance_to_segment(p: Point, s: Point, e: Point, bulge: f64) -> f64 {
-    if let Some(arc) = bulge_arc(s, e, bulge) {
-        // Is p within the arc's sweep (seen from the centre)?
-        let ang = (p.y - arc.center.y).atan2(p.x - arc.center.x);
-        let rel = (ang - arc.start).rem_euclid(TAU);
-        let along = if arc.sweep >= 0.0 { rel } else { TAU - rel };
-        if rel == 0.0 || along <= arc.sweep.abs() {
-            return (p.distance_to(arc.center) - arc.radius).abs();
-        }
-        return p.distance_to(s).min(p.distance_to(e));
-    }
-    let d = sub(e, s);
-    let len2 = dot(d, d);
-    if len2 == 0.0 {
-        return p.distance_to(s);
-    }
-    let f = (dot(sub(p, s), d) / len2).clamp(0.0, 1.0);
-    p.distance_to(Point::new(s.x + d.x * f, s.y + d.y * f))
 }
 
 /// Point on a (possibly rational) B-spline at parameter `u`, by de Boor's algorithm.

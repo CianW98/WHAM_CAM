@@ -6,13 +6,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::dimension;
 use crate::display::{
     CutWidthStep, Playback, PlaybackTool, ToolpathDisplay, cut_width_steps, playback,
     toolpath_display,
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
-use crate::draw::{self, Draft, Snap, SnapOptions};
+use crate::draw::{self, Draft, DrawTool, PickKind, Snap, SnapOptions};
 use crate::drill;
 use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
@@ -434,8 +435,77 @@ impl Project {
 
     /// Finishes a drawn shape and adds it to a layer, as one undo step. Returns the new id.
     pub fn add_draft(&mut self, layer: &str, draft: &Draft) -> Result<u32, String> {
-        let shape = draw::finish(draft)?;
+        let shape = match draft.tool {
+            DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle => {
+                if Some(draft.points.len()) != draft.tool.clicks_needed() {
+                    return Err("This dimension needs more clicks.".into());
+                }
+                self.picked_dimension(draft, None).ok_or_else(|| {
+                    if draft.tool == DrawTool::DimAngle {
+                        "Those lines are parallel: there is no angle between them.".to_string()
+                    } else {
+                        "That arc or circle can't be dimensioned.".to_string()
+                    }
+                })?
+            }
+            _ => draw::finish(draft)?,
+        };
+        draw::validate(&shape)?;
         self.add_shape(layer, shape)
+    }
+
+    /// The object a dimension click picks: for click `step` of `tool`, the nearest object
+    /// within `tolerance` mm of (x, y) that has what that step needs (a circle/arc, or a straight
+    /// line). `None` if the step isn't a pick or nothing suitable is near.
+    pub fn dimension_pick(
+        &self,
+        tool: DrawTool,
+        step: usize,
+        x: f64,
+        y: f64,
+        tolerance: f64,
+    ) -> Option<u32> {
+        let kind = tool.pick_at(step)?;
+        let click = Point::new(x, y);
+        self.doc
+            .layers
+            .iter()
+            .flat_map(|l| &l.objects)
+            .filter_map(|o| {
+                let d = match kind {
+                    PickKind::Circle => dimension::pick_circle(&o.shape, click)?.distance,
+                    PickKind::Line => dimension::pick_line(&o.shape, click)?.distance,
+                };
+                (d <= tolerance).then_some((o.id, d))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(id, _)| id)
+    }
+
+    /// A radius, diameter or angle dimension from a draft's picks and clicks, with `cursor`
+    /// (if any) as the last click.
+    fn picked_dimension(&self, draft: &Draft, cursor: Option<Point>) -> Option<Shape> {
+        let mut pts = draft.points.clone();
+        pts.extend(cursor);
+        let shape = |i: usize| {
+            let id = *draft.picks.get(i)?;
+            self.doc.objects().find(|o| o.id == id).map(|o| &o.shape)
+        };
+        let d = match draft.tool {
+            DrawTool::DimRadius | DrawTool::DimDiameter => {
+                let (click, at) = (*pts.first()?, *pts.get(1)?);
+                let circle = dimension::pick_circle(shape(0)?, click)?;
+                dimension::circular(circle, at, draft.tool == DrawTool::DimDiameter)?
+            }
+            DrawTool::DimAngle => {
+                let (c1, c2, at) = (*pts.first()?, *pts.get(1)?, *pts.get(2)?);
+                let l1 = dimension::pick_line(shape(0)?, c1)?;
+                let l2 = dimension::pick_line(shape(1)?, c2)?;
+                dimension::angle(l1, l2, at)?
+            }
+            _ => return None,
+        };
+        Some(Shape::Dimension(d))
     }
 
     /// Replaces an object's shape (e.g. after editing values in Properties) as one undo step.
@@ -475,7 +545,13 @@ impl Project {
 
     /// The rubber-band preview of a shape being drawn, with the cursor as its next point.
     pub fn preview(&self, draft: &Draft, cursor: Option<Point>) -> Option<DisplayShape> {
-        draw::preview(draft, cursor).map(|shape| display_shape(0, &shape))
+        let shape = match draft.tool {
+            DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle => {
+                self.picked_dimension(draft, cursor)
+            }
+            _ => draw::preview(draft, cursor),
+        };
+        shape.map(|shape| display_shape(0, &shape))
     }
 
     /// The selected objects' (layer index, object index, shape), in document order.
@@ -1527,7 +1603,9 @@ impl Project {
             .shapes
             .iter()
             .filter(|s| match mode {
-                BoxMode::Window => !s.points.is_empty() && s.points.iter().all(|p| r.contains(*p)),
+                BoxMode::Window => {
+                    s.all_points().next().is_some() && s.all_points().all(|p| r.contains(p))
+                }
                 BoxMode::Crossing => shape_touches_rect(s, &r),
             })
             .map(|s| s.id)
@@ -1551,16 +1629,48 @@ impl Rect {
     }
 }
 
-fn segments(s: &DisplayShape) -> impl Iterator<Item = ([f64; 2], [f64; 2])> + '_ {
-    let n = s.points.len();
-    let count = if s.markers || n < 2 {
+fn path_segments(
+    points: &[[f64; 2]],
+    closed: bool,
+) -> impl Iterator<Item = ([f64; 2], [f64; 2])> + '_ {
+    let n = points.len();
+    let count = if n < 2 {
         0
-    } else if s.closed {
+    } else if closed {
         n
     } else {
         n - 1
     };
-    (0..count).map(move |i| (s.points[i], s.points[(i + 1) % n]))
+    (0..count).map(move |i| (points[i], points[(i + 1) % n]))
+}
+
+/// Every drawn segment: the path (unless it is a set of markers), the extra paths, and the
+/// edges of the label's box.
+fn segments(s: &DisplayShape) -> Vec<([f64; 2], [f64; 2])> {
+    let mut out: Vec<_> = if s.markers {
+        Vec::new()
+    } else {
+        path_segments(&s.points, s.closed).collect()
+    };
+    for path in &s.extra {
+        out.extend(path_segments(path, false));
+    }
+    if let Some(label) = &s.label {
+        out.extend(path_segments(&label.corners(), true).collect::<Vec<_>>());
+    }
+    out
+}
+
+/// Whether `p` is inside a dimension's label box.
+fn in_label(s: &DisplayShape, p: [f64; 2]) -> bool {
+    let Some(label) = &s.label else {
+        return false;
+    };
+    let c = label.corners();
+    // Inside a convex quadrilateral: on the same side of every edge.
+    let side =
+        |a: [f64; 2], b: [f64; 2]| (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    (0..4).all(|i| side(c[i], c[(i + 1) % 4]) >= 0.0)
 }
 
 fn distance_to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
@@ -1576,21 +1686,25 @@ fn distance_to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
 
 fn distance_to_shape(s: &DisplayShape, x: f64, y: f64) -> f64 {
     let p = [x, y];
+    if in_label(s, p) {
+        return 0.0;
+    }
     let to_points = s
         .points
         .iter()
         .map(|q| (q[0] - x).hypot(q[1] - y))
         .fold(f64::INFINITY, f64::min);
-    if s.markers || s.points.len() < 2 {
-        return to_points;
-    }
     segments(s)
+        .into_iter()
         .map(|(a, b)| distance_to_segment(p, a, b))
         .fold(to_points, f64::min)
 }
 
 fn shape_touches_rect(s: &DisplayShape, r: &Rect) -> bool {
-    s.points.iter().any(|p| r.contains(*p)) || segments(s).any(|(a, b)| segment_hits_rect(a, b, r))
+    s.all_points().any(|p| r.contains(p))
+        || segments(s)
+            .into_iter()
+            .any(|(a, b)| segment_hits_rect(a, b, r))
 }
 
 /// Liang–Barsky clipping: does segment a→b pass through the rectangle?

@@ -6,6 +6,7 @@ use std::f64::consts::TAU;
 
 use serde::{Deserialize, Serialize};
 
+use crate::dimension::{Label, layout};
 use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{
     BulgeArc, Point, Polyline, Shape, angle_deg, arc_sweep_deg, bulge_arc, rectangle_corners,
@@ -38,6 +39,10 @@ pub struct DisplayShape {
     pub color: String,
     /// Which way a closed polyline or rectangle runs; `None` for other shapes.
     pub direction: Option<Direction>,
+    /// More open paths drawn the same way (a dimension's lines and arrowheads).
+    pub extra: Vec<Vec<[f64; 2]>>,
+    /// Text to draw (a dimension's value).
+    pub label: Option<Label>,
 }
 
 /// Which way a closed shape runs.
@@ -79,7 +84,7 @@ pub fn display_data(doc: &Document) -> DisplayData {
         })
         .collect();
     let mut bounds: Option<[f64; 4]> = None;
-    for p in shapes.iter().flat_map(|s| s.points.iter()) {
+    for p in shapes.iter().flat_map(|s| s.all_points()) {
         let b = bounds.get_or_insert([p[0], p[1], p[0], p[1]]);
         b[0] = b[0].min(p[0]);
         b[1] = b[1].min(p[1]);
@@ -93,6 +98,8 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
     let mut closed = false;
     let mut markers = false;
     let mut direction = None;
+    let mut extra = Vec::new();
+    let mut label = None;
     let points = match shape {
         Shape::Line { start, end } => vec![[start.x, start.y], [end.x, end.y]],
         Shape::Arc {
@@ -148,6 +155,12 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
             markers = true;
             points.iter().map(|p| [p.x, p.y]).collect()
         }
+        Shape::Dimension(d) => {
+            let l = layout(d);
+            extra = l.lines;
+            label = Some(l.label);
+            Vec::new()
+        }
     };
     DisplayShape {
         id,
@@ -156,6 +169,19 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
         markers,
         color: LAYER_PALETTE[0].to_string(),
         direction,
+        extra,
+        label,
+    }
+}
+
+impl DisplayShape {
+    /// Every point drawn: the path, the extra paths and the label's corners.
+    pub fn all_points(&self) -> impl Iterator<Item = [f64; 2]> + '_ {
+        self.points
+            .iter()
+            .copied()
+            .chain(self.extra.iter().flatten().copied())
+            .chain(self.label.iter().flat_map(|l| l.corners()))
     }
 }
 

@@ -34,6 +34,7 @@ pub fn drill_points(id: u32, shape: &Shape) -> Result<Vec<Hole>, String> {
             diameter: Some(2.0 * radius),
         }]),
         Shape::Arc { center, .. } => Ok(vec![at(*center)]),
+        Shape::Dimension(_) => Err(crate::path::not_machined(id)),
         _ => Err(format!(
             "Shape {id} is a {}: drilling uses point lists, circles and arcs (their centres).",
             shape.type_name()

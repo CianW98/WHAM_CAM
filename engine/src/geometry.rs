@@ -1,6 +1,8 @@
 //! Basic 2D geometry. All units are millimetres. Angles in shapes are degrees,
 //! measured counter-clockwise from the +X axis (as in DXF).
 
+use std::f64::consts::TAU;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -124,6 +126,8 @@ pub enum Shape {
     Points {
         points: Vec<Point>,
     },
+    /// A dimension (measure only: never machined).
+    Dimension(crate::dimension::Dimension),
 }
 
 impl Shape {
@@ -136,6 +140,7 @@ impl Shape {
             Shape::Polyline(_) => "Polyline",
             Shape::Rectangle { .. } => "PolyRectangle",
             Shape::Points { .. } => "PointList",
+            Shape::Dimension(_) => "Dimension",
         }
     }
 }
@@ -379,6 +384,35 @@ pub fn bulge_arc(a: Point, b: Point, bulge: f64) -> Option<BulgeArc> {
     })
 }
 
+/// The point a fraction `f` (0 to 1) of the way along the polyline segment from `s` to `e`.
+pub fn point_along_segment(s: Point, e: Point, bulge: f64, f: f64) -> Point {
+    match bulge_arc(s, e, bulge) {
+        Some(arc) => on_circle(arc.center, arc.radius, arc.start + arc.sweep * f),
+        None => Point::new(s.x + (e.x - s.x) * f, s.y + (e.y - s.y) * f),
+    }
+}
+
+/// Distance from `p` to the polyline segment from `s` to `e` with `bulge` (straight when 0).
+pub fn distance_to_segment(p: Point, s: Point, e: Point, bulge: f64) -> f64 {
+    if let Some(arc) = bulge_arc(s, e, bulge) {
+        // Is p within the arc's sweep (seen from the centre)?
+        let ang = (p.y - arc.center.y).atan2(p.x - arc.center.x);
+        let rel = (ang - arc.start).rem_euclid(TAU);
+        let along = if arc.sweep >= 0.0 { rel } else { TAU - rel };
+        if rel == 0.0 || along <= arc.sweep.abs() {
+            return (p.distance_to(arc.center) - arc.radius).abs();
+        }
+        return p.distance_to(s).min(p.distance_to(e));
+    }
+    let d = sub(e, s);
+    let len2 = dot(d, d);
+    if len2 == 0.0 {
+        return p.distance_to(s);
+    }
+    let f = (dot(sub(p, s), d) / len2).clamp(0.0, 1.0);
+    p.distance_to(Point::new(s.x + d.x * f, s.y + d.y * f))
+}
+
 /// The bulge of an arc segment that sweeps `sweep` radians (positive = anticlockwise).
 pub fn bulge_from_sweep(sweep: f64) -> f64 {
     (sweep / 4.0).tan()
@@ -397,6 +431,7 @@ impl Shape {
             Shape::Points { points } => Shape::Points {
                 points: points.iter().map(|p| t.apply(*p)).collect(),
             },
+            Shape::Dimension(d) => Shape::Dimension(d.transformed(t)?),
             Shape::Circle { center, radius } => Shape::Circle {
                 center: t.apply(*center),
                 radius: radius * uniform?,
