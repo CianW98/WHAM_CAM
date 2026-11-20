@@ -5,6 +5,8 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 
 ## Soon after v1
 
+(Machine settings and project preferences moved into v1 on 2026-11-20: spec 5.9 and 5.10.)
+
 - **DXF text as outlines** (moved out of v1, 2026-11-20): TEXT and MTEXT become closed outline
   shapes for each letter, on the entity's layer, to engrave, profile or pocket like any shape
   (as decided 2026-11-19). Needs a font bundled with WHAM_CAM (its licence must allow that) and
@@ -31,20 +33,10 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Holding tabs.**
 - **PolyRectangle corner radius** (rounded corners as true arcs, at most half the shorter side).
   Left out of v1 (decided 2026-11-16); the PolyRectangle has Lower Left, Width, Height, Rotation.
-- **Project preferences**: a section of per-project settings saved in the project file, e.g.
-  current layer, view position, snap settings and grid settings. Raised 2026-11-16 when saving
-  was built; until then those aren't saved (grid spacing already is, as part of the project).
 - **Recent files** list in the File menu (not wanted yet, 2026-11-16).
 - **Smarter moves between depth levels.** v1 retracts to clearance, rapids to the start, rapids
   down to fast plunge height and feeds down, as in the reference. The user wants to work on this
   later (2026-11-16), e.g. staying down when the next level starts where the last ended.
-- **Machine settings**, on each machine in the Setup tab's machine list (v1 has only a name and
-  the generic post-processor, decided 2026-11-20):
-  - the real rapid rate, so the tool playback's run time is accurate (v1 assumes 5000 mm/min for
-    rapids, decided 2026-11-16);
-  - tool changer yes/no: a machine without one could be post-processed into one file per tool
-    (user's idea, 2026-11-20); v1 writes one file for the whole job;
-  - travel limits.
 - **Pocket: full clearing at stepovers over 0.5.** Above 0.5 × tool diameter, narrow parts of a
   pocket can keep an uncut sliver down the middle (spec 6.3, found 2026-11-16 at 0.7 on a complex
   pocket; 0.5 clears it). Fix idea: after each ring, work out what is still uncut area by area

@@ -435,14 +435,14 @@ per machine type, come after v1 (roadmap).
   post-processor. A project chooses its machine in the Machining item's Properties (saved in the
   project by name, like the tool library); with none chosen, Produce G-code uses Generic. That
   choice is shown as **Generic**, so no machine may be called "Generic" (in any capitals).
-  Further machine settings (tool changer, rapid rate, travel limits) and machine-specific
-  post-processors come later (roadmap).
+  A **machine configuration dialog** with further machine settings comes before 1.0.0 (5.9);
+  machine-specific post-processors come later (roadmap).
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
-- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (1), `"saved_by"` (the
+- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (2), `"saved_by"` (the
   WHAM_CAM version) and the document: project name, grid spacing, layers (name, colour, shapes),
   the project's tool library (by name) and Machining tool, and parts with their tool and
   operations (settings and tool). Post-processor settings are added with G-code output.
@@ -457,8 +457,21 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
 - Opening starts a fresh undo history, zooms to fit and resets the current layer to the first.
   The copy/paste clipboard is kept, so shapes can be copied between projects.
-- Not saved: current layer, view position, snap settings (project preferences, see
-  `docs/roadmap.md`).
+- Not saved: current layer, view position, snap settings (see 5.10).
+
+### 5.9 Machine configuration (before 1.0.0; added 2026-11-20)
+Machines are already added, renamed and deleted in the Setup tab, with a name and the Generic
+post-processor. Before 1.0.0 each machine gets a **configuration dialog** with its settings.
+**(?)** Which settings, and how the dialog works, are decided when it is built. Candidates
+noted earlier: the real rapid rate (so playback run times are accurate; v1 assumes 5000 mm/min),
+tool changer yes/no (a machine without one could get one file per tool), travel limits.
+
+### 5.10 Project setup and defaults (before 1.0.0; added 2026-11-20)
+A place for project settings and defaults, e.g. **grid spacing** (now in the project's
+Properties). **(?)** Decided when it is built: whether it is a tab (like Setup) or part of the
+Project tab; which settings it holds (candidates: grid spacing, snap settings, current layer,
+view position); and whether they are defaults for new projects (on this computer) or saved in
+each project.
 
 ## 6. Operation settings
 
@@ -681,7 +694,9 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 ## 9. Open questions
 
-None open for v1.
+- **(?) Machine configuration** (5.9): which machine settings, and the dialog.
+- **(?) Project setup and defaults** (5.10): where it lives, which settings, and whether they are
+  defaults for new projects or saved per project.
 
 Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
 (both decided 2026-11-16). Dimensions (5.3), decided 2026-11-19. DXF TEXT/MTEXT and DIMENSION import

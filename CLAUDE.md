@@ -56,6 +56,8 @@ N.B. This program drives a real machine. A bug can crash the spindle, break tool
 6. Toolpath preview
 7. G-code output through a post processor
 8. Save and open project files
+9. Machine configuration: a configuration dialog for each machine in the Setup tab (spec 5.9)
+10. Project setup and defaults, e.g. grid spacing (spec 5.10)
 Anything not on this list waits until v1 works end to end. Note such ideas in `docs/roadmap.md`.
 
 ## Stack
@@ -265,8 +267,7 @@ Done:
   circles/rects/circular arcs stay exact, curves → arcs within the tolerance; units prompt when
   the file has no real size; Inkscape layers; one Import for DXF or SVG.
 
-Next, towards 1.0.0: a full end-to-end check by the user, then release 1.0.0 when asked. DXF
-dimensions and DXF text moved to the roadmap (2026-11-20).
-No 0.x releases before 1.0.0 (user's decision, 2026-11-20; no 0.5.0). The 1.0.0 notes need a
-"G-code output changed" section: G-code is new and Peck toolpaths changed (Peck checked by the
-user, 2026-11-20).
+Next: release 0.5.0 (user's decision, 2026-11-20; replaces "no 0.x releases before 1.0.0").
+Then, before 1.0.0: machine configuration dialog (spec 5.9) and project setup/defaults (spec
+5.10), both to be designed with the user; then a full end-to-end check by the user. DXF
+dimensions and DXF text are on the roadmap.
