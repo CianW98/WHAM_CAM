@@ -51,6 +51,33 @@ pub struct Limits {
     pub target_depth: f64,
 }
 
+/// Which canned drilling cycle a hole is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CycleKind {
+    /// G81: feed straight to the bottom.
+    Standard,
+    /// G83: peck drilling, `q` deep at a time counted from the R plane.
+    Peck,
+}
+
+/// One hole drilled with a canned cycle (G98 G81 / G83), as the post-processor writes it. The
+/// toolpath's moves for the hole are made from it by [`crate::drill::cycle_moves`], so the
+/// preview and the G-code always agree.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DrillCycle {
+    pub kind: CycleKind,
+    pub x: f64,
+    pub y: f64,
+    /// R plane: the tool rapids down to it, and (peck) back up to it between pecks.
+    pub r: f64,
+    /// Bottom of the hole.
+    pub z: f64,
+    /// Peck depth (Peck only; 0 for Standard).
+    pub q: f64,
+    /// Feed rate into the hole, mm/min.
+    pub feed: f64,
+}
+
 /// All the moves of one operation. It starts at the clearance plane (where the previous
 /// operation or the program start left the tool) and ends there.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -58,6 +85,10 @@ pub struct Toolpath {
     pub operation_id: u32,
     pub moves: Vec<Move>,
     pub limits: Limits,
+    /// For Standard and Peck drilling: each hole as a canned cycle, in order. Together they make
+    /// exactly `moves` (empty for every other operation, which is written move by move).
+    #[serde(default)]
+    pub cycles: Vec<DrillCycle>,
 }
 
 /// The Z of each depth pass, from the first (shallowest) down to `target`. Passes are equal and

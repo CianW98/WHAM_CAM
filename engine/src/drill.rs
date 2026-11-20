@@ -1,11 +1,12 @@
 //! Drill toolpaths (spec 6.4): Standard (straight down), Peck, or Spiral (a helix round a hole
-//! bigger than the tool), at every hole position, nearest hole next.
+//! bigger than the tool), at every hole position, nearest hole next. Standard and Peck holes are
+//! canned cycles (G81 / G83), whose moves come from [`cycle_moves`].
 
 use std::f64::consts::PI;
 
 use crate::geometry::{Point, Shape, on_circle};
 use crate::operation::{CommonSettings, DrillMethod, DrillSettings, MillingDirection};
-use crate::toolpath::{Limits, Move, Point3, Toolpath};
+use crate::toolpath::{CycleKind, DrillCycle, Limits, Move, Point3, Toolpath};
 
 /// One hole to drill.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -117,53 +118,47 @@ pub fn drill_toolpath(
     }
 
     let clear = c.clearance_plane;
-    let retract = d.retract_height;
     let mut m = Moves {
         moves: Vec::new(),
         at: None,
     };
+    let mut cycles = Vec::new();
     for hole in order {
         let h = hole.at;
-        // Across at the clearance plane, then down to the retract height and into the hole.
-        match d.method {
-            DrillMethod::Standard => {
-                m.rapid(h.x, h.y, clear);
-                if retract < clear {
-                    m.rapid(h.x, h.y, retract);
+        let kind = match d.method {
+            DrillMethod::Standard => Some(CycleKind::Standard),
+            DrillMethod::Peck => Some(CycleKind::Peck),
+            DrillMethod::Spiral => None,
+        };
+        match kind {
+            Some(kind) => {
+                // Standard and Peck are canned cycles: the moves come from the cycle.
+                let cycle = DrillCycle {
+                    kind,
+                    x: h.x,
+                    y: h.y,
+                    r: d.retract_height,
+                    z: target,
+                    q: if kind == CycleKind::Peck {
+                        d.peck_distance
+                    } else {
+                        0.0
+                    },
+                    feed: c.plunge_feedrate,
+                };
+                for mv in cycle_moves(&cycle, clear, c.fast_plunge_height) {
+                    m.push(mv);
                 }
-                m.feed(h.x, h.y, target, c.plunge_feedrate);
+                cycles.push(cycle);
             }
-            DrillMethod::Peck => {
-                m.rapid(h.x, h.y, clear);
-                if retract < clear {
-                    m.rapid(h.x, h.y, retract);
-                }
-                let mut depth = c.stock_surface;
-                loop {
-                    let next = (depth - d.peck_distance).max(target);
-                    if depth < c.stock_surface {
-                        // Back into the hole: rapid to just above the last depth, then feed.
-                        let fast = depth + c.fast_plunge_height;
-                        if fast < retract {
-                            m.rapid(h.x, h.y, fast);
-                        }
-                    }
-                    m.feed(h.x, h.y, next, c.plunge_feedrate);
-                    depth = next;
-                    if depth <= target + 1e-9 {
-                        break;
-                    }
-                    m.rapid(h.x, h.y, retract); // out of the hole to clear chips
-                }
-            }
-            DrillMethod::Spiral => {
+            None => {
                 let dia = hole.diameter.unwrap_or(d.hole_diameter);
                 spiral(&mut m, h, dia, target, c, d);
+                // Straight up out of the hole, from wherever the tool is (it may end at the wall).
+                let end = m.at.map_or(h, |a| Point::new(a.x, a.y));
+                m.rapid(end.x, end.y, clear);
             }
         }
-        // Straight up out of the hole, from wherever the tool is (a spiral may end at the wall).
-        let end = m.at.map_or(h, |a| Point::new(a.x, a.y));
-        m.rapid(end.x, end.y, clear);
     }
 
     Ok(Toolpath {
@@ -174,7 +169,56 @@ pub fn drill_toolpath(
             stock_surface: c.stock_surface,
             target_depth: target,
         },
+        cycles,
     })
+}
+
+/// The moves of one canned drilling cycle, as a controller runs `G98 G81` / `G98 G83` with the
+/// tool starting at the clearance plane (the "initial plane" G98 returns to). The one place these
+/// moves are made: the toolpath, its preview and the G-code read-back all use it.
+///
+/// - Rapid over the hole at the clearance plane, then rapid down to the R plane (if lower).
+/// - G81: feed to the bottom.
+/// - G83: feed down `q` at a time, counted from the R plane (so pecks above the stock cut air, as
+///   on the machine). After each peck: rapid back up to R to clear chips, then rapid back down to
+///   `back_off` above the last depth and feed on. The controller sets that back-off itself; the
+///   preview uses the fast plunge height for it.
+/// - Rapid back up to the clearance plane.
+pub fn cycle_moves(cycle: &DrillCycle, clearance: f64, back_off: f64) -> Vec<Move> {
+    let (x, y) = (cycle.x, cycle.y);
+    let r = cycle.r;
+    let mut m = Moves {
+        moves: Vec::new(),
+        at: None,
+    };
+    m.rapid(x, y, clearance);
+    if r < clearance {
+        m.rapid(x, y, r);
+    }
+    match cycle.kind {
+        CycleKind::Standard => m.feed(x, y, cycle.z, cycle.feed),
+        CycleKind::Peck => {
+            let mut depth = r;
+            loop {
+                let next = (depth - cycle.q).max(cycle.z);
+                if depth < r {
+                    // Back into the hole: rapid to just above the last depth, then feed.
+                    let fast = depth + back_off;
+                    if fast < r {
+                        m.rapid(x, y, fast);
+                    }
+                }
+                m.feed(x, y, next, cycle.feed);
+                depth = next;
+                if depth <= cycle.z + 1e-9 {
+                    break;
+                }
+                m.rapid(x, y, r); // out of the hole to clear chips
+            }
+        }
+    }
+    m.rapid(x, y, clearance);
+    m.moves
 }
 
 /// A spiral hole at `h`: from the wall position, feed down to the stock surface, helix down by

@@ -51,6 +51,7 @@ fn sample(id: u32) -> Toolpath {
             rapid(20.0, 0.0, 3.0),
         ],
         limits: limits(),
+        cycles: Vec::new(),
     }
 }
 
@@ -234,6 +235,7 @@ fn cut_width_covers_the_cutter_band_and_nothing_else() {
             rapid(20.0, 15.0, 3.0),
         ],
         limits: limits(),
+        cycles: Vec::new(),
     };
     let pb = playback(&[(&tp, 6.0)]);
     let widths = cut_width_steps(&pb);
@@ -290,6 +292,7 @@ fn rapids_and_plunges_have_no_cut_width() {
             rapid(0.0, 0.0, 3.0),
         ],
         limits: limits(),
+        cycles: Vec::new(),
     };
     let widths = cut_width_steps(&playback(&[(&tp, 6.0)]));
     assert!(widths.iter().all(|w| w.triangles.is_empty()));
@@ -313,6 +316,7 @@ fn a_helix_descends_evenly_and_takes_its_true_length() {
             rapid(-5.0, 0.0, 3.0),
         ],
         limits: limits(),
+        cycles: Vec::new(),
     };
     let pb = playback(&[(&tp, 6.0)]);
     let helix = &pb.steps[2];

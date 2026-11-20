@@ -533,9 +533,13 @@ move; the reference itself uses a canned cycle G81 with G98):
 - **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
 - **Standard:** rapid over the hole at clearance, rapid down to the retract height (if lower),
   feed to the target depth at the plunge feed rate, rapid back up to clearance.
-- **Peck:** as Standard, but feed down one peck distance at a time; after each peck, rapid up to
-  the retract height to clear chips, rapid back down to fast plunge height above the last depth,
-  and feed on.
+- **Peck:** as Standard, but feed down one peck distance at a time, **counted from the retract
+  height** (the R plane), as a controller runs `G83` (decided 2026-11-20). With the retract height
+  above the stock, the first pecks cut air, and the preview shows them; a low retract height
+  avoids them. After each peck: rapid up to the retract height to clear chips, rapid back down to
+  fast plunge height above the last depth, and feed on.
+- Standard and Peck holes are kept as canned cycles (one per hole); their moves are made from the
+  cycle by one shared function, so the preview, playback, safety check and G-code agree.
 - **Spiral:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
   centre. A circle is cut to its own diameter (decided 2026-11-17); point lists and arcs use the
   Hole diameter setting. A circle no bigger than the tool is refused with a message.

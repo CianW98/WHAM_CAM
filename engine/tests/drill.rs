@@ -1,10 +1,10 @@
 //! Drill toolpath tests, including a move-by-move comparison with the reference example.
 
-use wham_engine::drill::{Hole, drill_points, drill_toolpath};
+use wham_engine::drill::{Hole, cycle_moves, drill_points, drill_toolpath};
 use wham_engine::geometry::{Point, Shape};
 use wham_engine::operation::{CommonSettings, DrillMethod, DrillSettings, MillingDirection};
 use wham_engine::safety::check;
-use wham_engine::toolpath::{Move, Point3, Toolpath};
+use wham_engine::toolpath::{CycleKind, Move, Point3, Toolpath};
 
 const TOL: f64 = 1e-9;
 
@@ -121,27 +121,97 @@ fn standard_rapids_down_to_a_lower_retract_height_first() {
 }
 
 #[test]
-fn peck_goes_back_to_the_retract_height_between_pecks() {
+fn peck_follows_g83_pecking_from_the_r_plane() {
+    // As a controller runs G98 G83: pecks of Q counted from the R plane (retract height 3), so
+    // with the stock at 0 the first peck (to 1) cuts air. After each peck: rapid up to R, rapid
+    // back down to fast plunge height (1) above the last depth, feed on. Target −5:
+    // pecks to 1, −1, −3, −5.
     let d = DrillSettings {
         peck_distance: 2.0,
         ..method(DrillMethod::Peck)
     };
-    // Target −5 in pecks of 2: −2, −4, −5. Fast plunge height 1 above the last depth.
     let tp = drill(&[p(5.0, 5.0)], &settings(3.0, -5.0), &d);
     assert_moves(
         &tp.moves,
         &[
             rapid(5.0, 5.0, 3.0),
-            feed(5.0, 5.0, -2.0, 300.0),
+            feed(5.0, 5.0, 1.0, 300.0),
             rapid(5.0, 5.0, 3.0),
-            rapid(5.0, 5.0, -1.0),
-            feed(5.0, 5.0, -4.0, 300.0),
+            rapid(5.0, 5.0, 2.0),
+            feed(5.0, 5.0, -1.0, 300.0),
             rapid(5.0, 5.0, 3.0),
-            rapid(5.0, 5.0, -3.0),
+            rapid(5.0, 5.0, 0.0),
+            feed(5.0, 5.0, -3.0, 300.0),
+            rapid(5.0, 5.0, 3.0),
+            rapid(5.0, 5.0, -2.0),
             feed(5.0, 5.0, -5.0, 300.0),
             rapid(5.0, 5.0, 3.0),
         ],
     );
+}
+
+#[test]
+fn peck_with_a_low_r_plane_has_no_air_pecks() {
+    // Clearance 10, R 0.5, peck 2, target −3: rapid down to R, pecks to −1.5 and −3 (back down to
+    // −0.5, 1 above the first peck, before the second).
+    let c = CommonSettings {
+        clearance_plane: 10.0,
+        ..settings(3.0, -3.0)
+    };
+    let d = DrillSettings {
+        retract_height: 0.5,
+        peck_distance: 2.0,
+        ..method(DrillMethod::Peck)
+    };
+    let tp = drill(&[p(0.0, 0.0)], &c, &d);
+    assert_moves(
+        &tp.moves,
+        &[
+            rapid(0.0, 0.0, 10.0),
+            rapid(0.0, 0.0, 0.5),
+            feed(0.0, 0.0, -1.5, 300.0),
+            rapid(0.0, 0.0, 0.5),
+            rapid(0.0, 0.0, -0.5),
+            feed(0.0, 0.0, -3.0, 300.0),
+            rapid(0.0, 0.0, 10.0),
+        ],
+    );
+}
+
+#[test]
+fn standard_and_peck_holes_are_canned_cycles_spiral_is_not() {
+    let holes = [p(0.0, 0.0), p(10.0, 0.0)];
+    let c = settings(3.0, -5.0);
+    for (dm, kind) in [
+        (DrillMethod::Standard, CycleKind::Standard),
+        (DrillMethod::Peck, CycleKind::Peck),
+    ] {
+        let tp = drill(&holes, &c, &method(dm));
+        assert_eq!(tp.cycles.len(), 2);
+        let cy = tp.cycles[0];
+        assert_eq!(cy.kind, kind);
+        assert_eq!(
+            (cy.x, cy.y, cy.r, cy.z, cy.feed),
+            (0.0, 0.0, 3.0, -5.0, 300.0)
+        );
+        assert_eq!(cy.q, if kind == CycleKind::Peck { 1.0 } else { 0.0 });
+        // The moves are exactly the cycles' moves, one after the other.
+        let made: Vec<Move> = tp
+            .cycles
+            .iter()
+            .flat_map(|cy| cycle_moves(cy, c.clearance_plane, c.fast_plunge_height))
+            .collect();
+        assert_eq!(made, tp.moves);
+    }
+    let spiral = drill(
+        &holes,
+        &c,
+        &DrillSettings {
+            hole_diameter: 8.0,
+            ..method(DrillMethod::Spiral)
+        },
+    );
+    assert!(spiral.cycles.is_empty());
 }
 
 #[test]

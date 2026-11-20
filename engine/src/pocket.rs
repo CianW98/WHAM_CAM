@@ -281,6 +281,7 @@ pub fn pocket_toolpath(
             stock_surface: c.stock_surface,
             target_depth: target,
         },
+        cycles: Vec::new(),
     })
 }
 
