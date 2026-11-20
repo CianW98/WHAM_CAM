@@ -600,7 +600,8 @@ Principles:
   arc's start); a helix (e.g. spiral drilling) is an arc with a `Z` end.
 - **Drilling** (Standard and Peck): canned cycles, `G98 G81` (Standard) and `G98 G83` (Peck, `Q`
   = peck distance), with `R` = retract height, `Z` = target depth and `F` = plunge feed rate,
-  then `G80`. `G98` returns to the clearance plane between holes, as in the preview. Spiral
+  then `G80`. The cycle is modal: only the first hole's line names it (`G98 G81 X34 Y22 Z-12 R3
+  F300`); each further hole is just the coordinates that change (`Y8`), until `G80`. `G98` returns to the clearance plane between holes, as in the preview. Spiral
   drilling is written out (there is no cycle for it). The engine keeps each hole as a cycle
   (position, R, depth, peck, feed) and makes the previewed moves from it with one shared function,
   so a later post-processor can write the moves out in full for controllers without cycles.

@@ -211,17 +211,20 @@ impl Writer<'_> {
         }
     }
 
-    /// One drilling cycle line (`G98 G81/G83 …` for the first of a block, then only what changes).
+    /// One drilling cycle line: `G98 G81/G83 X Y Z R (Q) F` for the first hole of a block, then
+    /// only the words that change (e.g. `Y8`), as the cycle stays in force until `G80`.
     fn write_cycle(&mut self, c: &DrillCycle, first: bool, last: Option<&DrillCycle>) {
         let code = match c.kind {
             CycleKind::Standard => "G81",
             CycleKind::Peck => "G83",
         };
-        let mut words = vec![if first {
-            format!("G98 {code}")
+        // The cycle is modal: only its first line names it; later holes are just their
+        // coordinates (and anything else that changes) until G80.
+        let mut words = if first {
+            vec![format!("G98 {code}")]
         } else {
-            code.to_string()
-        }];
+            Vec::new()
+        };
         let x = self.n(c.x);
         let y = self.n(c.y);
         if first || self.x.as_deref() != Some(x.as_str()) {

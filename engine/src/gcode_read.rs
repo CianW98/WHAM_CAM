@@ -144,6 +144,19 @@ fn read(lines: &[String], back_off: impl Fn(usize) -> f64) -> Result<Vec<Event>,
                 _ => return err(&format!("unexpected code G{g}.")),
             }
         }
+        // A canned cycle stays in force until G80: a line of only coordinates drills the next
+        // hole with it.
+        if motion.is_none()
+            && let Some((c, _)) = s.cycle
+            && words
+                .iter()
+                .any(|(l, _)| matches!(l, 'X' | 'Y' | 'Z' | 'R' | 'Q'))
+        {
+            motion = Some(match c.kind {
+                CycleKind::Standard => 81,
+                CycleKind::Peck => 83,
+            });
+        }
         if let Some(g) = motion {
             if !(s.mm && s.absolute && s.xy_plane) {
                 return err("a move before G21 G90 G17 (mm, absolute, XY plane).");

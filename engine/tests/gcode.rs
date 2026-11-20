@@ -142,13 +142,7 @@ fn drilling_uses_g81_like_the_reference() {
     let start = l.iter().position(|x| x.starts_with("G98")).unwrap();
     assert_eq!(
         &l[start..start + 5],
-        [
-            "G98 G81 X34 Y22 Z-12 R3 F300",
-            "G81 Y8",
-            "G81 X53",
-            "G81 Y22",
-            "G80"
-        ]
+        ["G98 G81 X34 Y22 Z-12 R3 F300", "Y8", "X53", "Y22", "G80"]
     );
 }
 
@@ -386,4 +380,28 @@ fn a_changed_line_is_caught() {
     assert!(!check_program(&prog, &job, 3).is_empty());
     // A code we never write.
     assert!(!try_change("G21 G90 G17", "G20 G90 G17").is_empty());
+}
+
+#[test]
+fn later_holes_follow_the_modal_cycle_until_g80() {
+    let mut p = project();
+    let shape = p
+        .add_shape(
+            "Default",
+            Shape::Points {
+                points: vec![Point::new(0.0, 0.0), Point::new(10.0, 0.0)],
+            },
+        )
+        .unwrap();
+    let op = p.add_drill(&[shape]).unwrap();
+    set_depth(&mut p, op, -3.0, |_| {});
+    p.generate(&[]);
+    let prog = p.gcode(DATE).unwrap();
+    let i = prog
+        .lines
+        .iter()
+        .position(|l| l.starts_with("G98 G81"))
+        .unwrap();
+    assert_eq!(prog.lines[i + 1], "X10", "no G81 on the second hole");
+    assert_eq!(prog.lines[i + 2], "G80");
 }
