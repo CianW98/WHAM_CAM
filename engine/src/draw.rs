@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::dimension;
 use crate::document::Document;
 use crate::geometry::{
     Point, Polyline, Shape, Vertex, angle_deg, arc_sweep_deg, bulge_arc, cross, dot, mid,
@@ -32,14 +31,11 @@ pub enum DrawTool {
     Polyline,
     /// Any number of points, making one point list.
     Points,
-    /// Aligned dimension: two points, then where the dimension line sits.
-    DimAligned,
-    /// Radius dimension: click an arc or circle, then where the value goes.
-    DimRadius,
-    /// Diameter dimension: click an arc or circle, then where the value goes.
-    DimDiameter,
-    /// Angle dimension: click two lines, then inside the angle to measure.
-    DimAngle,
+    /// A dimension, its kind worked out from what is clicked (see [`crate::dimension`]): a
+    /// circle → diameter, an arc → radius, two points → aligned, a line then another line →
+    /// angle (or the distance between them if parallel), a line then elsewhere → its length.
+    /// Then a last click places it.
+    Dimension,
 }
 
 impl DrawTool {
@@ -47,37 +43,27 @@ impl DrawTool {
     pub fn clicks_needed(self) -> Option<usize> {
         match self {
             DrawTool::Line | DrawTool::Circle | DrawTool::Rectangle => Some(2),
-            DrawTool::DimRadius | DrawTool::DimDiameter => Some(2),
-            DrawTool::Arc | DrawTool::DimAligned | DrawTool::DimAngle => Some(3),
-            DrawTool::Polyline | DrawTool::Points => None,
+            DrawTool::Arc => Some(3),
+            // The engine says when each click finishes (see `Project::dimension_click`).
+            DrawTool::Polyline | DrawTool::Points | DrawTool::Dimension => None,
         }
-    }
-
-    /// What the click at step `step` (0 = first) must land on: an existing circle/arc or line
-    /// (picked, not snapped), or `None` for an ordinary snapped point.
-    pub fn pick_at(self, step: usize) -> Option<PickKind> {
-        match (self, step) {
-            (DrawTool::DimRadius | DrawTool::DimDiameter, 0) => Some(PickKind::Circle),
-            (DrawTool::DimAngle, 0 | 1) => Some(PickKind::Line),
-            _ => None,
-        }
-    }
-
-    pub fn is_dimension(self) -> bool {
-        matches!(
-            self,
-            DrawTool::DimAligned | DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle
-        )
     }
 }
 
-/// What a dimension click must pick.
+/// What a dimension click picked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PickKind {
     /// A circle, an arc, or an arc segment of a polyline.
     Circle,
     /// A line, a straight segment of a polyline, or a side of a rectangle.
     Line,
+}
+
+/// An object picked by a dimension click (its click point is in the draft's `points`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pick {
+    pub id: u32,
+    pub kind: PickKind,
 }
 
 /// A shape being drawn: the points clicked so far.
@@ -93,10 +79,9 @@ pub struct Draft {
     /// tangent arc.
     #[serde(default)]
     pub arc_next: bool,
-    /// Dimensions only: the ids of the objects picked so far (circle/arc, or lines), in click
-    /// order. Their click points are in `points`.
+    /// Dimension only: for each click in `points`, the object it picked, or `None` for a point.
     #[serde(default)]
-    pub picks: Vec<u32>,
+    pub picks: Vec<Option<Pick>>,
 }
 
 /// What a point snapped to.
@@ -248,13 +233,8 @@ pub fn preview(draft: &Draft, cursor: Option<Point>) -> Option<Shape> {
             (pts.len() >= 2).then(|| Shape::Polyline(polyline_from(&pts, &arcs, false)))
         }
         DrawTool::Points => Some(Shape::Points { points: pts }),
-        DrawTool::DimAligned => match pts[..] {
-            [a, b] => dimension::aligned(a, b, b).map(Shape::Dimension),
-            [a, b, at, ..] => dimension::aligned(a, b, at).map(Shape::Dimension),
-            _ => None,
-        },
-        // Radius, diameter and angle dimensions need the picked objects: see `Project::preview`.
-        DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle => None,
+        // Dimensions need the picked objects: see `Project::preview`.
+        DrawTool::Dimension => None,
     }
 }
 
@@ -432,21 +412,39 @@ pub fn snap(
     options: SnapOptions,
     extra: &[Point],
 ) -> Snap {
-    if options.objects {
-        let mut candidates = Vec::new();
-        for obj in doc.objects() {
-            snap_points(&obj.shape, &mut candidates);
-        }
-        candidates.extend(extra.iter().map(|p| (*p, SnapKind::End)));
-        let best = candidates
-            .into_iter()
-            .map(|(p, kind)| (p.distance_to(at), p, kind))
-            .filter(|(d, _, _)| *d <= tolerance)
-            .min_by(|a, b| a.0.total_cmp(&b.0));
-        if let Some((_, point, kind)) = best {
-            return Snap { point, kind };
-        }
+    if options.objects
+        && let Some(s) = object_snap(doc, at, tolerance, extra, |_| true)
+    {
+        return s;
     }
+    grid_snap(doc, at, options)
+}
+
+/// The nearest object snap point within `tolerance` of `at` whose kind `allow`s, if any.
+/// `extra` points count as end points.
+pub fn object_snap(
+    doc: &Document,
+    at: Point,
+    tolerance: f64,
+    extra: &[Point],
+    allow: impl Fn(SnapKind) -> bool,
+) -> Option<Snap> {
+    let mut candidates = Vec::new();
+    for obj in doc.objects() {
+        snap_points(&obj.shape, &mut candidates);
+    }
+    candidates.extend(extra.iter().map(|p| (*p, SnapKind::End)));
+    candidates
+        .into_iter()
+        .filter(|(_, kind)| allow(*kind))
+        .map(|(p, kind)| (p.distance_to(at), p, kind))
+        .filter(|(d, _, _)| *d <= tolerance)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, point, kind)| Snap { point, kind })
+}
+
+/// The nearest grid point (if the grid snap is on), or `at` itself.
+pub fn grid_snap(doc: &Document, at: Point, options: SnapOptions) -> Snap {
     let g = doc.grid_spacing;
     if options.grid && g > 0.0 {
         return Snap {

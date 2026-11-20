@@ -1,7 +1,7 @@
 const GROUPS: string[][] = [
   ["New", "Open", "Save", "Import"],
   ["Undo", "Redo", "Delete"],
-  ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"],
+  ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point", "Dimension"],
   ["Profile", "Pocket", "Drill"],
   ["Generate toolpaths", "Show toolpaths", "Show cut width", "Produce G-code"],
   ["Zoom to fit"],

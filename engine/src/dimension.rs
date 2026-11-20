@@ -226,6 +226,8 @@ impl Dimension {
 pub struct PickedCircle {
     pub center: Point,
     pub radius: f64,
+    /// A whole circle (dimensioned by its diameter), not an arc (by its radius).
+    pub full: bool,
     /// Distance from the click to the circle or arc itself.
     pub distance: f64,
 }
@@ -246,6 +248,7 @@ pub fn pick_circle(shape: &Shape, click: Point) -> Option<PickedCircle> {
         Shape::Circle { center, radius } => Some(PickedCircle {
             center: *center,
             radius: *radius,
+            full: true,
             distance: (click.distance_to(*center) - radius).abs(),
         }),
         Shape::Arc {
@@ -261,6 +264,7 @@ pub fn pick_circle(shape: &Shape, click: Point) -> Option<PickedCircle> {
             Some(PickedCircle {
                 center: *center,
                 radius: *radius,
+                full: false,
                 distance: distance_to_segment(click, s, e, bulge),
             })
         }
@@ -270,6 +274,7 @@ pub fn pick_circle(shape: &Shape, click: Point) -> Option<PickedCircle> {
                 Some(PickedCircle {
                     center: arc.center,
                     radius: arc.radius,
+                    full: false,
                     distance: distance_to_segment(click, a, b, bulge),
                 })
             })
@@ -335,9 +340,9 @@ pub fn aligned(from: Point, to: Point, at: Point) -> Option<Dimension> {
     })
 }
 
-/// A radius (or, with `diameter`, a diameter) dimension of `circle`, written at `at`.
-pub fn circular(circle: PickedCircle, at: Point, diameter: bool) -> Option<Dimension> {
-    let (center, radius) = (circle.center, circle.radius);
+/// A circle's diameter, or an arc's radius, written at `at`.
+pub fn circular(circle: PickedCircle, at: Point) -> Option<Dimension> {
+    let (center, radius, diameter) = (circle.center, circle.radius, circle.full);
     if radius.is_nan() || radius <= SAME_POINT {
         return None;
     }
@@ -392,6 +397,38 @@ pub fn angle(l1: PickedLine, l2: PickedLine, at: Point) -> Option<Dimension> {
         end: on_circle(vertex, radius, start + sweep),
         value: sweep.to_degrees(),
     })
+}
+
+/// The distance between two parallel lines: from where `click` (on `l1`) falls on `l1`, square
+/// across to `l2`, with its dimension line through `at`. `None` if the lines lie on top of each
+/// other.
+pub fn parallel_distance(
+    l1: PickedLine,
+    click: Point,
+    l2: PickedLine,
+    at: Point,
+) -> Option<Dimension> {
+    let foot = |l: PickedLine, p: Point| {
+        let d = sub(l.b, l.a);
+        let t = dot(sub(p, l.a), d) / dot(d, d);
+        Point::new(l.a.x + d.x * t, l.a.y + d.y * t)
+    };
+    let from = foot(l1, click);
+    aligned(from, foot(l2, from), at)
+}
+
+/// Whether the clicks so far (each a picked kind, or `None` for a point) make a whole dimension:
+/// a circle/arc then where it goes; a line then where its length goes; two lines then where the
+/// angle or distance goes; two points then where the dimension line goes.
+pub fn complete(picks: &[Option<crate::draw::PickKind>]) -> bool {
+    use crate::draw::PickKind::{Circle, Line};
+    matches!(
+        picks,
+        [Some(Circle), None]
+            | [Some(Line), None]
+            | [Some(Line), Some(Line), None]
+            | [None, None, None]
+    )
 }
 
 // ---------------------------------------------------------------------------------------------

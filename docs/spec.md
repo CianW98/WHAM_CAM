@@ -265,12 +265,19 @@ A classic CAD/CAM layout, with a toolbar:
     again to re-measure).
   - One look in v1: values in mm with 2 decimals (`50.00`, `R12.50`, `Ø25.00`, `45.00°`), text
     3.5 mm high on the drawing.
-  - **Placing** (Edit → Dimension → Aligned / Radius / Diameter / Angle; decided 2026-11-20):
-    aligned: two snapped points, then a third click sets where the dimension line sits
-    (extension lines drawn); radius / diameter: click an arc or circle (also an arc segment of a
-    polyline), then where the value goes, with a leader from the centre; angle: click two lines
-    (also straight segments of polylines or rectangle sides; extended to where they cross), then
-    click inside the angle to measure (any of the four), which also sets the arc's radius.
+  - **Placing: one smart Dimension tool** (Draw → Dimension, toolbar button, key **D**; decided
+    2026-11-20). The kind comes from what is clicked:
+    - a circle → **diameter**; an arc, or an arc segment of a polyline → **radius**;
+    - two points (ends, midpoints, centres, grid) → **aligned**;
+    - a line (also a straight segment of a polyline, or a rectangle side), then another line →
+      **angle** (lines extended to where they cross), or the **distance** between them if they
+      are parallel (square across from the first click);
+    - a line, then anywhere else → that line's **length** (aligned).
+    On the **first click**, an end or centre snap counts as a point; otherwise touching a
+    circle, arc or line picks it, even at its midpoint. After the defining clicks the dimension
+    follows the mouse, drawn faded in the layer's colour (like toolpaths during playback), and
+    the last click places it: the dimension line, the value, or which of the four angles (and
+    the arc's radius). The tool stays on for the next dimension.
   - **Transforms** (decided 2026-11-20): moving, rotating and mirroring keep the value; scaling
     multiplies a length by the factor (angles stay), so a dimension always matches its own
     drawing. Snapping ignores dimensions. Properties shows the kind and value, read-only.

@@ -17,6 +17,7 @@ import type {
   MoveKind,
   Playback,
   Point,
+  Snap,
   SnapKind,
   SnapOptions,
   ToolpathDisplay,
@@ -67,6 +68,8 @@ const TOOLPATH_COLORS: Record<MoveKind, number> = {
 };
 /** Toolpaths still to come while playing back are drawn this faint. */
 const TOOLPATH_FADED_OPACITY = 0.22;
+/** A dimension following the mouse is drawn at this opacity until placed. */
+const DIMENSION_PREVIEW_OPACITY = 0.45;
 const TOOL_COLOR = 0xf0f0f4;
 /** The shaded cutter width under the toolpath lines (opaque, so overlaps don't darken). */
 const CUT_WIDTH_COLOR = 0x35506c;
@@ -195,10 +198,12 @@ interface Props {
   onBox: (x0: number, y0: number, x1: number, y1: number, mode: BoxMode, add: boolean) => void;
   /** A point was clicked (already snapped) while placing. */
   /**
-   * A click while placing: `p` is the snapped point, `raw` the exact cursor position and
-   * `pickTolerance` the click radius in mm (for clicks that pick an object, e.g. dimensions).
+   * A click while placing: `p` is the snapped point. With the Dimension tool, `click` is the
+   * engine's answer for that click (a point or a picked object, and whether it finishes).
    */
-  onPlacePoint: (p: Point, raw: Point, pickTolerance: number) => void;
+  onPlacePoint: (p: Point, click: engine.DimensionClick | null) => void;
+  /** Colour of the layer new shapes go on (for the dimension being placed). */
+  drawColor: string;
   /** Double-click while drawing: finish a polyline or point list. */
   onFinishDraft: () => void;
   /** Right-click without dragging, at page position (x, y). */
@@ -520,13 +525,29 @@ function showPlayback(s: Scene3, pb: Playback | null, t: number) {
 }
 
 /** Draws the preview of what is being placed: dashed lines, or markers for point lists. */
-function showPreview(s: Scene3, shapes: DisplayShape[]) {
+function showPreview(s: Scene3, shapes: DisplayShape[], drawColor: string) {
   clearGroup(s.preview);
   for (const shape of shapes) {
     if (shape.label) {
-      const label = makeLabel(shape.label, COLORS.draft);
+      // A dimension following the mouse: drawn as it will be, in the layer's colour but faded
+      // (like the toolpaths during playback) until the click places it.
+      const label = makeLabel(shape.label, drawColor);
+      const fade = (m: THREE.Material) => {
+        m.transparent = true;
+        m.opacity = DIMENSION_PREVIEW_OPACITY;
+        return m;
+      };
+      fade(label.material as THREE.Material);
       label.renderOrder = 12;
       s.preview.add(label);
+      for (const path of paths(shape)) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(path.points.flatMap(([x, y]) => [x, y, 0]), 3));
+        const line = new THREE.Line(geom, fade(new THREE.LineBasicMaterial({ color: drawColor, depthTest: false })));
+        line.renderOrder = 12;
+        s.preview.add(line);
+      }
+      continue;
     }
     if (shape.markers) {
       const positions: number[] = [];
@@ -619,6 +640,7 @@ export default function Viewport({
   onPick,
   onBox,
   onPlacePoint,
+  drawColor,
   onFinishDraft,
   onContextMenu,
 }: Props) {
@@ -629,8 +651,8 @@ export default function Viewport({
   const [snapMark, setSnapMark] = useState<SnapMark | null>(null);
 
   // Latest props, so the once-only event listeners below always use the current ones.
-  const live = useRef({ onPick, onBox, onPlacePoint, onFinishDraft, onContextMenu, placing, snapOptions });
-  live.current = { onPick, onBox, onPlacePoint, onFinishDraft, onContextMenu, placing, snapOptions };
+  const live = useRef({ onPick, onBox, onPlacePoint, onFinishDraft, onContextMenu, placing, snapOptions, drawColor });
+  live.current = { onPick, onBox, onPlacePoint, onFinishDraft, onContextMenu, placing, snapOptions, drawColor };
 
   // Create the WebGL scene once.
   useEffect(() => {
@@ -739,11 +761,18 @@ export default function Viewport({
       const rect = canvas.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
-    const snapAt = (m: { x: number; y: number }) => {
+    /** Where the cursor snaps to. With the Dimension tool the engine also says whether the
+     * click would pick a circle, arc or line (then nothing snaps). */
+    const snapAt = async (m: { x: number; y: number }): Promise<Snap & { click: engine.DimensionClick | null }> => {
       const w = screenToWorld(s, m.x, m.y);
       const { placing, snapOptions } = live.current;
+      const tolerance = SNAP_RADIUS_PX * s.view.scale;
+      if (placing?.kind === "draw" && placing.draft.tool === "Dimension") {
+        const click = await engine.dimensionClick(placing.draft, w.x, w.y, tolerance, snapOptions);
+        return { point: click.point, kind: click.kind, click };
+      }
       const extra = placing?.kind === "draw" ? placing.draft.points : [];
-      return engine.snap(w.x, w.y, SNAP_RADIUS_PX * s.view.scale, snapOptions, extra);
+      return { ...(await engine.snap(w.x, w.y, tolerance, snapOptions, extra)), click: null };
     };
 
     /** What the placing looks like with the cursor at `p`, from the engine. */
@@ -784,14 +813,14 @@ export default function Viewport({
           hoverAgain = false;
           const placing = live.current.placing;
           if (!placing || !mouse || s.mode !== "2D") {
-            showPreview(s, []);
+            showPreview(s, [], live.current.drawColor);
             setSnapMark(null);
             break;
           }
           const snap = await snapAt(mouse);
           const shapes = await previewAt(placing, snap.point);
           if (hoverAgain) continue;
-          showPreview(s, live.current.placing ? shapes : []);
+          showPreview(s, live.current.placing ? shapes : [], live.current.drawColor);
           const sp = worldToScreen(s, snap.point);
           setSnapMark({ ...snap, sx: sp.x, sy: sp.y });
         } while (hoverAgain);
@@ -873,8 +902,7 @@ export default function Viewport({
         // Placing: a click (or a short drag) places the snapped point.
         enqueue(async () => {
           const snap = await snapAt(m);
-          const raw = screenToWorld(s, m.x, m.y);
-          live.current.onPlacePoint(snap.point, raw, PICK_RADIUS_PX * s.view.scale);
+          live.current.onPlacePoint(snap.point, snap.click);
         });
       } else if (leftDown.dragging) {
         const a = screenToWorld(s, leftDown.x, leftDown.y);

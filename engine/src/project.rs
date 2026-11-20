@@ -13,7 +13,7 @@ use crate::display::{
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
-use crate::draw::{self, Draft, DrawTool, PickKind, Snap, SnapOptions};
+use crate::draw::{self, Draft, DrawTool, Pick, PickKind, Snap, SnapKind, SnapOptions};
 use crate::drill;
 use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
@@ -43,6 +43,19 @@ pub struct DxfInfo {
     pub shape_count: usize,
     /// Splines and ellipses, which are converted into polylines on import.
     pub curve_count: usize,
+}
+
+/// What a Dimension tool click is (see [`Project::dimension_click`]).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DimensionClick {
+    /// Where the click counts: the snapped point, or the click itself for a pick.
+    pub point: Point,
+    /// What a point snapped to (`None` for a pick).
+    pub kind: SnapKind,
+    /// The circle, arc or line it picked, if any.
+    pub pick: Option<Pick>,
+    /// This click completes the dimension.
+    pub finishes: bool,
 }
 
 /// Result of an import, for the pop-up message.
@@ -435,77 +448,177 @@ impl Project {
 
     /// Finishes a drawn shape and adds it to a layer, as one undo step. Returns the new id.
     pub fn add_draft(&mut self, layer: &str, draft: &Draft) -> Result<u32, String> {
-        let shape = match draft.tool {
-            DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle => {
-                if Some(draft.points.len()) != draft.tool.clicks_needed() {
-                    return Err("This dimension needs more clicks.".into());
-                }
-                self.picked_dimension(draft, None).ok_or_else(|| {
-                    if draft.tool == DrawTool::DimAngle {
-                        "Those lines are parallel: there is no angle between them.".to_string()
-                    } else {
-                        "That arc or circle can't be dimensioned.".to_string()
-                    }
-                })?
+        let shape = if draft.tool == DrawTool::Dimension {
+            let kinds = Self::pick_kinds(draft);
+            if !dimension::complete(&kinds) {
+                return Err("This dimension needs more clicks.".into());
             }
-            _ => draw::finish(draft)?,
+            Shape::Dimension(self.smart_dimension(draft, None).ok_or_else(|| {
+                if kinds.len() == 3 && kinds[0].is_some() {
+                    "Those lines lie on top of each other: there is nothing to measure."
+                } else {
+                    "That can't be dimensioned."
+                }
+                .to_string()
+            })?)
+        } else {
+            draw::finish(draft)?
         };
         draw::validate(&shape)?;
         self.add_shape(layer, shape)
     }
 
-    /// The object a dimension click picks: for click `step` of `tool`, the nearest object
-    /// within `tolerance` mm of (x, y) that has what that step needs (a circle/arc, or a straight
-    /// line). `None` if the step isn't a pick or nothing suitable is near.
-    pub fn dimension_pick(
+    /// What each click of a dimension draft picked (`None` for a point).
+    fn pick_kinds(draft: &Draft) -> Vec<Option<PickKind>> {
+        (0..draft.points.len())
+            .map(|i| draft.picks.get(i).copied().flatten().map(|p| p.kind))
+            .collect()
+    }
+
+    /// What a Dimension tool click at (x, y) is, given the clicks so far (decided 2026-11-20):
+    /// - First click: an end or centre snap is a point; otherwise touching a circle, arc or line
+    ///   picks it (even at its midpoint); otherwise a grid/free point.
+    /// - After a line: touching another line picks it (angle, or distance if parallel);
+    ///   anything else is where the line's length goes.
+    /// - Otherwise: a snapped point (the second point, or where the dimension goes).
+    ///
+    /// `finishes` says whether this click completes the dimension.
+    pub fn dimension_click(
         &self,
-        tool: DrawTool,
-        step: usize,
+        draft: &Draft,
         x: f64,
         y: f64,
         tolerance: f64,
-    ) -> Option<u32> {
-        let kind = tool.pick_at(step)?;
-        let click = Point::new(x, y);
-        self.doc
-            .layers
-            .iter()
-            .flat_map(|l| &l.objects)
-            .filter_map(|o| {
-                let d = match kind {
-                    PickKind::Circle => dimension::pick_circle(&o.shape, click)?.distance,
-                    PickKind::Line => dimension::pick_line(&o.shape, click)?.distance,
-                };
-                (d <= tolerance).then_some((o.id, d))
-            })
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(id, _)| id)
+        options: SnapOptions,
+    ) -> DimensionClick {
+        let at = Point::new(x, y);
+        let kinds = Self::pick_kinds(draft);
+        let snapped = || draw::snap(&self.doc, at, tolerance, options, &[]);
+        let picked = |pick: Pick| (at, SnapKind::None, Some(pick));
+        let (point, kind, pick) = match kinds[..] {
+            [] => {
+                let point_snap = options
+                    .objects
+                    .then(|| {
+                        draw::object_snap(&self.doc, at, tolerance, &[], |k| {
+                            matches!(k, SnapKind::End | SnapKind::Centre)
+                        })
+                    })
+                    .flatten();
+                match (point_snap, self.nearest_pick(at, tolerance, None)) {
+                    (Some(s), _) => (s.point, s.kind, None),
+                    (None, Some(pick)) => picked(pick),
+                    (None, None) => {
+                        let s = draw::grid_snap(&self.doc, at, options);
+                        (s.point, s.kind, None)
+                    }
+                }
+            }
+            [Some(PickKind::Line)] => {
+                let first = draft.picks[0].map(|p| (p.id, draft.points[0]));
+                match self.nearest_pick(at, tolerance, first) {
+                    Some(pick) if pick.kind == PickKind::Line => picked(pick),
+                    _ => {
+                        let s = snapped();
+                        (s.point, s.kind, None)
+                    }
+                }
+            }
+            _ => {
+                let s = snapped();
+                (s.point, s.kind, None)
+            }
+        };
+        let mut next = kinds;
+        next.push(pick.map(|p| p.kind));
+        DimensionClick {
+            point,
+            kind,
+            pick,
+            finishes: dimension::complete(&next),
+        }
     }
 
-    /// A radius, diameter or angle dimension from a draft's picks and clicks, with `cursor`
-    /// (if any) as the last click.
-    fn picked_dimension(&self, draft: &Draft, cursor: Option<Point>) -> Option<Shape> {
-        let mut pts = draft.points.clone();
-        pts.extend(cursor);
-        let shape = |i: usize| {
-            let id = *draft.picks.get(i)?;
-            self.doc.objects().find(|o| o.id == id).map(|o| &o.shape)
+    /// The circle, arc or line nearest to `at` within `tolerance` mm. With `not_line` (the id and
+    /// click point of a line already picked), that same line segment is left out.
+    fn nearest_pick(
+        &self,
+        at: Point,
+        tolerance: f64,
+        not_line: Option<(u32, Point)>,
+    ) -> Option<Pick> {
+        let same = |id: u32, l: dimension::PickedLine| {
+            not_line.is_some_and(|(nid, click)| {
+                nid == id
+                    && self
+                        .object_shape(id)
+                        .and_then(|s| dimension::pick_line(s, click))
+                        .is_some_and(|first| first.a == l.a && first.b == l.b)
+            })
         };
-        let d = match draft.tool {
-            DrawTool::DimRadius | DrawTool::DimDiameter => {
-                let (click, at) = (*pts.first()?, *pts.get(1)?);
-                let circle = dimension::pick_circle(shape(0)?, click)?;
-                dimension::circular(circle, at, draft.tool == DrawTool::DimDiameter)?
+        let mut best: Option<(f64, Pick)> = None;
+        for o in self.doc.objects() {
+            let mut consider = |d: f64, kind: PickKind| {
+                if d <= tolerance && best.is_none_or(|b| d < b.0) {
+                    best = Some((d, Pick { id: o.id, kind }));
+                }
+            };
+            if let Some(c) = dimension::pick_circle(&o.shape, at) {
+                consider(c.distance, PickKind::Circle);
             }
-            DrawTool::DimAngle => {
-                let (c1, c2, at) = (*pts.first()?, *pts.get(1)?, *pts.get(2)?);
-                let l1 = dimension::pick_line(shape(0)?, c1)?;
-                let l2 = dimension::pick_line(shape(1)?, c2)?;
-                dimension::angle(l1, l2, at)?
+            if let Some(l) = dimension::pick_line(&o.shape, at)
+                && !same(o.id, l)
+            {
+                consider(l.distance, PickKind::Line);
             }
-            _ => return None,
+        }
+        best.map(|b| b.1)
+    }
+
+    fn object_shape(&self, id: u32) -> Option<&Shape> {
+        self.doc.objects().find(|o| o.id == id).map(|o| &o.shape)
+    }
+
+    /// The dimension a Dimension draft makes, with `cursor` (if any) as the next click: the
+    /// clicks are read as in [`Project::dimension_click`].
+    fn smart_dimension(
+        &self,
+        draft: &Draft,
+        cursor: Option<Point>,
+    ) -> Option<dimension::Dimension> {
+        let mut clicks: Vec<(Point, Option<Pick>)> = draft
+            .points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (*p, draft.picks.get(i).copied().flatten()))
+            .collect();
+        clicks.extend(cursor.map(|c| (c, None)));
+        let circle = |i: usize| {
+            let (click, pick) = clicks[i];
+            dimension::pick_circle(self.object_shape(pick?.id)?, click)
         };
-        Some(Shape::Dimension(d))
+        let line = |i: usize| {
+            let (click, pick) = clicks[i];
+            dimension::pick_line(self.object_shape(pick?.id)?, click)
+        };
+        let kinds: Vec<Option<PickKind>> = clicks.iter().map(|c| c.1.map(|p| p.kind)).collect();
+        use PickKind::{Circle, Line};
+        match kinds[..] {
+            [Some(Circle), None] => dimension::circular(circle(0)?, clicks[1].0),
+            [Some(Line), None] => {
+                let l = line(0)?;
+                dimension::aligned(l.a, l.b, clicks[1].0)
+            }
+            [Some(Line), Some(Line), None] => {
+                let (l1, l2, at) = (line(0)?, line(1)?, clicks[2].0);
+                dimension::angle(l1, l2, at)
+                    .or_else(|| dimension::parallel_distance(l1, clicks[0].0, l2, at))
+            }
+            // Second point following the cursor: the line runs straight between the points.
+            [None, None] => dimension::aligned(clicks[0].0, clicks[1].0, clicks[1].0),
+            [None, None, None] => dimension::aligned(clicks[0].0, clicks[1].0, clicks[2].0),
+            _ => None,
+        }
     }
 
     /// Replaces an object's shape (e.g. after editing values in Properties) as one undo step.
@@ -546,9 +659,7 @@ impl Project {
     /// The rubber-band preview of a shape being drawn, with the cursor as its next point.
     pub fn preview(&self, draft: &Draft, cursor: Option<Point>) -> Option<DisplayShape> {
         let shape = match draft.tool {
-            DrawTool::DimRadius | DrawTool::DimDiameter | DrawTool::DimAngle => {
-                self.picked_dimension(draft, cursor)
-            }
+            DrawTool::Dimension => self.smart_dimension(draft, cursor).map(Shape::Dimension),
             _ => draw::preview(draft, cursor),
         };
         shape.map(|shape| display_shape(0, &shape))

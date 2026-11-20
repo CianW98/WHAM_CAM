@@ -55,6 +55,7 @@ const TOOL_BUTTONS: Record<string, DrawTool> = {
   Rectangle: "Rectangle",
   Polyline: "Polyline",
   Point: "Points",
+  Dimension: "Dimension",
 };
 /** One-key shortcuts for the drawing tools (no Ctrl/Alt). */
 const TOOL_KEYS: Record<string, DrawTool> = {
@@ -64,6 +65,7 @@ const TOOL_KEYS: Record<string, DrawTool> = {
   r: "Rectangle",
   p: "Polyline",
   ".": "Points",
+  d: "Dimension",
 };
 const TOOL_KEY_LABELS: Record<string, string> = {
   Line: "L",
@@ -72,6 +74,7 @@ const TOOL_KEY_LABELS: Record<string, string> = {
   Rectangle: "R",
   Polyline: "P",
   Point: ".",
+  Dimension: "D",
 };
 
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
@@ -86,10 +89,6 @@ function drawHint(d: Draft): string {
     Arc: ["Click the start point", "Click the end point", "Click the centre"],
     Circle: ["Click the centre", "Click a point on the circle"],
     Rectangle: ["Click the first corner", "Click the opposite corner"],
-    DimAligned: ["Click the first point", "Click the second point", "Click where the dimension line goes"],
-    DimRadius: ["Click an arc or circle", "Click where the value goes"],
-    DimDiameter: ["Click an arc or circle", "Click where the value goes"],
-    DimAngle: ["Click the first line", "Click the second line", "Click inside the angle to measure"],
   };
   let hint: string;
   if (d.tool === "Polyline") {
@@ -99,6 +98,17 @@ function drawHint(d: Draft): string {
         : `Click the next point (${d.arc_next ? "arc" : "line"}: A = arc, L = line) · Enter or double-click finishes` +
           (n >= 2 ? " · click the first point to close" : "") +
           " · Backspace removes a point";
+  } else if (d.tool === "Dimension") {
+    const kinds = d.picks.map((p) => p?.kind ?? "Point").join(",");
+    hint =
+      {
+        "": "Click a circle, an arc, a line, or the first point",
+        Circle: "Click where the value goes",
+        Line: "Click another line for the angle (or distance if parallel), or where the length goes",
+        "Line,Line": "Click where the dimension goes (for an angle: inside the angle to measure)",
+        Point: "Click the second point",
+        "Point,Point": "Click where the dimension line goes",
+      }[kinds] ?? "";
   } else if (d.tool === "Points") {
     hint = "Click to add points · Enter or double-click finishes" + (n > 0 ? " · Backspace removes a point" : "");
   } else {
@@ -714,7 +724,7 @@ export default function App() {
   );
 
   const addDrawPoint = useCallback(
-    (p: Point, pick?: number) => {
+    (p: Point) => {
       const d = draftRef.current;
       if (!d) return;
       // A second click on the same spot (e.g. a double-click) adds nothing.
@@ -722,7 +732,6 @@ export default function App() {
       const next: Draft = {
         ...d,
         points: [...d.points, p],
-        picks: pick === undefined ? d.picks : [...d.picks, pick],
         arcs: d.tool === "Polyline" && d.points.length > 0 ? [...d.arcs, d.arc_next] : d.arcs,
       };
       const closes = d.tool === "Polyline" && d.points.length >= 2 && samePoint(d.points[0], p);
@@ -735,7 +744,7 @@ export default function App() {
   /** Enter or double-click: finishes a polyline or point list. */
   const finishDraft = useCallback(() => {
     const d = draftRef.current;
-    if (!d || CLICKS_NEEDED[d.tool] !== null) return;
+    if (!d || CLICKS_NEEDED[d.tool] !== null || d.tool === "Dimension") return;
     const enough = d.tool === "Polyline" ? d.points.length >= 2 : d.points.length >= 1;
     if (enough) void commitDraft(d);
   }, [commitDraft]);
@@ -918,25 +927,17 @@ export default function App() {
 
   /** A snapped click while placing: a drawing point, a move/rotate step, or a paste. */
   const placePoint = useCallback(
-    (p: Point, raw: Point, pickTolerance: number) => {
+    (p: Point, click: engine.DimensionClick | null) => {
       const d = draftRef.current;
-      if (d) {
-        // A dimension click that must land on an arc/circle or a line: ask the engine what is
-        // under the cursor (not snapped).
-        const want = engine.pickAt(d.tool, d.points.length);
-        if (!want) return addDrawPoint(p);
-        run(async () => {
-          const id = await engine.dimensionPick(d.tool, d.points.length, raw.x, raw.y, pickTolerance);
-          if (id === null) {
-            notify("info", want === "Circle" ? "Click an arc or a circle." : "Click a line.");
-            return;
-          }
-          const now = draftRef.current;
-          if (now !== d) return; // drawing changed meanwhile
-          addDrawPoint(raw, id);
-        });
+      if (d?.tool === "Dimension" && click) {
+        // The engine said what this click is (a point, or a picked circle/arc/line) and whether
+        // it completes the dimension.
+        const next: Draft = { ...d, points: [...d.points, click.point], picks: [...d.picks, click.pick] };
+        if (click.finishes) void commitDraft(next);
+        else setDraft(next);
         return;
       }
+      if (d) return addDrawPoint(p);
       const sp = specialRef.current;
       if (!sp) return;
       if (sp.kind === "move" && !sp.base) return setSpecial({ ...sp, base: p });
@@ -960,7 +961,7 @@ export default function App() {
         });
       }
     },
-    [addDrawPoint, applyTransform, notify, refresh, run, setSpecial],
+    [addDrawPoint, applyTransform, commitDraft, refresh, run, setDraft, setSpecial],
   );
 
   const toggleCutWidth = () => {
@@ -1159,7 +1160,10 @@ export default function App() {
           },
         },
       ] as MenuItem[],
-      draw: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw),
+      draw: [
+        ...["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point"].map(draw),
+        sep(draw("Dimension")),
+      ],
       transform: {
         label: "Transform",
         disabled: none,
@@ -1184,21 +1188,6 @@ export default function App() {
         { label: "Explode", disabled: none, action: () => run(explodeSelected) },
         { label: "Break at intersections", disabled: ids.length < 2, action: () => run(breakSelected) },
         { label: "Close polyline", disabled: none, action: () => run(closeSelected) },
-        sep({
-          label: "Dimension",
-          items: (
-            [
-              ["Aligned", "DimAligned"],
-              ["Radius", "DimRadius"],
-              ["Diameter", "DimDiameter"],
-              ["Angle", "DimAngle"],
-            ] as [string, DrawTool][]
-          ).map(([label, tool]) => ({
-            label,
-            checked: draft?.tool === tool,
-            action: () => setDraft(emptyDraft(tool)),
-          })),
-        }),
       ] as MenuItem[],
       select: [
         { label: "Select All", shortcut: "Ctrl+A", action: () => run(selectAll) },
@@ -1432,6 +1421,7 @@ export default function App() {
         onPick={onPick}
         onBox={onBox}
         onPlacePoint={placePoint}
+        drawColor={layers.find((l) => l.name === drawLayer)?.color ?? "#ffffff"}
         onFinishDraft={finishDraft}
         onContextMenu={(x, y) => {
           setBarMenu(null);

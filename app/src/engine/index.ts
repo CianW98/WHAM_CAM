@@ -381,10 +381,25 @@ export type DrawTool =
   | "Rectangle"
   | "Polyline"
   | "Points"
-  | "DimAligned"
-  | "DimRadius"
-  | "DimDiameter"
-  | "DimAngle";
+  /** One tool for every dimension: the kind comes from what is clicked (see `dimensionClick`). */
+  | "Dimension";
+
+/** An object picked by a dimension click. */
+export interface Pick {
+  id: number;
+  kind: "Circle" | "Line";
+}
+
+/** What a Dimension tool click is, from the engine. */
+export interface DimensionClick {
+  /** The snapped point, or the click itself for a pick. */
+  point: Point;
+  /** What a point snapped to ("None" for a pick). */
+  kind: SnapKind;
+  pick: Pick | null;
+  /** This click completes the dimension. */
+  finishes: boolean;
+}
 
 /** How many clicks finish each tool's shape; null = finished with Enter (polyline, points). */
 export const CLICKS_NEEDED: Record<DrawTool, number | null> = {
@@ -394,20 +409,9 @@ export const CLICKS_NEEDED: Record<DrawTool, number | null> = {
   Arc: 3,
   Polyline: null,
   Points: null,
-  DimAligned: 3,
-  DimRadius: 2,
-  DimDiameter: 2,
-  DimAngle: 3,
+  Dimension: null, // the engine says when it is complete
 };
 
-/** Dimension clicks that must land on an object rather than a snapped point (as the engine's
- * `DrawTool::pick_at`): radius/diameter click 0 picks an arc or circle, angle clicks 0 and 1
- * pick lines. */
-export function pickAt(tool: DrawTool, step: number): "Circle" | "Line" | null {
-  if ((tool === "DimRadius" || tool === "DimDiameter") && step === 0) return "Circle";
-  if (tool === "DimAngle" && step <= 1) return "Line";
-  return null;
-}
 
 /** A shape being drawn: the points clicked so far. */
 export interface Draft {
@@ -417,8 +421,8 @@ export interface Draft {
   arcs: boolean[];
   /** Polyline: the next segment (to the cursor) is a tangent arc. */
   arc_next: boolean;
-  /** Dimensions: ids of the objects picked so far (their click points are in `points`). */
-  picks: number[];
+  /** Dimension: for each click in `points`, the object it picked, or null for a point. */
+  picks: (Pick | null)[];
 }
 
 export type SnapKind = "None" | "Grid" | "End" | "Mid" | "Centre";
@@ -735,17 +739,17 @@ export function snap(x: number, y: number, tolerance: number, options: SnapOptio
 }
 
 /**
- * For a dimension click that must land on an object (an arc/circle, or a line): the object
- * picked near (x, y) for click `step` of `tool`, or null.
+ * What a Dimension tool click at (x, y) would be, given the clicks so far: a snapped point or a
+ * picked circle/arc/line, and whether it completes the dimension. Also used while hovering.
  */
-export function dimensionPick(
-  tool: DrawTool,
-  step: number,
+export function dimensionClick(
+  draft: Draft,
   x: number,
   y: number,
   tolerance: number,
-): Promise<number | null> {
-  return invoke<number | null>("dimension_pick", { tool, step, x, y, tolerance });
+  options: SnapOptions,
+): Promise<DimensionClick> {
+  return invoke<DimensionClick>("dimension_click", { draft, x, y, tolerance, options });
 }
 
 /** The rubber-band preview of a shape being drawn, with the cursor as its next point. */

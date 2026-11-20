@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
-    BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DrawTool,
+    BoxMode, BreakReport, CutWidthStep, DimensionClick, DisplayData, DisplayShape, Document, Draft,
     DxfInfo, GenerateReport, ImportReport, JoinReport, Machines, Operation, OperationState,
     PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, Tool,
     ToolDrawing, ToolSetting, Tooling, ToolpathDisplay, TransformOp,
@@ -578,21 +578,22 @@ fn preview_shape(
     state.0.lock().unwrap().preview(&draft, cursor)
 }
 
-/// For a dimension click that must pick an object: the object picked at (x, y), if any.
+/// What a Dimension tool click at (x, y) is: a snapped point or a picked object, and whether it
+/// completes the dimension.
 #[tauri::command]
-fn dimension_pick(
-    tool: DrawTool,
-    step: usize,
+fn dimension_click(
+    draft: Draft,
     x: f64,
     y: f64,
     tolerance: f64,
+    options: SnapOptions,
     state: State<AppState>,
-) -> Option<u32> {
+) -> DimensionClick {
     state
         .0
         .lock()
         .unwrap()
-        .dimension_pick(tool, step, x, y, tolerance)
+        .dimension_click(&draft, x, y, tolerance, options)
 }
 
 #[tauri::command]
@@ -863,7 +864,7 @@ pub fn run() {
             pick_box,
             snap,
             preview_shape,
-            dimension_pick,
+            dimension_click,
             add_draft,
             set_shape,
             set_grid_spacing,
