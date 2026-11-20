@@ -250,18 +250,11 @@ Done:
 - Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
   Machining tree, tool number checks, real 3D cutter). No G-code yet.
 
-Next: **G-code output and the generic post-processor, built together** (spec 5.7, 7; all G-code
-questions answered 2026-11-20):
-- The engine turns each toolpath (already safety-checked) into G-code through the generic
-  post-processor (spec 7: one `.nc` file per job, `T# M6`, `I J` arcs, `G81`/`G83` drilling with
-  each hole kept as a cycle, standard start/end block, 3 decimals, WHAM_CAM version in the header).
-- A machine list in the Setup tab (generic post only for now); a project picks its machine in
-  Machining properties.
-- The safety checker also reads the G-code text back (following canned cycles); known-good
-  outputs go in `tests/reference/` (this computer only) and are compared before each release.
-- File saving in the app layer (Machining menu / toolbar → Produce G-code).
-- This is toolpath/G-code logic: the user checks output in CAMotics or NC Viewer and with an air
-  cut before cutting material. (Their own controller doesn't run `G81`/`G83`; that waits for a
-  machine-specific post.)
+- G-code output (spec 5.7, 7), on the `gcode-output` branch (pushed, not merged, 2026-11-20):
+  generic post-processor (`post.rs`), read-back check (`gcode_read.rs`), drill holes as G81/G83
+  cycles (Peck now follows G83), machine list in the Setup tab, Produce G-code.
+
+Next: merge `gcode-output` into `main` when the user is happy, then release 0.5.0 (notes need a
+"G-code output changed" section: G-code is new and Peck toolpaths changed).
 
 Later in v1: dimensions, DXF text and dimensions, and SVG import (spec 5.1, 5.3).
