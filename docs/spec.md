@@ -171,7 +171,17 @@ A classic CAD/CAM layout, with a toolbar:
 - **Units**: if a DXF says it is in inches (or other non-mm units), import asks whether to
   convert to mm or treat the numbers as mm.
 - Import adds to the current drawing as one undo step.
-- **SVG**: path, line, polyline, polygon, rect, circle, ellipse. Curves are converted to arcs/lines.
+- **SVG** (decided 2026-11-20): File → Import DXF or SVG… (one Import for both, by extension).
+  Read with roxmltree + svgtypes, only in `engine/src/svg.rs`. path, line, polyline, polygon,
+  rect, circle, ellipse, with their transforms. Shapes stay exact where they can: circle →
+  Circle, rect → PolyRectangle (rounded corners → true arcs), circular arcs in paths → arcs;
+  Bézier curves, ellipses and elliptical arcs become arcs and lines with the same tolerance dialog
+  as DXF curves. Size: exact when the file gives it (e.g. `width="210mm"` with a viewBox);
+  otherwise import asks how big one unit is (px at 96 per inch, pt at 72 per inch, or 1 mm).
+  Flipped the right way up with the page's bottom-left corner at 0,0. Inkscape layers become
+  layers; anything else goes on a layer named after the file; hidden layers are left out. Only
+  outlines: fills and strokes are ignored; text, images, `<use>` copies and nested `<svg>` are
+  skipped and listed.
 - Imported objects go onto layers (DXF layer names are kept).
 
 ### 5.2 Drawing

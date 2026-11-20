@@ -413,6 +413,73 @@ pub fn distance_to_segment(p: Point, s: Point, e: Point, bulge: f64) -> f64 {
     p.distance_to(Point::new(s.x + d.x * f, s.y + d.y * f))
 }
 
+/// An elliptical arc by its centre: radii `rx`, `ry`, x axis turned `phi` radians, from angle
+/// `start` through `sweep` radians (positive = towards +y from +x), in the ellipse's own frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EllipticalArc {
+    pub center: Point,
+    pub rx: f64,
+    pub ry: f64,
+    pub phi: f64,
+    pub start: f64,
+    pub sweep: f64,
+}
+
+/// An SVG arc (`A rx ry rotation large-arc sweep x y`) from `from` to `to`, converted to its
+/// centre, angles and (corrected) radii, by the SVG specification's formulas (SVG 1.1 F.6.5–6).
+/// `None` when it is a straight line instead (a radius of 0) or `from` and `to` are the same
+/// point (SVG then draws nothing).
+pub fn svg_arc_center(
+    from: Point,
+    to: Point,
+    rx: f64,
+    ry: f64,
+    rotation_deg: f64,
+    large_arc: bool,
+    sweep: bool,
+) -> Option<EllipticalArc> {
+    let (mut rx, mut ry) = (rx.abs(), ry.abs());
+    if rx == 0.0 || ry == 0.0 || from.distance_to(to) == 0.0 {
+        return None;
+    }
+    let phi = rotation_deg.to_radians();
+    let (sp, cp) = phi.sin_cos();
+    let (hx, hy) = ((from.x - to.x) / 2.0, (from.y - to.y) / 2.0);
+    let x1 = cp * hx + sp * hy;
+    let y1 = -sp * hx + cp * hy;
+    // Radii too small to reach: scale them up just enough.
+    let lambda = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry);
+    if lambda > 1.0 {
+        rx *= lambda.sqrt();
+        ry *= lambda.sqrt();
+    }
+    let num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
+    let den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+    let sign = if large_arc != sweep { 1.0 } else { -1.0 };
+    let coef = sign * (num / den).max(0.0).sqrt();
+    let cx1 = coef * rx * y1 / ry;
+    let cy1 = -coef * ry * x1 / rx;
+    let center = Point::new(
+        cp * cx1 - sp * cy1 + (from.x + to.x) / 2.0,
+        sp * cx1 + cp * cy1 + (from.y + to.y) / 2.0,
+    );
+    let angle = |ux: f64, uy: f64| uy.atan2(ux);
+    let start = angle((x1 - cx1) / rx, (y1 - cy1) / ry);
+    let end = angle((-x1 - cx1) / rx, (-y1 - cy1) / ry);
+    let mut d = (end - start).rem_euclid(TAU);
+    if !sweep && d > 0.0 {
+        d -= TAU;
+    }
+    Some(EllipticalArc {
+        center,
+        rx,
+        ry,
+        phi,
+        start,
+        sweep: d,
+    })
+}
+
 /// The bulge of an arc segment that sweeps `sweep` radians (positive = anticlockwise).
 pub fn bulge_from_sweep(sweep: f64) -> f64 {
     (sweep / 4.0).tan()

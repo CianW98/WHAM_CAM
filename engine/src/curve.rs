@@ -10,8 +10,8 @@
 use std::f64::consts::{FRAC_PI_2, TAU};
 
 use crate::geometry::{
-    Point, Polyline, Transform, Vertex, bulge_from_sweep, cross, distance_to_segment, dot, mid,
-    point_along_segment, sub,
+    EllipticalArc, Point, Polyline, Transform, Vertex, bulge_from_sweep, cross,
+    distance_to_segment, dot, mid, point_along_segment, sub,
 };
 
 /// A NURBS curve as stored in a DXF SPLINE.
@@ -297,6 +297,66 @@ impl Curve {
                         <= tolerance
                 })
             })
+    }
+}
+
+/// A cubic Bézier curve as a spline (exact).
+pub fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point) -> Spline {
+    Spline {
+        degree: 3,
+        control_points: vec![p0, p1, p2, p3],
+        knots: vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+        weights: Vec::new(),
+        closed: false,
+    }
+}
+
+/// A quadratic Bézier curve as a spline (exact).
+pub fn quadratic_bezier(p0: Point, p1: Point, p2: Point) -> Spline {
+    Spline {
+        degree: 2,
+        control_points: vec![p0, p1, p2],
+        knots: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        weights: Vec::new(),
+        closed: false,
+    }
+}
+
+/// An elliptical arc as a rational quadratic spline (exact): pieces of at most 90°, each
+/// weighted so it lies exactly on the ellipse. Being a spline, it stays exact under any
+/// transform of its control points (e.g. an SVG skew).
+pub fn elliptical_arc(arc: &EllipticalArc) -> Spline {
+    let n = (arc.sweep.abs() / FRAC_PI_2 - 1e-9).ceil().max(1.0) as usize;
+    let step = arc.sweep / n as f64;
+    let (sp, cp) = arc.phi.sin_cos();
+    // From the unit circle to the ellipse.
+    let place = |x: f64, y: f64| {
+        let (ex, ey) = (arc.rx * x, arc.ry * y);
+        Point::new(
+            arc.center.x + cp * ex - sp * ey,
+            arc.center.y + sp * ex + cp * ey,
+        )
+    };
+    let w = (step / 2.0).cos();
+    let mut control_points = vec![place(arc.start.cos(), arc.start.sin())];
+    let mut weights = vec![1.0];
+    let mut knots = vec![0.0; 3];
+    for i in 0..n {
+        let a = arc.start + step * i as f64;
+        let m = a + step / 2.0;
+        control_points.push(place(m.cos() / w, m.sin() / w));
+        weights.push(w);
+        control_points.push(place((a + step).cos(), (a + step).sin()));
+        weights.push(1.0);
+        let k = (i + 1) as f64;
+        knots.extend(if i + 1 < n { vec![k, k] } else { vec![k; 3] });
+    }
+    Spline {
+        degree: 2,
+        control_points,
+        knots,
+        weights,
+        closed: false,
     }
 }
 

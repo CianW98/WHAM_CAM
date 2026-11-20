@@ -670,14 +670,44 @@ export function saveProject(path: string | null): Promise<void> {
   return invoke<void>("save_project", { path });
 }
 
-export async function chooseDxfFile(): Promise<string | null> {
+export async function chooseImportFile(): Promise<string | null> {
   const path = await open({
-    title: "Import DXF",
+    title: "Import a drawing",
     multiple: false,
     directory: false,
-    filters: [{ name: "DXF drawings", extensions: ["dxf", "DXF"] }],
+    filters: [
+      { name: "DXF or SVG drawings", extensions: ["dxf", "DXF", "svg", "SVG"] },
+      { name: "DXF drawings", extensions: ["dxf", "DXF"] },
+      { name: "SVG drawings", extensions: ["svg", "SVG"] },
+    ],
   });
   return typeof path === "string" ? path : null;
+}
+
+/** What an SVG file holds, before importing it. */
+export interface SvgInfo {
+  /** The file gives its real size; otherwise import asks how big one unit is. */
+  size_known: boolean;
+  shape_count: number;
+  /** Curves that will be converted into arcs and lines. */
+  curve_count: number;
+}
+
+export function svgInfo(path: string): Promise<SvgInfo> {
+  return invoke<SvgInfo>("svg_info", { path });
+}
+
+/**
+ * Imports an SVG. `mmPerUnit` is used only if the file doesn't give its real size; curves become
+ * arcs and lines within `curveTolerance` mm; shapes outside Inkscape layers go on `defaultLayer`.
+ */
+export function importSvg(
+  path: string,
+  mmPerUnit: number,
+  curveTolerance: number,
+  defaultLayer: string,
+): Promise<ImportReport> {
+  return invoke<ImportReport>("import_svg", { path, mmPerUnit, curveTolerance, defaultLayer });
 }
 
 export function dxfInfo(path: string): Promise<DxfInfo> {

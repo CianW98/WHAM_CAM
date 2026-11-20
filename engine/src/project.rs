@@ -29,6 +29,7 @@ use crate::post::{Header, JobOperation, PostFormat, Program, write_program};
 use crate::profile;
 use crate::project_file;
 use crate::safety;
+use crate::svg::{SvgError, SvgOptions, read_svg};
 use crate::tooling::{PickedTool, Tool};
 use crate::toolpath::Toolpath;
 use crate::transform::{TransformOp, bounds_of, centre, transform_shapes};
@@ -42,6 +43,16 @@ pub struct DxfInfo {
     pub units: DxfUnits,
     pub shape_count: usize,
     /// Splines and ellipses, which are converted into polylines on import.
+    pub curve_count: usize,
+}
+
+/// What an SVG file holds, before importing it (for the questions import asks).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SvgInfo {
+    /// Whether the file gives its real size (otherwise import asks how big one unit is).
+    pub size_known: bool,
+    pub shape_count: usize,
+    /// Curves that will be converted into arcs and lines.
     pub curve_count: usize,
 }
 
@@ -340,9 +351,62 @@ impl Project {
             scale,
             curves_converted: drawing.curves,
         };
+        self.add_imported(drawing.shapes, &mut report);
+        Ok(report)
+    }
+
+    /// Reads an SVG without importing it.
+    pub fn svg_info(text: &str) -> Result<SvgInfo, SvgError> {
+        let drawing = read_svg(
+            text,
+            &SvgOptions {
+                mm_per_unit: 1.0,
+                curve_tolerance: 0.01,
+                default_layer: String::new(),
+            },
+        )?;
+        Ok(SvgInfo {
+            size_known: drawing.size_known,
+            shape_count: drawing.shapes.len(),
+            curve_count: drawing.curves,
+        })
+    }
+
+    /// Imports an SVG into the current document as one undo step. `mm_per_unit` is used only if
+    /// the file doesn't give its real size; curves become arcs and lines within
+    /// `curve_tolerance` mm; shapes outside Inkscape layers go on `default_layer`.
+    pub fn import_svg(
+        &mut self,
+        text: &str,
+        mm_per_unit: f64,
+        curve_tolerance: f64,
+        default_layer: &str,
+    ) -> Result<ImportReport, SvgError> {
+        let layer = default_layer.trim();
+        let drawing = read_svg(
+            text,
+            &SvgOptions {
+                mm_per_unit,
+                curve_tolerance,
+                default_layer: if layer.is_empty() { "SVG" } else { layer }.to_string(),
+            },
+        )?;
+        let mut report = ImportReport {
+            objects_added: 0,
+            layers: Vec::new(),
+            skipped: drawing.skipped,
+            scale: drawing.mm_per_unit,
+            curves_converted: drawing.curves,
+        };
+        self.add_imported(drawing.shapes, &mut report);
+        Ok(report)
+    }
+
+    /// Adds imported shapes to their layers as one undo step, counting them in `report`.
+    fn add_imported(&mut self, shapes: Vec<(String, Shape)>, report: &mut ImportReport) {
         self.edit(|doc| {
             let first_id = doc.max_id() + 1;
-            for (id, (layer, shape)) in (first_id..).zip(drawing.shapes) {
+            for (id, (layer, shape)) in (first_id..).zip(shapes) {
                 let li = doc.layer_index(&layer);
                 doc.layers[li].objects.push(DrawingObject { id, shape });
                 report.objects_added += 1;
@@ -351,7 +415,6 @@ impl Project {
                 }
             }
         });
-        Ok(report)
     }
 
     /// Deletes objects by id as one undo step. Returns how many were deleted.

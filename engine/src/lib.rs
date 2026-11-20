@@ -24,6 +24,7 @@ pub mod profile;
 pub mod project;
 pub mod project_file;
 pub mod safety;
+pub mod svg;
 pub mod tooling;
 pub mod toolpath;
 pub mod transform;
@@ -41,8 +42,9 @@ pub use machine::{Machine, Machines, PostProcessor};
 pub use operation::Operation;
 pub use project::{
     BoxMode, BreakReport, DimensionClick, DxfInfo, GenerateReport, ImportReport, JoinReport,
-    NO_TOOL, OperationState, Project, ToolSetting,
+    NO_TOOL, OperationState, Project, SvgInfo, ToolSetting,
 };
+pub use svg::{SvgError, read_svg};
 pub use tooling::{
     EndType, FluteType, LibraryTool, PickedTool, Tool, ToolDrawing, ToolLibrary, Tooling,
 };

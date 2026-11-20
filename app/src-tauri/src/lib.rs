@@ -10,7 +10,7 @@ use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DimensionClick, DisplayData, DisplayShape, Document, Draft,
     DxfInfo, GenerateReport, ImportReport, JoinReport, Machines, Operation, OperationState,
-    PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, Tool,
+    PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, SvgInfo, Tool,
     ToolDrawing, ToolSetting, Tooling, ToolpathDisplay, TransformOp,
 };
 
@@ -493,6 +493,28 @@ fn dxf_info(path: String) -> Result<DxfInfo, String> {
 }
 
 #[tauri::command]
+fn svg_info(path: String) -> Result<SvgInfo, String> {
+    Project::svg_info(&read_text(&path)?).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_svg(
+    path: String,
+    mm_per_unit: f64,
+    curve_tolerance: f64,
+    default_layer: String,
+    state: State<AppState>,
+) -> Result<ImportReport, String> {
+    let text = read_text(&path)?;
+    state
+        .0
+        .lock()
+        .unwrap()
+        .import_svg(&text, mm_per_unit, curve_tolerance, &default_layer)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn import_dxf(
     path: String,
     scale: f64,
@@ -853,6 +875,8 @@ pub fn run() {
             save_project,
             dxf_info,
             import_dxf,
+            svg_info,
+            import_svg,
             delete_objects,
             add_layer,
             delete_layer,

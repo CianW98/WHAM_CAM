@@ -248,42 +248,103 @@ export default function App() {
     engine.settingsProblems().then((ps) => ps.forEach((p) => notify("error", p)), () => {});
   }, [refresh, notify]);
 
-  const importDxf = useCallback(async () => {
-    const path = await engine.chooseDxfFile();
-    if (!path) return;
-    const info = await engine.dxfInfo(path);
-    let scale = 1;
-    const mmPerUnit = info.units.mm_per_unit;
-    if (mmPerUnit !== null && mmPerUnit !== 1) {
-      const convert = `Convert ${info.units.name} to mm (×${mmPerUnit})`;
-      const answer = await ask({
-        title: "DXF units",
-        message: `This DXF says it was drawn in ${info.units.name}. WHAM_CAM works in millimetres.`,
-        options: [convert, "Treat the numbers as mm"],
-      });
-      if (answer === null) return;
-      if (answer === convert) scale = mmPerUnit;
-    }
-    // Splines and ellipses become arcs and lines: ask how closely, only when there are some.
-    const last = lastValues.current;
-    if (info.curve_count > 0) {
+  /**
+   * Asks how closely curves (splines, ellipses, Béziers) should become arcs and lines, when the
+   * file has any. Resolves the tolerance in mm (remembered), or null if cancelled.
+   */
+  const askCurveTolerance = useCallback(
+    async (count: number, what: string): Promise<number | null> => {
+      const last = lastValues.current;
+      if (count === 0) return last.curveTolerance;
       const v = await askNumbers({
-        title: `Convert ${info.curve_count} curve${info.curve_count === 1 ? "" : "s"} (splines and ellipses) into arcs and lines`,
+        title: `Convert ${count} curve${count === 1 ? "" : "s"} (${what}) into arcs and lines`,
         fields: [{ label: "Stay within (mm) of the curve", value: last.curveTolerance }],
       });
-      if (!v) return;
+      if (!v) return null;
       if (!(v[0] > 0)) {
         notify("error", "The tolerance must be more than 0.");
-        return;
+        return null;
       }
       last.curveTolerance = v[0];
-    }
-    const report = await engine.importDxf(path, scale, last.curveTolerance);
-    await refresh();
-    setSelection(NOTHING);
-    setFitRequest((n) => n + 1);
-    notify("info", importMessage(report, scale !== 1 ? info.units.name : null));
-  }, [ask, askNumbers, notify, refresh]);
+      return v[0];
+    },
+    [askNumbers, notify],
+  );
+
+  /** After an import: show it all, select nothing, and say what came in. */
+  const afterImport = useCallback(
+    async (message: string) => {
+      await refresh();
+      setSelection(NOTHING);
+      setFitRequest((n) => n + 1);
+      notify("info", message);
+    },
+    [notify, refresh],
+  );
+
+  const importDxf = useCallback(
+    async (path: string) => {
+      const info = await engine.dxfInfo(path);
+      let scale = 1;
+      const mmPerUnit = info.units.mm_per_unit;
+      if (mmPerUnit !== null && mmPerUnit !== 1) {
+        const convert = `Convert ${info.units.name} to mm (×${mmPerUnit})`;
+        const answer = await ask({
+          title: "DXF units",
+          message: `This DXF says it was drawn in ${info.units.name}. WHAM_CAM works in millimetres.`,
+          options: [convert, "Treat the numbers as mm"],
+        });
+        if (answer === null) return;
+        if (answer === convert) scale = mmPerUnit;
+      }
+      // Splines and ellipses become arcs and lines: ask how closely, only when there are some.
+      const tolerance = await askCurveTolerance(info.curve_count, "splines and ellipses");
+      if (tolerance === null) return;
+      const report = await engine.importDxf(path, scale, tolerance);
+      await afterImport(importMessage(report, scale !== 1 ? info.units.name : null));
+    },
+    [ask, askCurveTolerance, afterImport],
+  );
+
+  const importSvg = useCallback(
+    async (path: string) => {
+      const info = await engine.svgInfo(path);
+      // Files that don't give their real size: ask how big one SVG unit is.
+      let mmPerUnit = 1;
+      let unitsName: string | null = null;
+      if (!info.size_known) {
+        const choices: [string, number, string][] = [
+          ["96 per inch: px, as Inkscape and browsers (1 unit = 0.2646 mm)", 25.4 / 96, "px (96 per inch)"],
+          ["72 per inch: pt, as Illustrator (1 unit = 0.3528 mm)", 25.4 / 72, "pt (72 per inch)"],
+          ["1 unit = 1 mm", 1, ""],
+        ];
+        const answer = await ask({
+          title: "SVG units",
+          message: "This SVG doesn't say how big it is. How large is one unit in it?",
+          options: choices.map((c) => c[0]),
+        });
+        if (answer === null) return;
+        const chosen = choices.find((c) => c[0] === answer)!;
+        mmPerUnit = chosen[1];
+        unitsName = chosen[2] || null;
+      }
+      const tolerance = await askCurveTolerance(info.curve_count, "curves and ellipses");
+      if (tolerance === null) return;
+      // Shapes outside Inkscape layers go on a layer named after the file.
+      const name = path.split(/[\\/]/).pop()!.replace(/\.svg$/i, "");
+      const report = await engine.importSvg(path, mmPerUnit, tolerance, name);
+      await afterImport(importMessage(report, unitsName));
+    },
+    [ask, askCurveTolerance, afterImport],
+  );
+
+  /** Import…: a DXF or SVG drawing, by its file extension. */
+  const importDrawing = useCallback(async () => {
+    const path = await engine.chooseImportFile();
+    if (!path) return;
+    if (/\.svg$/i.test(path)) await importSvg(path);
+    else await importDxf(path);
+  }, [importDxf, importSvg]);
 
   // --- Project files ---------------------------------------------------------------------------
 
@@ -993,7 +1054,7 @@ export default function App() {
       case "Save":
         return run(save);
       case "Import":
-        return run(importDxf);
+        return run(importDrawing);
       case "Undo":
         return run(() => undoRedo("undo"));
       case "Redo":
@@ -1242,7 +1303,7 @@ export default function App() {
           { label: "Open…", shortcut: "Ctrl+O", action: () => run(openProject) },
           { label: "Save", shortcut: "Ctrl+S", action: () => run(save) },
           { label: "Save As…", shortcut: "Ctrl+Shift+S", action: () => run(saveAs) },
-          c.sep({ label: "Import DXF…", action: () => run(importDxf) }),
+          c.sep({ label: "Import DXF or SVG…", action: () => run(importDrawing) }),
         ],
       },
       { label: "View", items: c.view },
