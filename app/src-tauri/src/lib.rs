@@ -493,13 +493,18 @@ fn dxf_info(path: String) -> Result<DxfInfo, String> {
 }
 
 #[tauri::command]
-fn import_dxf(path: String, scale: f64, state: State<AppState>) -> Result<ImportReport, String> {
+fn import_dxf(
+    path: String,
+    scale: f64,
+    curve_tolerance: f64,
+    state: State<AppState>,
+) -> Result<ImportReport, String> {
     let text = read_text(&path)?;
     state
         .0
         .lock()
         .unwrap()
-        .import_dxf(&text, scale)
+        .import_dxf(&text, scale, curve_tolerance)
         .map_err(|e| e.to_string())
 }
 

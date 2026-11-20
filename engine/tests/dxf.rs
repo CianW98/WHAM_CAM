@@ -1,7 +1,10 @@
 //! DXF reading tests. Each test builds a tiny DXF from code/value pairs, so the
 //! expected result is easy to check by hand.
 
-use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2};
+use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2, TAU};
+
+use wham_engine::curve::Curve;
+use wham_engine::geometry::{bulge_arc, on_circle};
 
 use wham_engine::*;
 
@@ -30,7 +33,90 @@ fn dxf(insunits: Option<i32>, blocks: &str, entities: &str) -> String {
 }
 
 fn read(text: &str) -> DxfDrawing {
-    read_dxf(text).expect("valid DXF")
+    read_dxf(text, &DxfOptions::default()).expect("valid DXF")
+}
+
+/// Points along a polyline: every vertex and 20 points along each segment (arcs followed).
+fn along(pl: &Polyline) -> Vec<Point> {
+    let n = pl.vertices.len();
+    let segs = if pl.closed { n } else { n - 1 };
+    let mut out = Vec::new();
+    for i in 0..segs {
+        let (a, b) = (pl.vertices[i], pl.vertices[(i + 1) % n]);
+        for k in 0..20 {
+            let f = k as f64 / 20.0;
+            out.push(match bulge_arc(a.point(), b.point(), a.bulge) {
+                Some(arc) => on_circle(arc.center, arc.radius, arc.start + arc.sweep * f),
+                None => Point::new(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f),
+            });
+        }
+    }
+    out.push(pl.vertices[if pl.closed { 0 } else { n - 1 }].point());
+    out
+}
+
+/// Distance from `p` to the segment from `a` to `b` with `bulge` (straight when 0).
+fn segment_distance(p: Point, a: Point, b: Point, bulge: f64) -> f64 {
+    if let Some(arc) = bulge_arc(a, b, bulge) {
+        let ang = (p.y - arc.center.y).atan2(p.x - arc.center.x);
+        let rel = (ang - arc.start).rem_euclid(TAU);
+        let along = if arc.sweep >= 0.0 { rel } else { TAU - rel };
+        if rel == 0.0 || along <= arc.sweep.abs() {
+            return (p.distance_to(arc.center) - arc.radius).abs();
+        }
+        return p.distance_to(a).min(p.distance_to(b));
+    }
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len2 = dx * dx + dy * dy;
+    let f = if len2 == 0.0 {
+        0.0
+    } else {
+        (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0)
+    };
+    p.distance_to(Point::new(a.x + dx * f, a.y + dy * f))
+}
+
+/// Checks the polyline stays within `tol` of the curve, both ways: points along the polyline
+/// against a fine sampling of the curve (joined by lines), and points of the curve against the
+/// polyline's true arcs and lines.
+fn assert_within(pl: &Polyline, curve: &Curve, tol: f64) {
+    let (u0, u1) = match curve {
+        Curve::Ellipse {
+            start_param,
+            end_param,
+            ..
+        } => (*start_param, *end_param),
+        Curve::Spline(s) => (s.knots[s.degree], s.knots[s.control_points.len()]),
+    };
+    let fine: Vec<Point> = (0..=20000)
+        .map(|i| curve.point(u0 + (u1 - u0) * i as f64 / 20000.0))
+        .collect();
+    // The fine sampling's own error (chords of the curve) is far below 1e-5 here.
+    let slack = 1e-5;
+    for p in along(pl) {
+        let d = fine
+            .windows(2)
+            .map(|w| segment_distance(p, w[0], w[1], 0.0))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            d <= tol + slack,
+            "polyline point {p:?} is {d} from the curve"
+        );
+    }
+    let n = pl.vertices.len();
+    let segs = if pl.closed { n } else { n - 1 };
+    for p in &fine {
+        let d = (0..segs)
+            .map(|i| {
+                let (a, b) = (pl.vertices[i], pl.vertices[(i + 1) % n]);
+                segment_distance(*p, a.point(), b.point(), a.bulge)
+            })
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            d <= tol + slack,
+            "curve point {p:?} is {d} from the polyline"
+        );
+    }
 }
 
 #[test]
@@ -316,17 +402,17 @@ fn reads_units_from_the_header() {
 
 #[test]
 fn bad_files_give_errors_not_crashes() {
-    assert_eq!(read_dxf(""), Err(DxfError::Empty));
+    assert_eq!(read_dxf("", &DxfOptions::default()), Err(DxfError::Empty));
     assert_eq!(
-        read_dxf("AutoCAD Binary DXF\r\n\u{1a}\0..."),
+        read_dxf("AutoCAD Binary DXF\r\n\u{1a}\0...", &DxfOptions::default()),
         Err(DxfError::Binary)
     );
     assert!(matches!(
-        read_dxf("hello\nworld\n"),
+        read_dxf("hello\nworld\n", &DxfOptions::default()),
         Err(DxfError::Malformed { line: 1, .. })
     ));
     assert!(matches!(
-        read_dxf("0\nSECTION\n2"),
+        read_dxf("0\nSECTION\n2", &DxfOptions::default()),
         Err(DxfError::Malformed { .. })
     ));
     // Windows line endings and a byte-order mark are fine.
@@ -335,7 +421,7 @@ fn bad_files_give_errors_not_crashes() {
 }
 
 #[test]
-fn rational_spline_quarter_circle_is_drawn_on_the_circle() {
+fn rational_spline_quarter_circle_becomes_arcs_on_the_circle() {
     let w = FRAC_1_SQRT_2.to_string();
     let text = dxf(
         None,
@@ -366,18 +452,27 @@ fn rational_spline_quarter_circle_is_drawn_on_the_circle() {
         ),
     );
     let d = read(&text);
-    let Shape::Spline(s) = &d.shapes[0].1 else {
-        panic!()
+    assert_eq!(d.curves, 1);
+    let Shape::Polyline(pl) = &d.shapes[0].1 else {
+        panic!("{:?}", d.shapes[0].1)
     };
-    assert_eq!(s.degree, 2);
-    assert_eq!(s.weights.len(), 3);
-    let shape = display::display_shape(1, &d.shapes[0].1);
-    assert_eq!(shape.points.first(), Some(&[1.0, 0.0]));
-    let last = shape.points.last().unwrap();
-    assert!((last[0]).abs() < EPS && (last[1] - 1.0).abs() < EPS);
-    for p in &shape.points {
+    assert!(!pl.closed);
+    let (first, last) = (pl.vertices[0], *pl.vertices.last().unwrap());
+    assert!(
+        (first.x - 1.0).abs() < EPS && first.y.abs() < EPS,
+        "{first:?}"
+    );
+    assert!(last.x.abs() < EPS && (last.y - 1.0).abs() < EPS, "{last:?}");
+    // A circle is fitted exactly by arcs: a biarc (at most 2 arcs), every point on the circle.
+    assert!(pl.vertices.len() <= 3, "{pl:?}");
+    assert!(
+        pl.vertices[..pl.vertices.len() - 1]
+            .iter()
+            .all(|v| v.bulge > 0.0)
+    );
+    for p in along(pl) {
         assert!(
-            (p[0].hypot(p[1]) - 1.0).abs() < 1e-9,
+            (p.x.hypot(p.y) - 1.0).abs() < 1e-6,
             "{p:?} is off the circle"
         );
     }
@@ -399,7 +494,7 @@ fn spline_with_only_fit_points_is_skipped() {
 }
 
 #[test]
-fn ellipse_points_lie_on_the_ellipse() {
+fn ellipse_becomes_a_closed_polyline_of_arcs_within_the_tolerance() {
     let text = dxf(
         None,
         "",
@@ -409,12 +504,22 @@ fn ellipse_points_lie_on_the_ellipse() {
         ),
     );
     let d = read(&text);
-    let shape = display::display_shape(1, &d.shapes[0].1);
-    assert!(shape.points.len() > 32);
-    for p in &shape.points {
-        let v = (p[0] / 10.0).powi(2) + (p[1] / 5.0).powi(2);
-        assert!((v - 1.0).abs() < 1e-9, "{p:?}");
-    }
+    let Shape::Polyline(pl) = &d.shapes[0].1 else {
+        panic!("{:?}", d.shapes[0].1)
+    };
+    assert!(pl.closed);
+    assert!(
+        pl.vertices.iter().all(|v| v.bulge != 0.0),
+        "arcs, not lines: {pl:?}"
+    );
+    let ellipse = Curve::Ellipse {
+        center: Point::new(0.0, 0.0),
+        major_axis: Point::new(10.0, 0.0),
+        ratio: 0.5,
+        start_param: 0.0,
+        end_param: TAU,
+    };
+    assert_within(pl, &ellipse, 0.01);
 }
 
 #[test]
@@ -437,14 +542,194 @@ fn partial_ellipse_with_downward_extrusion_runs_the_other_way() {
             ],
         ),
     );
-    let shape = display::display_shape(1, &read(&text).shapes[0].1);
-    let (first, last) = (shape.points[0], *shape.points.last().unwrap());
+    let d = read(&text);
+    let Shape::Polyline(pl) = &d.shapes[0].1 else {
+        panic!("{:?}", d.shapes[0].1)
+    };
+    assert!(!pl.closed);
+    let (first, last) = (pl.vertices[0], *pl.vertices.last().unwrap());
     assert!(
-        (first[0]).abs() < 1e-9 && (first[1] + 5.0).abs() < 1e-9,
+        first.x.abs() < 1e-9 && (first.y + 5.0).abs() < 1e-9,
         "{first:?}"
     );
     assert!(
-        (last[0] - 10.0).abs() < 1e-9 && last[1].abs() < 1e-9,
+        (last.x - 10.0).abs() < 1e-9 && last.y.abs() < 1e-9,
         "{last:?}"
     );
+}
+
+fn read_with(text: &str, scale: f64, curve_tolerance: f64) -> DxfDrawing {
+    read_dxf(
+        text,
+        &DxfOptions {
+            scale,
+            curve_tolerance,
+        },
+    )
+    .expect("valid DXF")
+}
+
+fn only_polyline(d: &DxfDrawing) -> &Polyline {
+    match &d.shapes[..] {
+        [(_, Shape::Polyline(pl))] => pl,
+        other => panic!("{other:?}"),
+    }
+}
+
+fn ellipse_dxf() -> String {
+    dxf(
+        None,
+        "",
+        &ent(
+            "ELLIPSE",
+            &[(10, "0"), (20, "0"), (11, "10"), (21, "0"), (40, "0.5")],
+        ),
+    )
+}
+
+#[test]
+fn a_tighter_tolerance_gives_more_arcs_and_stays_within_it() {
+    let ellipse = Curve::Ellipse {
+        center: Point::new(0.0, 0.0),
+        major_axis: Point::new(10.0, 0.0),
+        ratio: 0.5,
+        start_param: 0.0,
+        end_param: TAU,
+    };
+    let coarse = read_with(&ellipse_dxf(), 1.0, 0.01);
+    let fine = read_with(&ellipse_dxf(), 1.0, 0.0001);
+    let (c, f) = (only_polyline(&coarse), only_polyline(&fine));
+    assert!(
+        f.vertices.len() > c.vertices.len(),
+        "{} vs {}",
+        f.vertices.len(),
+        c.vertices.len()
+    );
+    assert_within(f, &ellipse, 0.0001);
+}
+
+#[test]
+fn the_tolerance_is_in_mm_after_scaling_from_inches() {
+    // A 10 × 5 inch ellipse imported as inches: within 0.01 mm of the 254 × 127 mm ellipse.
+    let d = read_with(&ellipse_dxf(), 25.4, 0.01);
+    let mm = Curve::Ellipse {
+        center: Point::new(0.0, 0.0),
+        major_axis: Point::new(254.0, 0.0),
+        ratio: 0.5,
+        start_param: 0.0,
+        end_param: TAU,
+    };
+    assert_within(only_polyline(&d), &mm, 0.01);
+}
+
+/// An open cubic spline with an S bend (uniform clamped knots, 6 control points).
+fn s_curve() -> curve::Spline {
+    let p = Point::new;
+    curve::Spline {
+        degree: 3,
+        control_points: vec![
+            p(0.0, 0.0),
+            p(10.0, 30.0),
+            p(25.0, 30.0),
+            p(35.0, -20.0),
+            p(50.0, -20.0),
+            p(60.0, 10.0),
+        ],
+        knots: vec![0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0, 3.0],
+        weights: Vec::new(),
+        closed: false,
+    }
+}
+
+fn spline_dxf(s: &curve::Spline) -> String {
+    let mut pairs: Vec<(i32, String)> = vec![
+        (70, if s.closed { "1" } else { "0" }.into()),
+        (71, s.degree.to_string()),
+    ];
+    pairs.extend(s.knots.iter().map(|k| (40, k.to_string())));
+    for c in &s.control_points {
+        pairs.push((10, c.x.to_string()));
+        pairs.push((20, c.y.to_string()));
+    }
+    let pairs: Vec<(i32, &str)> = pairs.iter().map(|(c, v)| (*c, v.as_str())).collect();
+    dxf(None, "", &ent("SPLINE", &pairs))
+}
+
+#[test]
+fn a_cubic_spline_becomes_arcs_within_the_tolerance() {
+    let s = s_curve();
+    for tol in [0.01, 0.001] {
+        let d = read_with(&spline_dxf(&s), 1.0, tol);
+        let pl = only_polyline(&d);
+        assert!(!pl.closed);
+        // Both bend directions are present (arcs turning left and right).
+        assert!(pl.vertices.iter().any(|v| v.bulge > 0.0));
+        assert!(pl.vertices.iter().any(|v| v.bulge < 0.0));
+        assert_within(pl, &Curve::Spline(s.clone()), tol);
+    }
+}
+
+#[test]
+fn a_spline_corner_stays_sharp() {
+    // A degree-1 spline is a set of straight lines: it becomes the same lines, corners kept.
+    let p = Point::new;
+    let s = curve::Spline {
+        degree: 1,
+        control_points: vec![p(0.0, 0.0), p(10.0, 0.0), p(10.0, 10.0)],
+        knots: vec![0.0, 0.0, 1.0, 2.0, 2.0],
+        weights: Vec::new(),
+        closed: false,
+    };
+    let d = read(&spline_dxf(&s));
+    let pts: Vec<(f64, f64, f64)> = only_polyline(&d)
+        .vertices
+        .iter()
+        .map(|v| (v.x, v.y, v.bulge))
+        .collect();
+    assert_eq!(pts, [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0), (10.0, 10.0, 0.0)]);
+}
+
+#[test]
+fn a_closed_spline_becomes_a_closed_polyline() {
+    // A periodic-looking cubic whose first and last control points are the same.
+    let p = Point::new;
+    let s = curve::Spline {
+        degree: 3,
+        control_points: vec![
+            p(0.0, 0.0),
+            p(20.0, -10.0),
+            p(40.0, 10.0),
+            p(20.0, 30.0),
+            p(-10.0, 20.0),
+            p(0.0, 0.0),
+        ],
+        knots: vec![0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0, 3.0],
+        weights: Vec::new(),
+        closed: true,
+    };
+    let d = read(&spline_dxf(&s));
+    let pl = only_polyline(&d);
+    assert!(pl.closed);
+    let (first, last) = (pl.vertices[0].point(), pl.vertices.last().unwrap().point());
+    assert!(
+        first.distance_to(last) > 1e-6,
+        "the repeated end point is dropped"
+    );
+    assert_within(pl, &Curve::Spline(s), 0.01);
+}
+
+#[test]
+fn a_tolerance_or_scale_of_zero_is_refused() {
+    for (scale, tol) in [(1.0, 0.0), (0.0, 0.01), (1.0, f64::NAN), (1.0, -1.0)] {
+        assert_eq!(
+            read_dxf(
+                &ellipse_dxf(),
+                &DxfOptions {
+                    scale,
+                    curve_tolerance: tol
+                }
+            ),
+            Err(DxfError::BadOptions)
+        );
+    }
 }

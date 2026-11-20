@@ -27,23 +27,7 @@ export type Shape =
   | { type: "Polyline"; vertices: Vertex[]; closed: boolean }
   /** A "PolyRectangle": width along `rotation` degrees CCW from +X, height at right angles. */
   | { type: "Rectangle"; lower_left: Point; width: number; height: number; rotation: number }
-  | { type: "Points"; points: Point[] }
-  | {
-      type: "Spline";
-      degree: number;
-      control_points: Point[];
-      knots: number[];
-      weights: number[];
-      closed: boolean;
-    }
-  | {
-      type: "Ellipse";
-      center: Point;
-      major_axis: Point;
-      ratio: number;
-      start_param: number;
-      end_param: number;
-    };
+  | { type: "Points"; points: Point[] };
 
 export interface DrawingObject {
   id: number;
@@ -352,6 +336,8 @@ export interface DxfUnits {
 export interface DxfInfo {
   units: DxfUnits;
   shape_count: number;
+  /** Splines and ellipses, which are converted into polylines on import. */
+  curve_count: number;
 }
 
 export interface ImportReport {
@@ -359,6 +345,8 @@ export interface ImportReport {
   layers: string[];
   skipped: Record<string, number>;
   scale: number;
+  /** Splines and ellipses converted into polylines of arcs and lines. */
+  curves_converted: number;
 }
 
 export type BoxMode = "Window" | "Crossing";
@@ -644,9 +632,12 @@ export function dxfInfo(path: string): Promise<DxfInfo> {
   return invoke<DxfInfo>("dxf_info", { path });
 }
 
-/** `scale` multiplies every coordinate: 1 = numbers are mm, 25.4 = numbers are inches. */
-export function importDxf(path: string, scale: number): Promise<ImportReport> {
-  return invoke<ImportReport>("import_dxf", { path, scale });
+/**
+ * `scale` multiplies every coordinate: 1 = numbers are mm, 25.4 = numbers are inches.
+ * Splines and ellipses become polylines of arcs and lines within `curveTolerance` mm.
+ */
+export function importDxf(path: string, scale: number, curveTolerance: number): Promise<ImportReport> {
+  return invoke<ImportReport>("import_dxf", { path, scale, curveTolerance });
 }
 
 export function deleteObjects(ids: number[]): Promise<number> {

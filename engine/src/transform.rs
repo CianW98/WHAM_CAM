@@ -3,7 +3,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::display::display_shape;
 use crate::geometry::{
     Point, Shape, Transform, arc_sweep_deg, bulge_arc, on_circle, rectangle_corners,
 };
@@ -113,7 +112,7 @@ fn grow_arc(b: &mut Option<Bounds>, centre: Point, radius: f64, start: f64, swee
     }
 }
 
-/// Exact bounding box of a shape (splines and ellipses: within the 0.01 mm display tolerance).
+/// Exact bounding box of a shape.
 /// `None` for a shape with no points.
 pub fn shape_bounds(shape: &Shape) -> Option<Bounds> {
     let mut b = None;
@@ -162,11 +161,6 @@ pub fn shape_bounds(shape: &Shape) -> Option<Bounds> {
         } => {
             for p in rectangle_corners(*lower_left, *width, *height, *rotation) {
                 grow(&mut b, p);
-            }
-        }
-        Shape::Spline(_) | Shape::Ellipse { .. } => {
-            for p in display_shape(0, shape).points {
-                grow(&mut b, Point::new(p[0], p[1]));
             }
         }
     }

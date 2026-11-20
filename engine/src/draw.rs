@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::display::display_shape;
 use crate::document::Document;
 use crate::geometry::{
     Point, Polyline, Shape, Vertex, angle_deg, arc_sweep_deg, bulge_arc, cross, dot, mid,
@@ -317,24 +316,6 @@ pub fn validate(shape: &Shape) -> Result<(), String> {
             ok(points.iter().all(|p| finite(*p)), NOT_NUMBER)?;
             ok(!points.is_empty(), "A point list needs at least 1 point.")
         }
-        Shape::Spline(s) => ok(
-            s.control_points.iter().all(|p| finite(*p)) && s.knots.iter().all(|k| k.is_finite()),
-            NOT_NUMBER,
-        ),
-        Shape::Ellipse {
-            center,
-            major_axis,
-            ratio,
-            start_param,
-            end_param,
-        } => ok(
-            finite(*center)
-                && finite(*major_axis)
-                && ratio.is_finite()
-                && start_param.is_finite()
-                && end_param.is_finite(),
-            NOT_NUMBER,
-        ),
     }
 }
 
@@ -388,18 +369,6 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
             }
         }
         Shape::Points { points } => out.extend(points.iter().map(|p| (*p, End))),
-        Shape::Spline(_) | Shape::Ellipse { .. } => {
-            // Ends come from the display points, which are evaluated exactly at the ends.
-            let d = display_shape(0, shape);
-            if !d.closed {
-                for p in [d.points.first(), d.points.last()].into_iter().flatten() {
-                    out.push((Point::new(p[0], p[1]), End));
-                }
-            }
-            if let Shape::Ellipse { center, .. } = shape {
-                out.push((*center, Centre));
-            }
-        }
     }
 }
 

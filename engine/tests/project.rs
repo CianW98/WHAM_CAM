@@ -31,11 +31,11 @@ fn dxf_info_reports_units_without_importing() {
 #[test]
 fn import_adds_objects_with_unique_ids_and_reports_skips() {
     let mut p = Project::new();
-    let r = p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    let r = p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     assert_eq!(r.objects_added, 2);
     assert_eq!(r.layers, vec!["CUT".to_string()]);
     assert_eq!(r.skipped.get("TEXT"), Some(&1));
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     let ids: Vec<u32> = p.document().objects().map(|o| o.id).collect();
     assert_eq!(ids, vec![1, 2, 3, 4]);
     // "Default" layer stays, "CUT" is added once.
@@ -56,7 +56,7 @@ fn import_adds_objects_with_unique_ids_and_reports_skips() {
 #[test]
 fn import_scale_converts_inches_to_mm() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(1), 25.4).unwrap();
+    p.import_dxf(&sample_dxf(1), 25.4, 0.01).unwrap();
     let shapes: Vec<&Shape> = p.document().objects().map(|o| &o.shape).collect();
     assert_eq!(
         shapes[0],
@@ -77,14 +77,14 @@ fn import_scale_converts_inches_to_mm() {
 #[test]
 fn a_failed_import_changes_nothing() {
     let mut p = Project::new();
-    assert!(p.import_dxf("not a dxf", 1.0).is_err());
+    assert!(p.import_dxf("not a dxf", 1.0, 0.01).is_err());
     assert!(!p.can_undo());
 }
 
 #[test]
 fn undo_and_redo_import_and_delete() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     assert_eq!(p.delete(&[1]), 1);
     assert_eq!(p.document().objects().count(), 1);
 
@@ -108,7 +108,7 @@ fn undo_and_redo_import_and_delete() {
 #[test]
 fn deleting_nothing_is_not_an_undo_step() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     assert_eq!(p.delete(&[99]), 0);
     p.undo();
     assert_eq!(
@@ -121,7 +121,7 @@ fn deleting_nothing_is_not_an_undo_step() {
 #[test]
 fn pick_finds_the_nearest_shape_within_tolerance() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     // Line is id 1 from (0,0) to (10,0); circle is id 2 at (20,0) r 1.
     assert_eq!(p.pick(5.0, 0.3, 0.5), Some(1));
     assert_eq!(p.pick(5.0, 0.6, 0.5), None);
@@ -133,7 +133,7 @@ fn pick_finds_the_nearest_shape_within_tolerance() {
 #[test]
 fn box_selection_window_and_crossing() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     // Box around the line only.
     assert_eq!(p.pick_box(-1.0, -1.0, 11.0, 1.0, BoxMode::Window), vec![1]);
     // Box cutting through the middle of the line, touching nothing else.
@@ -165,7 +165,7 @@ fn layer_names(p: &Project) -> Vec<&str> {
 #[test]
 fn deleting_all_objects_keeps_the_empty_layer() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     p.delete(&[1, 2]);
     assert_eq!(layer_names(&p), vec!["Default", "CUT"]);
     assert!(p.document().layers[1].objects.is_empty());
@@ -174,7 +174,7 @@ fn deleting_all_objects_keeps_the_empty_layer() {
 #[test]
 fn delete_layer_removes_it_and_its_objects_and_undo_restores_them() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     assert!(p.delete_layer("CUT"));
     assert_eq!(layer_names(&p), vec!["Default"]);
     assert_eq!(p.document().objects().count(), 0);
@@ -187,7 +187,7 @@ fn delete_layer_removes_it_and_its_objects_and_undo_restores_them() {
 #[test]
 fn deleting_the_last_layer_leaves_an_empty_default_layer() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     p.delete_layer("Default");
     p.delete_layer("CUT");
     assert_eq!(layer_names(&p), vec!["Default"]);
@@ -200,7 +200,7 @@ fn deleting_the_last_layer_leaves_an_empty_default_layer() {
 #[test]
 fn rename_layer_checks_the_name_and_is_undoable() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     assert_eq!(p.rename_layer("CUT", "  Outline  "), Ok(()));
     assert_eq!(layer_names(&p), vec!["Default", "Outline"]);
     assert!(p.rename_layer("Outline", "").is_err());
@@ -215,7 +215,7 @@ fn rename_layer_checks_the_name_and_is_undoable() {
 #[test]
 fn layer_colour_is_used_for_its_shapes_and_is_undoable() {
     let mut p = Project::new();
-    p.import_dxf(&sample_dxf(4), 1.0).unwrap();
+    p.import_dxf(&sample_dxf(4), 1.0, 0.01).unwrap();
     // New layers get a different palette colour from existing ones.
     let colors: Vec<&str> = p
         .document()

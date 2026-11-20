@@ -149,8 +149,8 @@ A classic CAD/CAM layout, with a toolbar:
   | CIRCLE | Circle |
   | LWPOLYLINE, 2D POLYLINE | Polyline (bulge arcs kept as true arcs) |
   | POINT | One point list per layer (for drilling) |
-  | SPLINE | Spline, kept exact |
-  | ELLIPSE | Ellipse, kept exact |
+  | SPLINE | Polyline of arcs and lines (converted on import) |
+  | ELLIPSE | Polyline of arcs and lines (converted on import) |
   | INSERT (blocks) | Block contents placed with position, rotation, scale and arrays |
 
   Everything else (TEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and the
@@ -165,9 +165,11 @@ A classic CAD/CAM layout, with a toolbar:
   horizontal/vertical "rotated" and ordinate dimensions) are skipped and listed in the import
   message.
 - HATCH is skipped (its outline isn't imported).
-- **Splines and ellipses stay exact** in the drawing. They are converted to arcs and lines only
-  when a toolpath is made (conversion tolerance is a toolpath setting). A **Convert to polyline**
-  command turns them into polylines, to edit like any other polyline.
+- **Splines and ellipses are converted on import** (decided 2026-11-20) into polylines of arcs
+  and lines (biarcs: smooth, no faceting), so everything imported can be machined and edited like
+  any polyline. When the file has any, import asks for the tolerance: "Stay within (mm) of the
+  curve", default 0.01 mm, remembered. It is measured in mm after any unit scaling, both ways
+  (curve to polyline and polyline to curve). The drawing has no spline or ellipse shapes.
 - **Units**: if a DXF says it is in inches (or other non-mm units), import asks whether to
   convert to mm or treat the numbers as mm.
 - Import adds to the current drawing as one undo step.
@@ -199,7 +201,7 @@ A classic CAD/CAM layout, with a toolbar:
   drawing area, and a marker shows what was snapped to. A finished shape becomes the selection.
 - Exact values are edited in the properties panel afterwards: line ends, arc centre/radius/angles,
   circle centre/radius, polyline closed and points, rectangle lower left/width/height/rotation,
-  point-list points. Splines and ellipses are read-only.
+  point-list points.
   (A typed-coordinate box while drawing was tried and removed as unintuitive.)
 - Grid spacing: a project setting (default 10 mm), in the project's properties.
 
@@ -463,8 +465,7 @@ Names follow common CAM terminology. "v1" = editable in v1; "later" = shown grey
 
 Behaviour (decided 2026-11-16; the cut loop matches the reference Profile example move for move):
 - **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
-  can only be cut **On line** (only that choice is offered). Splines, ellipses and point lists
-  are refused.
+  can only be cut **On line** (only that choice is offered). Point lists are refused.
 - **Corners:** outside corners get an arc of tool radius (G2/G3), as in the reference output.
 - **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
   walls clockwise; Climb is the reverse (as in the reference output).
@@ -498,8 +499,8 @@ Behaviour (decided 2026-11-16; matches the reference Pocket example move for mov
   **Shapes** in Properties lists their ids (e.g. `1, 2, 3`, as shown in the tree) and can be
   edited; ids that don't exist or can't be pocketed are refused. Nesting decides the
   roles: a shape inside the boundary is an **island** (left uncut); a shape inside an island is a
-  new boundary, pocketed on its own. Shapes that cross are refused. Open shapes, splines and
-  ellipses are refused with a message.
+  new boundary, pocketed on its own. Shapes that cross are refused. Open shapes are refused with a
+  message.
 - Rings: the first is offset by tool radius + roughing clearance (inward from the boundary,
   outward round islands, with tool-radius arcs on corners); then every stepover × tool diameter
   until nothing is left. If a stepover over half the tool would leave a spot uncut in the middle,

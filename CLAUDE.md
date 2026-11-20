@@ -177,8 +177,9 @@ Done:
 - Spec: `docs/spec.md` (machine-neutral; open questions in section 9).
 - Skeleton: engine crate, Tauri + React window with toolbar, tree, properties, three.js drawing
   area (2D pan/zoom, 3D orbit), pop-up notifications, CI on Linux and Windows.
-- DXF import: engine DXF reader (lines, arcs, circles, polylines, points, exact splines/ellipses,
-  blocks), unit prompt for inch DXFs, click/box selection, delete, undo/redo.
+- DXF import: engine DXF reader (lines, arcs, circles, polylines, points, blocks), unit prompt for
+  inch DXFs, click/box selection, delete, undo/redo. Splines/ellipses become polylines of arcs
+  and lines on import (`curve.rs`, biarcs; tolerance dialog, 0.01 mm default; decided 2026-11-20).
 - Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree.
 - Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole top-level
   `tests/` folder is git-ignored for now (this machine only), so the expected moves from the
@@ -255,8 +256,8 @@ Done:
   (Peck now follows G83), machine list in the Setup tab, Produce G-code. Arc test shape (square
   corners, convex, concave) checks G2/G3. CAMotics and NC Viewer don't simulate `G83`.
 
-Next: release 0.5.0 when the user asks (Peck checked by the user, 2026-11-20; notes need a
-"G-code output changed" section: G-code is new and Peck toolpaths changed).
-
-Later in v1: Convert to polyline, dimensions, DXF dimensions, then SVG import and DXF text (each
-needs a library choice first) (spec 5.1, 5.3).
+Next, towards 1.0.0: dimensions, DXF dimensions, then SVG import and DXF text (each needs a
+library choice first) (spec 5.1, 5.3), then a full end-to-end check by the user.
+No 0.x releases before 1.0.0 (user's decision, 2026-11-20; no 0.5.0). The 1.0.0 notes need a
+"G-code output changed" section: G-code is new and Peck toolpaths changed (Peck checked by the
+user, 2026-11-20).

@@ -40,6 +40,8 @@ function importMessage(r: ImportReport, unitsName: string | null): string {
       ? "Nothing was imported."
       : `Imported ${r.objects_added} object${r.objects_added === 1 ? "" : "s"} on ${layers}.`;
   if (r.scale !== 1 && unitsName) msg += ` Converted from ${unitsName} to mm.`;
+  if (r.curves_converted > 0)
+    msg += ` ${r.curves_converted} curve${r.curves_converted === 1 ? "" : "s"} (splines and ellipses) converted into arcs and lines.`;
   const skipped = Object.entries(r.skipped);
   if (skipped.length > 0) msg += ` Skipped: ${skipped.map(([what, n]) => `${n} ${what}`).join(", ")}.`;
   return msg;
@@ -169,7 +171,7 @@ export default function App() {
   const [speed, setSpeed] = useState(10);
   const playbackSig = useRef("");
   // Last values typed into the transform dialogs, offered again next time.
-  const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1, tolerance: 0.01 });
+  const lastValues = useRef({ dx: 0, dy: 0, degrees: 90, factor: 1, tolerance: 0.01, curveTolerance: 0.01 });
 
   // Moving by clicking / pasting (null = neither). A ref as well, like the draft below.
   const [special, setSpecialState] = useState<Special | null>(null);
@@ -248,12 +250,26 @@ export default function App() {
       if (answer === null) return;
       if (answer === convert) scale = mmPerUnit;
     }
-    const report = await engine.importDxf(path, scale);
+    // Splines and ellipses become arcs and lines: ask how closely, only when there are some.
+    const last = lastValues.current;
+    if (info.curve_count > 0) {
+      const v = await askNumbers({
+        title: `Convert ${info.curve_count} curve${info.curve_count === 1 ? "" : "s"} (splines and ellipses) into arcs and lines`,
+        fields: [{ label: "Stay within (mm) of the curve", value: last.curveTolerance }],
+      });
+      if (!v) return;
+      if (!(v[0] > 0)) {
+        notify("error", "The tolerance must be more than 0.");
+        return;
+      }
+      last.curveTolerance = v[0];
+    }
+    const report = await engine.importDxf(path, scale, last.curveTolerance);
     await refresh();
     setSelection(NOTHING);
     setFitRequest((n) => n + 1);
     notify("info", importMessage(report, scale !== 1 ? info.units.name : null));
-  }, [ask, notify, refresh]);
+  }, [ask, askNumbers, notify, refresh]);
 
   // --- Project files ---------------------------------------------------------------------------
 

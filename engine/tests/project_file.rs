@@ -49,20 +49,6 @@ fn every_shape() -> Project {
         Shape::Points {
             points: vec![p(1.0, 1.0), p(2.5, -3.75)],
         },
-        Shape::Spline(Spline {
-            degree: 2,
-            control_points: vec![p(0.0, 0.0), p(5.0, 10.0), p(10.0, 0.0)],
-            knots: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-            weights: vec![1.0, std::f64::consts::FRAC_1_SQRT_2, 1.0],
-            closed: false,
-        }),
-        Shape::Ellipse {
-            center: p(50.0, 50.0),
-            major_axis: p(20.0, 5.0),
-            ratio: 0.4,
-            start_param: 0.0,
-            end_param: std::f64::consts::TAU,
-        },
     ];
     for (i, s) in shapes.into_iter().enumerate() {
         let layer = if i % 2 == 0 { "Default" } else { "Holes" };
@@ -126,7 +112,6 @@ fn bad_files_are_refused_and_change_nothing() {
         good.replace("#00ffff", "blue"),
         good.replace("\"radius\": 7.25", "\"radius\": -1.0"),
         good.replace("\"grid_spacing\": 2.5", "\"grid_spacing\": 0.0"),
-        good.replace("\"degree\": 2", "\"degree\": 3"),
     ];
     for text in &bad {
         assert!(proj.open(text, "x").is_err(), "accepted: {text}");

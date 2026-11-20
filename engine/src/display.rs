@@ -8,15 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{
-    BulgeArc, Point, Polyline, Shape, Spline, angle_deg, arc_sweep_deg, bulge_arc,
-    rectangle_corners,
+    BulgeArc, Point, Polyline, Shape, angle_deg, arc_sweep_deg, bulge_arc, rectangle_corners,
 };
 use crate::toolpath::{Move, Point3, Toolpath};
 
 /// Maximum distance between a true arc and its on-screen approximation, in mm.
 pub const DISPLAY_TOLERANCE: f64 = 0.01;
-/// Line segments per knot span when drawing a spline.
-const SPLINE_STEPS_PER_SPAN: usize = 24;
 /// Most segments used for any one curve, so huge curves can't stall the screen.
 const MAX_CURVE_STEPS: usize = 4096;
 
@@ -151,14 +148,6 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
             markers = true;
             points.iter().map(|p| [p.x, p.y]).collect()
         }
-        Shape::Spline(s) => spline_points(s),
-        Shape::Ellipse {
-            center,
-            major_axis,
-            ratio,
-            start_param,
-            end_param,
-        } => ellipse_points(*center, *major_axis, *ratio, *start_param, *end_param),
     };
     DisplayShape {
         id,
@@ -537,91 +526,4 @@ pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
 
 fn dist3(a: Point3, b: Point3) -> f64 {
     ((b.x - a.x).powi(2) + (b.y - a.y).powi(2) + (b.z - a.z).powi(2)).sqrt()
-}
-
-pub(crate) fn ellipse_point(center: Point, major: Point, ratio: f64, t: f64) -> [f64; 2] {
-    let minor = Point::new(-major.y * ratio, major.x * ratio);
-    let (s, c) = t.sin_cos();
-    [
-        center.x + major.x * c + minor.x * s,
-        center.y + major.y * c + minor.y * s,
-    ]
-}
-
-fn ellipse_points(center: Point, major: Point, ratio: f64, start: f64, end: f64) -> Vec<[f64; 2]> {
-    // Step size from the larger radius, as for a circle of that radius.
-    let r = major.x.hypot(major.y);
-    let max_step = if r > DISPLAY_TOLERANCE {
-        2.0 * (1.0 - DISPLAY_TOLERANCE / r).acos()
-    } else {
-        TAU / 8.0
-    };
-    let sweep = end - start;
-    let steps = ((sweep.abs() / max_step).ceil() as usize).clamp(2, MAX_CURVE_STEPS);
-    (0..=steps)
-        .map(|i| {
-            ellipse_point(
-                center,
-                major,
-                ratio,
-                start + sweep * i as f64 / steps as f64,
-            )
-        })
-        .collect()
-}
-
-/// Point on a (possibly rational) B-spline at parameter `u`, by de Boor's algorithm.
-pub(crate) fn spline_point(s: &Spline, u: f64) -> [f64; 2] {
-    let p = s.degree;
-    let n = s.control_points.len();
-    let k = &s.knots;
-    // Knot span index: largest k_index with knots[k_index] <= u, limited to the valid range.
-    let mut span = p;
-    while span + 1 < n && k[span + 1] <= u {
-        span += 1;
-    }
-    let w = |i: usize| s.weights.get(i).copied().unwrap_or(1.0);
-    // Homogeneous control points (x·w, y·w, w).
-    let mut d: Vec<[f64; 3]> = (0..=p)
-        .map(|j| {
-            let i = span + j - p;
-            let cp = s.control_points[i];
-            [cp.x * w(i), cp.y * w(i), w(i)]
-        })
-        .collect();
-    for r in 1..=p {
-        for j in (r..=p).rev() {
-            let i = span + j - p;
-            let denom = k[i + p + 1 - r] - k[i];
-            let alpha = if denom == 0.0 {
-                0.0
-            } else {
-                (u - k[i]) / denom
-            };
-            let prev = d[j - 1];
-            for (c, v) in d[j].iter_mut().enumerate() {
-                *v = (1.0 - alpha) * prev[c] + alpha * *v;
-            }
-        }
-    }
-    let [x, y, wt] = d[p];
-    [x / wt, y / wt]
-}
-
-fn spline_points(s: &Spline) -> Vec<[f64; 2]> {
-    let p = s.degree;
-    let n = s.control_points.len();
-    if n <= p || s.knots.len() != n + p + 1 {
-        return s.control_points.iter().map(|c| [c.x, c.y]).collect();
-    }
-    let (u0, u1) = (s.knots[p], s.knots[n]);
-    let spans = s.knots[p..=n]
-        .windows(2)
-        .filter(|w| w[1] > w[0])
-        .count()
-        .max(1);
-    let steps = (spans * SPLINE_STEPS_PER_SPAN).min(MAX_CURVE_STEPS);
-    (0..=steps)
-        .map(|i| spline_point(s, u0 + (u1 - u0) * i as f64 / steps as f64))
-        .collect()
 }

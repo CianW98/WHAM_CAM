@@ -1,8 +1,6 @@
 //! Basic 2D geometry. All units are millimetres. Angles in shapes are degrees,
 //! measured counter-clockwise from the +X axis (as in DXF).
 
-use std::f64::consts::TAU;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -91,18 +89,6 @@ impl Polyline {
     }
 }
 
-/// An exact NURBS curve, kept as imported. Converted to arcs/lines only when a toolpath is made.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Spline {
-    pub degree: usize,
-    pub control_points: Vec<Point>,
-    pub knots: Vec<f64>,
-    /// One weight per control point. Empty means all weights are 1 (a non-rational spline).
-    #[serde(default)]
-    pub weights: Vec<f64>,
-    pub closed: bool,
-}
-
 /// A drawing shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -138,17 +124,6 @@ pub enum Shape {
     Points {
         points: Vec<Point>,
     },
-    Spline(Spline),
-    /// Point at parameter t = center + major_axis·cos t + minor_axis·sin t, where minor_axis is
-    /// major_axis turned 90° counter-clockwise and scaled by `ratio`. Runs counter-clockwise
-    /// from `start_param` to `end_param` (radians; 0 to 2π for a full ellipse).
-    Ellipse {
-        center: Point,
-        major_axis: Point,
-        ratio: f64,
-        start_param: f64,
-        end_param: f64,
-    },
 }
 
 impl Shape {
@@ -161,8 +136,6 @@ impl Shape {
             Shape::Polyline(_) => "Polyline",
             Shape::Rectangle { .. } => "PolyRectangle",
             Shape::Points { .. } => "PointList",
-            Shape::Spline(_) => "Spline",
-            Shape::Ellipse { .. } => "Ellipse",
         }
     }
 }
@@ -305,7 +278,7 @@ impl Transform {
         self.a * self.d - self.b * self.c
     }
 
-    fn mirrors(&self) -> bool {
+    pub(crate) fn mirrors(&self) -> bool {
         self.det() < 0.0
     }
 
@@ -424,10 +397,6 @@ impl Shape {
             Shape::Points { points } => Shape::Points {
                 points: points.iter().map(|p| t.apply(*p)).collect(),
             },
-            Shape::Spline(s) => Shape::Spline(Spline {
-                control_points: s.control_points.iter().map(|p| t.apply(*p)).collect(),
-                ..s.clone()
-            }),
             Shape::Circle { center, radius } => Shape::Circle {
                 center: t.apply(*center),
                 radius: radius * uniform?,
@@ -492,29 +461,6 @@ impl Shape {
                         .collect(),
                     closed: pl.closed,
                 })
-            }
-            Shape::Ellipse {
-                center,
-                major_axis,
-                ratio,
-                start_param,
-                end_param,
-            } => {
-                uniform?;
-                let (start, end) = if t.mirrors() {
-                    // Mirroring runs the ellipse the other way: parameter t becomes -t.
-                    (-end_param, -start_param)
-                } else {
-                    (*start_param, *end_param)
-                };
-                let shift = if start < 0.0 { TAU } else { 0.0 };
-                Shape::Ellipse {
-                    center: t.apply(*center),
-                    major_axis: t.apply_vector(*major_axis),
-                    ratio: *ratio,
-                    start_param: start + shift,
-                    end_param: end + shift,
-                }
             }
         })
     }

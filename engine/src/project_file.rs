@@ -8,7 +8,6 @@ use serde_json::Value;
 
 use crate::document::{Document, is_hex_color};
 use crate::draw;
-use crate::geometry::Shape;
 
 /// The value of the "format" field, so other JSON files are recognised as not ours.
 pub const FORMAT_NAME: &str = "WHAM_CAM project";
@@ -98,10 +97,7 @@ fn check(doc: &Document) -> Result<(), String> {
             if !ids.insert(obj.id) {
                 return damaged(format!("two objects have the id {}", obj.id));
             }
-            let problem = draw::validate(&obj.shape)
-                .err()
-                .or_else(|| spline_problem(&obj.shape));
-            if let Some(problem) = problem {
+            if let Err(problem) = draw::validate(&obj.shape) {
                 return damaged(format!(
                     "object {} on layer \"{}\": {}",
                     obj.id,
@@ -118,17 +114,4 @@ fn check(doc: &Document) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-/// Splines need matching counts of control points, knots and weights.
-fn spline_problem(shape: &Shape) -> Option<String> {
-    let Shape::Spline(s) = shape else {
-        return None;
-    };
-    let n = s.control_points.len();
-    let ok = s.degree >= 1
-        && n > s.degree
-        && s.knots.len() == n + s.degree + 1
-        && (s.weights.is_empty() || s.weights.len() == n);
-    (!ok).then(|| "a spline's points, knots and weights don't match".to_string())
 }

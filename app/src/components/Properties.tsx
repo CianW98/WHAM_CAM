@@ -186,7 +186,7 @@ function CollectionField({ onOpen }: { onOpen: () => void }) {
 
 // --- Shapes ---------------------------------------------------------------------------------
 
-/** The rows for a shape's own values; editable except for splines and ellipses. */
+/** The rows for a shape's own values, editable. */
 function ShapeRows({
   shape,
   direction,
@@ -304,43 +304,6 @@ function ShapeRows({
                 )
               }
             />
-          </Row>
-        </>
-      );
-    case "Spline":
-      return (
-        <>
-          <Row label="Degree">
-            {shape.degree}
-          </Row>
-          <Row label="Control points">
-            {shape.control_points.length}
-          </Row>
-          <Row label="Rational">
-            {shape.weights.length > 0 ? "True" : "False"}
-          </Row>
-          <Row label="Closed">
-            {shape.closed ? "True" : "False"}
-          </Row>
-        </>
-      );
-    case "Ellipse":
-      return (
-        <>
-          <Row label="Center">
-            {pointText(shape.center)}
-          </Row>
-          <Row label="Major axis">
-            {pointText(shape.major_axis)}
-          </Row>
-          <Row label="Ratio">
-            {num(shape.ratio)}
-          </Row>
-          <Row label="Start parameter">
-            {num(shape.start_param)}
-          </Row>
-          <Row label="End parameter">
-            {num(shape.end_param)}
           </Row>
         </>
       );

@@ -54,8 +54,6 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
   be a slow feed through air when the retract height is well above the stock. To revisit, e.g.
   rapid to fast plunge height above the stock, then feed, as Pocket and Profile do (user's
   request, 2026-11-20). A toolpath change: tests and a simulator re-check.
-- **Pocketing splines and ellipses**, by converting them to arcs within a tolerance. v1 refuses
-  them with a message.
 
 ## Later
 

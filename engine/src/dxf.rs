@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::f64::consts::TAU;
 use std::fmt;
 
-use crate::geometry::{Point, Polyline, Shape, Spline, Transform, Vertex};
+use crate::curve::{Curve, Spline};
+use crate::geometry::{Point, Polyline, Shape, Transform, Vertex};
 
 /// Units the DXF file says it uses (header variable `$INSUNITS`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -45,12 +46,33 @@ impl DxfUnits {
     }
 }
 
+/// How to read a DXF file.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DxfOptions {
+    /// Multiplies all coordinates (1.0 = the numbers are mm, 25.4 = they are inches).
+    pub scale: f64,
+    /// Splines and ellipses become polylines of arcs and lines within this distance (mm, after
+    /// scaling) of the true curve.
+    pub curve_tolerance: f64,
+}
+
+impl Default for DxfOptions {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            curve_tolerance: 0.01,
+        }
+    }
+}
+
 /// Everything read from a DXF file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DxfDrawing {
     pub units: DxfUnits,
-    /// (layer name, shape), in file order.
+    /// (layer name, shape), in file order, scaled.
     pub shapes: Vec<(String, Shape)>,
+    /// How many splines and ellipses were converted into polylines.
+    pub curves: usize,
     /// Entities that were not imported, by description, with counts.
     pub skipped: BTreeMap<String, usize>,
 }
@@ -58,8 +80,13 @@ pub struct DxfDrawing {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DxfError {
     Binary,
+    /// The scale or curve tolerance isn't a number more than 0.
+    BadOptions,
     Empty,
-    Malformed { line: usize, reason: String },
+    Malformed {
+        line: usize,
+        reason: String,
+    },
 }
 
 impl fmt::Display for DxfError {
@@ -70,6 +97,7 @@ impl fmt::Display for DxfError {
                 "This is a binary DXF file. Only ASCII (text) DXF files can be imported; re-save it as ASCII DXF."
             ),
             DxfError::Empty => write!(f, "The file is empty."),
+            DxfError::BadOptions => write!(f, "The scale and tolerance must be more than 0."),
             DxfError::Malformed { line, reason } => {
                 write!(
                     f,
@@ -247,7 +275,11 @@ struct Block<'a> {
 // ---------------------------------------------------------------------------------------------
 // Public entry point
 
-pub fn read_dxf(text: &str) -> Result<DxfDrawing, DxfError> {
+pub fn read_dxf(text: &str, options: &DxfOptions) -> Result<DxfDrawing, DxfError> {
+    let positive = |v: f64| v.is_finite() && v > 0.0;
+    if !positive(options.scale) || !positive(options.curve_tolerance) {
+        return Err(DxfError::BadOptions);
+    }
     let pairs = read_pairs(text)?;
     let mut units = DxfUnits::from_code(0);
     let mut blocks: HashMap<String, Block> = HashMap::new();
@@ -319,9 +351,12 @@ pub fn read_dxf(text: &str) -> Result<DxfDrawing, DxfError> {
         shapes: Vec::new(),
         points: Vec::new(),
         skipped: BTreeMap::new(),
+        curve_tolerance: options.curve_tolerance,
+        curves: 0,
     };
+    let root = Transform::scale(options.scale, options.scale);
     for e in &entities {
-        conv.convert(e, &Transform::IDENTITY, None, 0);
+        conv.convert(e, &root, None, 0);
     }
 
     // POINT entities become one point list per layer (what the drill operation uses).
@@ -332,6 +367,7 @@ pub fn read_dxf(text: &str) -> Result<DxfDrawing, DxfError> {
     Ok(DxfDrawing {
         units,
         shapes,
+        curves: conv.curves,
         skipped: conv.skipped,
     })
 }
@@ -347,6 +383,8 @@ struct Converter<'b, 'a> {
     /// Points grouped by layer, in first-seen layer order.
     points: Vec<(String, Vec<Point>)>,
     skipped: BTreeMap<String, usize>,
+    curve_tolerance: f64,
+    curves: usize,
 }
 
 /// How an entity's own coordinate system (OCS) maps to the drawing.
@@ -380,6 +418,22 @@ impl<'b, 'a> Converter<'b, 'a> {
         match shape.transformed(t) {
             Some(s) => self.shapes.push((layer.to_string(), s)),
             None => self.skip(format!("{kind} (unevenly scaled block)")),
+        }
+    }
+
+    /// Places a spline or ellipse and converts it into a polyline of arcs and lines.
+    fn add_curve(&mut self, layer: &str, curve: Curve, t: &Transform) {
+        let kind = curve.kind();
+        let Some(curve) = curve.transformed(t) else {
+            self.skip(format!("{kind} (unevenly scaled block)"));
+            return;
+        };
+        match curve.to_polyline(self.curve_tolerance) {
+            Some(pl) => {
+                self.shapes.push((layer.to_string(), Shape::Polyline(pl)));
+                self.curves += 1;
+            }
+            None => self.skip(format!("{kind} (unreadable)")),
         }
     }
 
@@ -500,14 +554,14 @@ impl<'b, 'a> Converter<'b, 'a> {
                     if weights.len() != control_points.len() || weights.iter().all(|w| *w == 1.0) {
                         weights.clear();
                     }
-                    let shape = Shape::Spline(Spline {
+                    let curve = Curve::Spline(Spline {
                         degree,
                         control_points,
                         knots,
                         weights,
                         closed: e.int(70) & 1 == 1,
                     });
-                    self.add(&layer, shape, &local, e.kind);
+                    self.add_curve(&layer, curve, &local);
                 }
                 "ELLIPSE" => {
                     let mut start = e.opt(41, 0.0)?;
@@ -523,14 +577,14 @@ impl<'b, 'a> Converter<'b, 'a> {
                         start += TAU;
                         end += TAU;
                     }
-                    let shape = Shape::Ellipse {
+                    let curve = Curve::Ellipse {
                         center: Point::new(e.req(10)?, e.req(20)?),
                         major_axis: Point::new(e.req(11)?, e.req(21)?),
                         ratio: e.req(40)?,
                         start_param: start,
                         end_param: end,
                     };
-                    self.add(&layer, shape, &local, e.kind);
+                    self.add_curve(&layer, curve, &local);
                 }
                 "INSERT" => self.insert(e, &local, &layer, depth)?,
                 other => self.skip(other),

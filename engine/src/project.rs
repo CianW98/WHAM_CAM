@@ -14,7 +14,7 @@ use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
 use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::drill;
-use crate::dxf::{DxfError, DxfUnits, read_dxf};
+use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
 use crate::gcode_read::check_program;
 use crate::geometry::{Point, Shape, Transform};
@@ -40,6 +40,8 @@ const UNDO_LIMIT: usize = 100;
 pub struct DxfInfo {
     pub units: DxfUnits,
     pub shape_count: usize,
+    /// Splines and ellipses, which are converted into polylines on import.
+    pub curve_count: usize,
 }
 
 /// Result of an import, for the pop-up message.
@@ -52,6 +54,8 @@ pub struct ImportReport {
     pub skipped: BTreeMap<String, usize>,
     /// Scale factor applied (25.4 when converting inches to mm).
     pub scale: f64,
+    /// Splines and ellipses converted into polylines of arcs and lines.
+    pub curves_converted: usize,
 }
 
 /// Result of a join, for the pop-up message.
@@ -291,36 +295,42 @@ impl Project {
 
     /// Reads a DXF without importing it.
     pub fn dxf_info(text: &str) -> Result<DxfInfo, DxfError> {
-        let drawing = read_dxf(text)?;
+        let drawing = read_dxf(text, &DxfOptions::default())?;
         Ok(DxfInfo {
             units: drawing.units,
             shape_count: drawing.shapes.len(),
+            curve_count: drawing.curves,
         })
     }
 
     /// Imports a DXF into the current document as one undo step. `scale` multiplies all
-    /// coordinates (1.0 = numbers are mm, 25.4 = numbers are inches).
-    pub fn import_dxf(&mut self, text: &str, scale: f64) -> Result<ImportReport, DxfError> {
-        let drawing = read_dxf(text)?;
-        let t = Transform::scale(scale, scale);
+    /// coordinates (1.0 = numbers are mm, 25.4 = numbers are inches). Splines and ellipses become
+    /// polylines of arcs and lines within `curve_tolerance` mm of the true curve.
+    pub fn import_dxf(
+        &mut self,
+        text: &str,
+        scale: f64,
+        curve_tolerance: f64,
+    ) -> Result<ImportReport, DxfError> {
+        let drawing = read_dxf(
+            text,
+            &DxfOptions {
+                scale,
+                curve_tolerance,
+            },
+        )?;
         let mut report = ImportReport {
             objects_added: 0,
             layers: Vec::new(),
             skipped: drawing.skipped,
             scale,
+            curves_converted: drawing.curves,
         };
         self.edit(|doc| {
-            let mut next_id = doc.max_id() + 1;
-            for (layer, shape) in drawing.shapes {
-                // A uniform scale never fails, but stay safe.
-                let Some(shape) = shape.transformed(&t) else {
-                    continue;
-                };
+            let first_id = doc.max_id() + 1;
+            for (id, (layer, shape)) in (first_id..).zip(drawing.shapes) {
                 let li = doc.layer_index(&layer);
-                doc.layers[li]
-                    .objects
-                    .push(DrawingObject { id: next_id, shape });
-                next_id += 1;
+                doc.layers[li].objects.push(DrawingObject { id, shape });
                 report.objects_added += 1;
                 if !report.layers.contains(&layer) {
                     report.layers.push(layer);

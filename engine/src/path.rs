@@ -44,10 +44,6 @@ pub fn closed_outline(id: u32, shape: &Shape) -> Result<Polyline, String> {
             ],
             closed: true,
         }),
-        Shape::Spline(_) | Shape::Ellipse { .. } => Err(format!(
-            "Shape {id} is a {}: it can't be pocketed yet (it needs converting to arcs first).",
-            shape.type_name()
-        )),
         _ => Err(format!(
             "Shape {id} is a {}: pockets need closed shapes.",
             shape.type_name()
@@ -279,10 +275,6 @@ pub fn profile_path(id: u32, shape: &Shape) -> Result<Polyline, String> {
         Shape::Polyline(pl) if !pl.closed => {
             Err(format!("Shape {id} is a polyline with no length."))
         }
-        Shape::Spline(_) | Shape::Ellipse { .. } => Err(format!(
-            "Shape {id} is a {}: it can't be profiled yet (it needs converting to arcs first).",
-            shape.type_name()
-        )),
         Shape::Points { .. } => Err(format!("Shape {id} is a point list: it can't be profiled.")),
         _ => closed_outline(id, shape),
     }
