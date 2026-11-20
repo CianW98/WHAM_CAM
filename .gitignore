@@ -9,3 +9,6 @@
 target/
 node_modules/
 dist/
+
+# Fresh reference G-code waiting to be checked (only checked files are committed)
+engine/tests/reference_gcode/pending/

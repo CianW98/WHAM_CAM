@@ -1,12 +1,11 @@
-//! Known-good G-code (spec 8): the three reference projects (Profile, Pocket, Drill, as in the
-//! reference examples) written by the generic post-processor, compared exactly with the files in
-//! `tests/reference/wham/` once the user has checked them in a simulator and with an air cut.
+//! Known-good G-code (spec 8): the reference projects (Profile, Pocket, Drill, as in the reference
+//! examples, and the Arcs test shape) written by the generic post-processor, compared exactly with
+//! the checked files in `engine/tests/reference_gcode/` (see the README there).
 //!
-//! That folder is on this computer only (git-ignored), so on GitHub these comparisons are skipped.
 //! To write fresh files for checking, run:
 //!   cargo test -p wham_engine --test reference_gcode -- --ignored
-//! which writes them to `tests/reference/wham/pending/`. After the user has checked them, they are
-//! moved up into `tests/reference/wham/`.
+//! which writes them to `engine/tests/reference_gcode/pending/` (git-ignored). After the user has
+//! checked them in a simulator and with an air cut, they are moved up into the folder itself.
 
 use std::path::PathBuf;
 
@@ -18,7 +17,7 @@ use wham_engine::*;
 const DATE: &str = "reference";
 
 fn folder() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/reference/wham")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/reference_gcode")
 }
 
 /// A project with one operation from `add`, using a `diameter` mm end mill as T1, with the
@@ -195,13 +194,8 @@ fn compared(text: &str) -> Vec<&str> {
 fn matches_the_checked_reference_gcode() {
     for (name, text) in programs() {
         let path = folder().join(format!("{name}.nc"));
-        let Ok(want) = std::fs::read_to_string(&path) else {
-            eprintln!(
-                "{} isn't here (it is kept on the user's computer only); skipped.",
-                path.display()
-            );
-            continue;
-        };
+        let want = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{name}: can't read {}: {e}", path.display()));
         assert_eq!(
             compared(&text),
             compared(&want),

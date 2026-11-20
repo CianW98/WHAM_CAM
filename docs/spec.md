@@ -633,9 +633,9 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   stepovers, depth levels and cut order. They are not compared as exact text, because WHAM_CAM's
   G-code format differs from the reference program's.
 - **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
-  with an air cut, it is kept in `tests/reference/` (this computer only, decided 2026-11-20) and
-  later output is compared to it exactly. Because that folder isn't committed, GitHub's checks
-  don't run these comparisons; they run on this computer before each release.
+  with an air cut, it is kept in `engine/tests/reference_gcode/` and later output is compared to it
+  exactly, on GitHub too (decided 2026-11-20). A README there says the files are test data, not
+  programs for cutting. Fresh files for checking go to its git-ignored `pending/` folder.
 - **Safety checker**: reads any toolpath or G-code output and fails if it breaks the section 7
   safety rules. Reading G-code, it follows canned cycles (`G81`/`G83` with `G98`) as the
   controller would.

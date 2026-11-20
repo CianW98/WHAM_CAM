@@ -40,7 +40,7 @@ The best simple CAM programs are still worth using because they are not overcomp
 ## Safety: G-code is safety-critical
 N.B. This program drives a real machine. A bug can crash the spindle, break tools or ruin parts.
 - Never change toolpath or post-processor logic without tests that compare output
-  against known-good G-code (reference files in `tests/reference/`).
+  against known-good G-code (checked files in `engine/tests/reference_gcode/`).
 - Every operation must respect safe Z / clearance height for rapid moves.
 - No rapid (G0) moves below the clearance height except the final approach.
 - Output must be plain, readable and commented (operation name, tool, depths).
@@ -168,7 +168,7 @@ interface file that talks to the engine.
 - **Safety in releases:** if a release changes toolpath or G-code output, the notes say so in a
   separate "G-code output changed" section, saying what changed and reminding the user to
   re-check in a simulator and with an air cut. Every release is checked against the
-  `tests/reference/` G-code before tagging.
+  checked reference G-code (`engine/tests/reference_gcode/`) before tagging.
 - **Traceability:** once G-code output exists, every G-code file's header comment includes the
   WHAM_CAM version that produced it, e.g. `( WHAM_CAM 0.4.0 )`.
 
@@ -245,8 +245,8 @@ Done:
     Generate refuses clashes and compares each tool with the library on this computer (warns if
     the project's library isn't on this computer).
   - 3D playback cutter modelled from the real tool outline (`Tool::profile`).
-- Checked reference G-code: `tests/reference/wham/` (local only), compared by
-  `engine/tests/reference_gcode.rs`.
+- Checked reference G-code: `engine/tests/reference_gcode/` (on GitHub, with a README: test data,
+  not for cutting; decided 2026-11-20), compared by `engine/tests/reference_gcode.rs`.
 - Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
   Machining tree, tool number checks, real 3D cutter). No G-code yet.
 

@@ -1,0 +1,2 @@
+# Reference G-code is compared exactly: keep it as written on every computer
+engine/tests/reference_gcode/*.nc -text
