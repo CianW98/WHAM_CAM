@@ -256,8 +256,11 @@ Done:
   (Peck now follows G83), machine list in the Setup tab, Produce G-code. Arc test shape (square
   corners, convex, concave) checks G2/G3. CAMotics and NC Viewer don't simulate `G83`.
 
-Next, towards 1.0.0: dimensions, DXF dimensions, then SVG import and DXF text (each needs a
-library choice first) (spec 5.1, 5.3), then a full end-to-end check by the user.
+- Dimensions (spec 5.3, 2026-11-20): aligned, radius, diameter, angle (`dimension.rs`), drawing
+  objects placed by clicks (Edit → Dimension), measure only; project file format 2.
+
+Next, towards 1.0.0: DXF dimensions, then SVG import and DXF text (each needs a library choice
+first) (spec 5.1), then a full end-to-end check by the user.
 No 0.x releases before 1.0.0 (user's decision, 2026-11-20; no 0.5.0). The 1.0.0 notes need a
 "G-code output changed" section: G-code is new and Peck toolpaths changed (Peck checked by the
 user, 2026-11-20).

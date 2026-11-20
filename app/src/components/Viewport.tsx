@@ -12,6 +12,7 @@ import type {
   CutWidthStep,
   DisplayData,
   DisplayShape,
+  Label,
   Draft,
   MoveKind,
   Playback,
@@ -43,6 +44,8 @@ const guide = (a: Point, b: Point): DisplayShape => ({
   markers: false,
   color: "",
   direction: null,
+  extra: [],
+  label: null,
 });
 
 export type ViewMode = "2D" | "3D";
@@ -191,7 +194,11 @@ interface Props {
   onPick: (x: number, y: number, tolerance: number, add: boolean) => void;
   onBox: (x0: number, y0: number, x1: number, y1: number, mode: BoxMode, add: boolean) => void;
   /** A point was clicked (already snapped) while placing. */
-  onPlacePoint: (p: Point) => void;
+  /**
+   * A click while placing: `p` is the snapped point, `raw` the exact cursor position and
+   * `pickTolerance` the click radius in mm (for clicks that pick an object, e.g. dimensions).
+   */
+  onPlacePoint: (p: Point, raw: Point, pickTolerance: number) => void;
   /** Double-click while drawing: finish a polyline or point list. */
   onFinishDraft: () => void;
   /** Right-click without dragging, at page position (x, y). */
@@ -233,9 +240,51 @@ function clearGroup(group: THREE.Group) {
   for (const child of [...group.children]) {
     const o = child as THREE.Line;
     o.geometry?.dispose();
-    for (const m of [o.material].flat()) m?.dispose();
+    for (const m of [o.material].flat()) {
+      (m as THREE.MeshBasicMaterial | undefined)?.map?.dispose();
+      m?.dispose();
+    }
     group.remove(child);
   }
+}
+
+/** Canvas pixels per text height for label textures. */
+const LABEL_PX = 64;
+
+/**
+ * A dimension's value as a flat rectangle at the engine's position, angle and height: white text
+ * on a transparent texture, tinted by the material colour (so selecting it can recolour it).
+ */
+function makeLabel(label: Label, color: THREE.ColorRepresentation): THREE.Mesh {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+  const font = `${LABEL_PX}px sans-serif`;
+  ctx.font = font;
+  canvas.width = Math.ceil(ctx.measureText(label.text).width) + 8;
+  canvas.height = Math.round(LABEL_PX * 1.25);
+  ctx.font = font; // resizing the canvas resets it
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label.text, canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const height = (label.height * canvas.height) / LABEL_PX;
+  const width = (height * canvas.width) / canvas.height;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ map: texture, color, transparent: true, depthTest: false }),
+  );
+  mesh.position.set(label.at[0], label.at[1], 0);
+  mesh.rotation.z = (label.angle * Math.PI) / 180;
+  return mesh;
+}
+
+/** A shape's paths: its main path (if any) and its extra paths, as point lists. */
+function paths(shape: DisplayShape): { points: [number, number][]; closed: boolean }[] {
+  const out = shape.points.length > 0 ? [{ points: shape.points, closed: shape.closed }] : [];
+  for (const points of shape.extra) out.push({ points, closed: false });
+  return out;
 }
 
 const KINDS: MoveKind[] = ["Cut", "Plunge", "Rapid"];
@@ -474,30 +523,41 @@ function showPlayback(s: Scene3, pb: Playback | null, t: number) {
 function showPreview(s: Scene3, shapes: DisplayShape[]) {
   clearGroup(s.preview);
   for (const shape of shapes) {
-    if (shape.points.length === 0) continue;
-    const positions: number[] = [];
-    for (const [x, y] of shape.points) positions.push(x, y, 0);
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    let obj: THREE.Object3D;
+    if (shape.label) {
+      const label = makeLabel(shape.label, COLORS.draft);
+      label.renderOrder = 12;
+      s.preview.add(label);
+    }
     if (shape.markers) {
-      obj = new THREE.Points(
+      const positions: number[] = [];
+      for (const [x, y] of shape.points) positions.push(x, y, 0);
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const obj = new THREE.Points(
         geom,
         new THREE.PointsMaterial({ color: COLORS.draft, size: MARKER_SIZE_PX, sizeAttenuation: false, depthTest: false }),
       );
-    } else {
+      obj.renderOrder = 12;
+      s.preview.add(obj);
+      continue;
+    }
+    for (const path of paths(shape)) {
+      const positions: number[] = [];
+      for (const [x, y] of path.points) positions.push(x, y, 0);
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       const mat = new THREE.LineDashedMaterial({
         color: COLORS.draft,
         dashSize: DASH_PX * s.view.scale,
         gapSize: GAP_PX * s.view.scale,
         depthTest: false,
       });
-      const line = shape.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat);
+      const line = path.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat);
       line.computeLineDistances();
-      obj = line;
+      const obj: THREE.Object3D = line;
+      obj.renderOrder = 12;
+      s.preview.add(obj);
     }
-    obj.renderOrder = 12;
-    s.preview.add(obj);
   }
   s.render();
 }
@@ -813,7 +873,8 @@ export default function Viewport({
         // Placing: a click (or a short drag) places the snapped point.
         enqueue(async () => {
           const snap = await snapAt(m);
-          live.current.onPlacePoint(snap.point);
+          const raw = screenToWorld(s, m.x, m.y);
+          live.current.onPlacePoint(snap.point, raw, PICK_RADIUS_PX * s.view.scale);
         });
       } else if (leftDown.dragging) {
         const a = screenToWorld(s, leftDown.x, leftDown.y);
@@ -878,25 +939,45 @@ export default function Viewport({
     if (!s) return;
     for (const child of [...s.shapes.children]) {
       (child as THREE.Line).geometry.dispose();
+      if (child.userData.label) {
+        const m = (child as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        m.map?.dispose();
+        m.dispose();
+      }
       s.shapes.remove(child);
     }
     s.byId.clear();
     for (const shape of display?.shapes ?? []) {
-      const positions: number[] = [];
-      for (const [x, y] of shape.points) positions.push(x, y, 0);
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      const obj: THREE.Object3D = shape.markers
-        ? new THREE.Points(geom, s.materials.marker(shape.color))
-        : shape.closed
-          ? new THREE.LineLoop(geom, s.materials.line(shape.color))
-          : new THREE.Line(geom, s.materials.line(shape.color));
-      obj.renderOrder = 10;
-      obj.userData.markers = shape.markers;
-      obj.userData.color = shape.color;
-      s.shapes.add(obj);
+      const objs: THREE.Object3D[] = [];
+      if (shape.markers) {
+        const positions: number[] = [];
+        for (const [x, y] of shape.points) positions.push(x, y, 0);
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        objs.push(new THREE.Points(geom, s.materials.marker(shape.color)));
+      } else {
+        for (const path of paths(shape)) {
+          const positions: number[] = [];
+          for (const [x, y] of path.points) positions.push(x, y, 0);
+          const geom = new THREE.BufferGeometry();
+          geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+          const mat = s.materials.line(shape.color);
+          objs.push(path.closed ? new THREE.LineLoop(geom, mat) : new THREE.Line(geom, mat));
+        }
+      }
+      if (shape.label) {
+        const label = makeLabel(shape.label, shape.color);
+        label.userData.label = true;
+        objs.push(label);
+      }
+      for (const obj of objs) {
+        obj.renderOrder = 10;
+        obj.userData.markers = shape.markers;
+        obj.userData.color = shape.color;
+        s.shapes.add(obj);
+      }
       const list = s.byId.get(shape.id) ?? [];
-      list.push(obj);
+      list.push(...objs);
       s.byId.set(shape.id, list);
     }
     s.render();
@@ -965,6 +1046,11 @@ export default function Viewport({
       for (const obj of objs) {
         const o = obj as THREE.Line | THREE.Points;
         const color: string = obj.userData.color;
+        if (obj.userData.label) {
+          ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(selected ? COLORS.selected : color);
+          o.renderOrder = selected ? 11 : 10;
+          continue;
+        }
         o.material = obj.userData.markers
           ? selected
             ? s.materials.markerSelected

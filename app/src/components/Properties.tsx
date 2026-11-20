@@ -186,7 +186,7 @@ function CollectionField({ onOpen }: { onOpen: () => void }) {
 
 // --- Shapes ---------------------------------------------------------------------------------
 
-/** The rows for a shape's own values, editable. */
+/** The rows for a shape's own values: editable, except a dimension's. */
 function ShapeRows({
   shape,
   direction,
@@ -305,6 +305,15 @@ function ShapeRows({
               }
             />
           </Row>
+        </>
+      );
+    case "Dimension":
+      // Measure only: the value was measured when placed and can't be edited (delete and place
+      // it again to re-measure).
+      return (
+        <>
+          <Row label="Kind">{shape.kind}</Row>
+          <Row label="Value">{`${num(shape.value)}${shape.kind === "Angle" ? "°" : " mm"}`}</Row>
         </>
       );
   }

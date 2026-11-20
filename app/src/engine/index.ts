@@ -27,7 +27,15 @@ export type Shape =
   | { type: "Polyline"; vertices: Vertex[]; closed: boolean }
   /** A "PolyRectangle": width along `rotation` degrees CCW from +X, height at right angles. */
   | { type: "Rectangle"; lower_left: Point; width: number; height: number; rotation: number }
-  | { type: "Points"; points: Point[] };
+  | { type: "Points"; points: Point[] }
+  | ({ type: "Dimension" } & Dimension);
+
+/** A dimension (measure only, never machined). `value` is mm, or degrees for an angle. */
+export type Dimension =
+  | { kind: "Aligned"; from: Point; to: Point; at: Point; value: number }
+  | { kind: "Radius"; center: Point; radius: number; at: Point; value: number }
+  | { kind: "Diameter"; center: Point; radius: number; at: Point; value: number }
+  | { kind: "Angle"; vertex: Point; start: Point; end: Point; value: number };
 
 export interface DrawingObject {
   id: number;
@@ -299,6 +307,21 @@ export interface DisplayShape {
   color: string;
   /** Which way a closed polyline or rectangle runs; null for other shapes. */
   direction: "CW" | "CCW" | null;
+  /** More open paths drawn the same way (a dimension's lines and arrowheads). */
+  extra: [number, number][][];
+  /** Text to draw (a dimension's value). */
+  label: Label | null;
+}
+
+/** Text placed on the drawing (a dimension's value). */
+export interface Label {
+  text: string;
+  /** Centre of the text, in mm. */
+  at: [number, number];
+  /** Baseline direction, degrees anticlockwise from +X. */
+  angle: number;
+  /** Text height in mm. */
+  height: number;
 }
 
 export interface DisplayData {
@@ -351,7 +374,17 @@ export interface ImportReport {
 
 export type BoxMode = "Window" | "Crossing";
 
-export type DrawTool = "Line" | "Arc" | "Circle" | "Rectangle" | "Polyline" | "Points";
+export type DrawTool =
+  | "Line"
+  | "Arc"
+  | "Circle"
+  | "Rectangle"
+  | "Polyline"
+  | "Points"
+  | "DimAligned"
+  | "DimRadius"
+  | "DimDiameter"
+  | "DimAngle";
 
 /** How many clicks finish each tool's shape; null = finished with Enter (polyline, points). */
 export const CLICKS_NEEDED: Record<DrawTool, number | null> = {
@@ -361,7 +394,20 @@ export const CLICKS_NEEDED: Record<DrawTool, number | null> = {
   Arc: 3,
   Polyline: null,
   Points: null,
+  DimAligned: 3,
+  DimRadius: 2,
+  DimDiameter: 2,
+  DimAngle: 3,
 };
+
+/** Dimension clicks that must land on an object rather than a snapped point (as the engine's
+ * `DrawTool::pick_at`): radius/diameter click 0 picks an arc or circle, angle clicks 0 and 1
+ * pick lines. */
+export function pickAt(tool: DrawTool, step: number): "Circle" | "Line" | null {
+  if ((tool === "DimRadius" || tool === "DimDiameter") && step === 0) return "Circle";
+  if (tool === "DimAngle" && step <= 1) return "Line";
+  return null;
+}
 
 /** A shape being drawn: the points clicked so far. */
 export interface Draft {
@@ -371,6 +417,8 @@ export interface Draft {
   arcs: boolean[];
   /** Polyline: the next segment (to the cursor) is a tangent arc. */
   arc_next: boolean;
+  /** Dimensions: ids of the objects picked so far (their click points are in `points`). */
+  picks: number[];
 }
 
 export type SnapKind = "None" | "Grid" | "End" | "Mid" | "Centre";
@@ -684,6 +732,20 @@ export function pickBox(x0: number, y0: number, x1: number, y1: number, mode: Bo
 /** Snaps a cursor position. `extra` are points of the shape being drawn. */
 export function snap(x: number, y: number, tolerance: number, options: SnapOptions, extra: Point[]): Promise<Snap> {
   return invoke<Snap>("snap", { x, y, tolerance, options, extra });
+}
+
+/**
+ * For a dimension click that must land on an object (an arc/circle, or a line): the object
+ * picked near (x, y) for click `step` of `tool`, or null.
+ */
+export function dimensionPick(
+  tool: DrawTool,
+  step: number,
+  x: number,
+  y: number,
+  tolerance: number,
+): Promise<number | null> {
+  return invoke<number | null>("dimension_pick", { tool, step, x, y, tolerance });
 }
 
 /** The rubber-band preview of a shape being drawn, with the cursor as its next point. */

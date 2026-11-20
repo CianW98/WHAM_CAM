@@ -76,7 +76,7 @@ const TOOL_KEY_LABELS: Record<string, string> = {
 
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
 
-const emptyDraft = (tool: DrawTool): Draft => ({ tool, points: [], arcs: [], arc_next: false });
+const emptyDraft = (tool: DrawTool): Draft => ({ tool, points: [], arcs: [], arc_next: false, picks: [] });
 
 /** What to tell the user at each step of drawing. */
 function drawHint(d: Draft): string {
@@ -86,6 +86,10 @@ function drawHint(d: Draft): string {
     Arc: ["Click the start point", "Click the end point", "Click the centre"],
     Circle: ["Click the centre", "Click a point on the circle"],
     Rectangle: ["Click the first corner", "Click the opposite corner"],
+    DimAligned: ["Click the first point", "Click the second point", "Click where the dimension line goes"],
+    DimRadius: ["Click an arc or circle", "Click where the value goes"],
+    DimDiameter: ["Click an arc or circle", "Click where the value goes"],
+    DimAngle: ["Click the first line", "Click the second line", "Click inside the angle to measure"],
   };
   let hint: string;
   if (d.tool === "Polyline") {
@@ -710,7 +714,7 @@ export default function App() {
   );
 
   const addDrawPoint = useCallback(
-    (p: Point) => {
+    (p: Point, pick?: number) => {
       const d = draftRef.current;
       if (!d) return;
       // A second click on the same spot (e.g. a double-click) adds nothing.
@@ -718,6 +722,7 @@ export default function App() {
       const next: Draft = {
         ...d,
         points: [...d.points, p],
+        picks: pick === undefined ? d.picks : [...d.picks, pick],
         arcs: d.tool === "Polyline" && d.points.length > 0 ? [...d.arcs, d.arc_next] : d.arcs,
       };
       const closes = d.tool === "Polyline" && d.points.length >= 2 && samePoint(d.points[0], p);
@@ -913,8 +918,25 @@ export default function App() {
 
   /** A snapped click while placing: a drawing point, a move/rotate step, or a paste. */
   const placePoint = useCallback(
-    (p: Point) => {
-      if (draftRef.current) return addDrawPoint(p);
+    (p: Point, raw: Point, pickTolerance: number) => {
+      const d = draftRef.current;
+      if (d) {
+        // A dimension click that must land on an arc/circle or a line: ask the engine what is
+        // under the cursor (not snapped).
+        const want = engine.pickAt(d.tool, d.points.length);
+        if (!want) return addDrawPoint(p);
+        run(async () => {
+          const id = await engine.dimensionPick(d.tool, d.points.length, raw.x, raw.y, pickTolerance);
+          if (id === null) {
+            notify("info", want === "Circle" ? "Click an arc or a circle." : "Click a line.");
+            return;
+          }
+          const now = draftRef.current;
+          if (now !== d) return; // drawing changed meanwhile
+          addDrawPoint(raw, id);
+        });
+        return;
+      }
       const sp = specialRef.current;
       if (!sp) return;
       if (sp.kind === "move" && !sp.base) return setSpecial({ ...sp, base: p });
@@ -938,7 +960,7 @@ export default function App() {
         });
       }
     },
-    [addDrawPoint, applyTransform, refresh, run, setSpecial],
+    [addDrawPoint, applyTransform, notify, refresh, run, setSpecial],
   );
 
   const toggleCutWidth = () => {
@@ -1162,7 +1184,21 @@ export default function App() {
         { label: "Explode", disabled: none, action: () => run(explodeSelected) },
         { label: "Break at intersections", disabled: ids.length < 2, action: () => run(breakSelected) },
         { label: "Close polyline", disabled: none, action: () => run(closeSelected) },
-        later("Dimension"),
+        sep({
+          label: "Dimension",
+          items: (
+            [
+              ["Aligned", "DimAligned"],
+              ["Radius", "DimRadius"],
+              ["Diameter", "DimDiameter"],
+              ["Angle", "DimAngle"],
+            ] as [string, DrawTool][]
+          ).map(([label, tool]) => ({
+            label,
+            checked: draft?.tool === tool,
+            action: () => setDraft(emptyDraft(tool)),
+          })),
+        }),
       ] as MenuItem[],
       select: [
         { label: "Select All", shortcut: "Ctrl+A", action: () => run(selectAll) },

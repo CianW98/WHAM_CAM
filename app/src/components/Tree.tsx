@@ -8,6 +8,7 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 export function shapeLabel(shape: Shape): string {
   if (shape.type === "Points") return "PointList";
   if (shape.type === "Rectangle") return "PolyRectangle";
+  if (shape.type === "Dimension") return `${shape.kind} dimension`;
   return shape.type;
 }
 

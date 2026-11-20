@@ -263,7 +263,18 @@ A classic CAD/CAM layout, with a toolbar:
   - The value is measured when the dimension is placed and is read-only. A dimension isn't linked
     to the shape it measured: moving or editing that shape doesn't update it (delete and place it
     again to re-measure).
-  - One look in v1: values in mm with 2 decimals, a fixed text size.
+  - One look in v1: values in mm with 2 decimals (`50.00`, `R12.50`, `Ø25.00`, `45.00°`), text
+    3.5 mm high on the drawing.
+  - **Placing** (Edit → Dimension → Aligned / Radius / Diameter / Angle; decided 2026-11-20):
+    aligned: two snapped points, then a third click sets where the dimension line sits
+    (extension lines drawn); radius / diameter: click an arc or circle (also an arc segment of a
+    polyline), then where the value goes, with a leader from the centre; angle: click two lines
+    (also straight segments of polylines or rectangle sides; extended to where they cross), then
+    click inside the angle to measure (any of the four), which also sets the arc's radius.
+  - **Transforms** (decided 2026-11-20): moving, rotating and mirroring keep the value; scaling
+    multiplies a length by the factor (angles stay), so a dimension always matches its own
+    drawing. Snapping ignores dimensions. Properties shows the kind and value, read-only.
+  - Saving dimensions made the project file format version 2; version 1 files still open.
 
 ### 5.4 Operations and the Machining tree
 The Machining branch of the Project tree holds the project's machining, in three levels: the

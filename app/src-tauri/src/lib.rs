@@ -8,10 +8,10 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
-    BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DxfInfo,
-    GenerateReport, ImportReport, JoinReport, Machines, Operation, OperationState, PickedTool,
-    Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, Tool, ToolDrawing,
-    ToolSetting, Tooling, ToolpathDisplay, TransformOp,
+    BoxMode, BreakReport, CutWidthStep, DisplayData, DisplayShape, Document, Draft, DrawTool,
+    DxfInfo, GenerateReport, ImportReport, JoinReport, Machines, Operation, OperationState,
+    PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, Tool,
+    ToolDrawing, ToolSetting, Tooling, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -578,6 +578,23 @@ fn preview_shape(
     state.0.lock().unwrap().preview(&draft, cursor)
 }
 
+/// For a dimension click that must pick an object: the object picked at (x, y), if any.
+#[tauri::command]
+fn dimension_pick(
+    tool: DrawTool,
+    step: usize,
+    x: f64,
+    y: f64,
+    tolerance: f64,
+    state: State<AppState>,
+) -> Option<u32> {
+    state
+        .0
+        .lock()
+        .unwrap()
+        .dimension_pick(tool, step, x, y, tolerance)
+}
+
 #[tauri::command]
 fn add_draft(layer: String, draft: Draft, state: State<AppState>) -> Result<u32, String> {
     state.0.lock().unwrap().add_draft(&layer, &draft)
@@ -846,6 +863,7 @@ pub fn run() {
             pick_box,
             snap,
             preview_shape,
+            dimension_pick,
             add_draft,
             set_shape,
             set_grid_spacing,
