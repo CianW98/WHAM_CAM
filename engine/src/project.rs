@@ -2,7 +2,7 @@
 //! The app layer holds one `Project` and calls these methods; the interface never edits
 //! the document directly.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -188,6 +188,9 @@ pub struct Project {
     saved: Document,
     /// Generated toolpaths by operation id. Not part of the document: regenerated on request.
     toolpaths: BTreeMap<u32, Generated>,
+    /// Layers hidden from view: not drawn, picked, snapped to or selected by Select All. A view
+    /// setting only: not saved, not in undo (decided 2026-11-20).
+    hidden_layers: BTreeSet<String>,
 }
 
 impl Default for Project {
@@ -199,7 +202,7 @@ impl Default for Project {
 impl Project {
     pub fn new() -> Self {
         let doc = Document::new("Untitled");
-        let display = display_data(&doc);
+        let display = display_data(&doc, &BTreeSet::new());
         Self {
             saved: doc.clone(),
             doc,
@@ -209,6 +212,7 @@ impl Project {
             clipboard: Vec::new(),
             library_tools: Some(Vec::new()),
             toolpaths: BTreeMap::new(),
+            hidden_layers: BTreeSet::new(),
         }
     }
 
@@ -232,8 +236,9 @@ impl Project {
     fn replace_document(&mut self, doc: Document) {
         self.toolpaths.clear();
         self.saved = doc.clone();
-        self.display = display_data(&doc);
+        self.hidden_layers.clear();
         self.doc = doc;
+        self.refresh_display();
         self.undo.clear();
         self.redo.clear();
     }
@@ -287,20 +292,61 @@ impl Project {
         let before = self.doc.clone();
         change(&mut self.doc);
         if self.doc != before {
+            // New objects (drawn, pasted, imported) never land out of sight: their layer shows.
+            let newest = before.max_id();
+            let receiving: Vec<String> = self
+                .doc
+                .layers
+                .iter()
+                .filter(|l| l.objects.iter().any(|o| o.id > newest))
+                .map(|l| l.name.clone())
+                .collect();
+            for name in receiving {
+                self.hidden_layers.remove(&name);
+            }
             self.undo.push(before);
             if self.undo.len() > UNDO_LIMIT {
                 self.undo.remove(0);
             }
             self.redo.clear();
-            self.display = display_data(&self.doc);
+            self.refresh_display();
         }
+    }
+
+    /// Rebuilds what is drawn, forgetting hidden layers that no longer exist.
+    fn refresh_display(&mut self) {
+        let names: BTreeSet<&String> = self.doc.layers.iter().map(|l| &l.name).collect();
+        self.hidden_layers.retain(|h| names.contains(h));
+        self.display = display_data(&self.doc, &self.hidden_layers);
+    }
+
+    /// Shows or hides a layer (a view setting: not saved, not an undo step, doesn't mark the
+    /// project as changed).
+    pub fn set_layer_visible(&mut self, name: &str, visible: bool) -> Result<(), String> {
+        self.layer_position(name)?;
+        if visible {
+            self.hidden_layers.remove(name);
+        } else {
+            self.hidden_layers.insert(name.to_string());
+        }
+        self.refresh_display();
+        Ok(())
+    }
+
+    /// The names of the hidden layers.
+    pub fn hidden_layers(&self) -> Vec<String> {
+        self.hidden_layers.iter().cloned().collect()
+    }
+
+    fn layer_hidden(&self, name: &str) -> bool {
+        self.hidden_layers.contains(name)
     }
 
     pub fn undo(&mut self) -> bool {
         match self.undo.pop() {
             Some(prev) => {
                 self.redo.push(std::mem::replace(&mut self.doc, prev));
-                self.display = display_data(&self.doc);
+                self.refresh_display();
                 true
             }
             None => false,
@@ -311,7 +357,7 @@ impl Project {
         match self.redo.pop() {
             Some(next) => {
                 self.undo.push(std::mem::replace(&mut self.doc, next));
-                self.display = display_data(&self.doc);
+                self.refresh_display();
                 true
             }
             None => false,
@@ -474,6 +520,10 @@ impl Project {
         if self.doc.layers.iter().any(|l| l.name == new) {
             return Err(format!("There is already a layer called \"{new}\"."));
         }
+        let was_hidden = self.hidden_layers.remove(old);
+        if was_hidden {
+            self.hidden_layers.insert(new.to_string());
+        }
         self.edit(|doc| doc.layers[index].name = new.to_string());
         Ok(())
     }
@@ -556,14 +606,14 @@ impl Project {
     ) -> DimensionClick {
         let at = Point::new(x, y);
         let kinds = Self::pick_kinds(draft);
-        let snapped = || draw::snap(&self.doc, at, tolerance, options, &[]);
+        let snapped = || draw::snap(&self.doc, &self.hidden_layers, at, tolerance, options, &[]);
         let picked = |pick: Pick| (at, SnapKind::None, Some(pick));
         let (point, kind, pick) = match kinds[..] {
             [] => {
                 let point_snap = options
                     .objects
                     .then(|| {
-                        draw::object_snap(&self.doc, at, tolerance, &[], |k| {
+                        draw::object_snap(&self.doc, &self.hidden_layers, at, tolerance, &[], |k| {
                             matches!(k, SnapKind::End | SnapKind::Centre)
                         })
                     })
@@ -620,7 +670,12 @@ impl Project {
             })
         };
         let mut best: Option<(f64, Pick)> = None;
-        for o in self.doc.objects() {
+        let visible = self
+            .doc
+            .layers
+            .iter()
+            .filter(|l| !self.layer_hidden(&l.name));
+        for o in visible.flat_map(|l| &l.objects) {
             let mut consider = |d: f64, kind: PickKind| {
                 if d <= tolerance && best.is_none_or(|b| d < b.0) {
                     best = Some((d, Pick { id: o.id, kind }));
@@ -716,7 +771,14 @@ impl Project {
         options: SnapOptions,
         extra: &[Point],
     ) -> Snap {
-        draw::snap(&self.doc, Point::new(x, y), tolerance, options, extra)
+        draw::snap(
+            &self.doc,
+            &self.hidden_layers,
+            Point::new(x, y),
+            tolerance,
+            options,
+            extra,
+        )
     }
 
     /// The rubber-band preview of a shape being drawn, with the cursor as its next point.
@@ -1739,9 +1801,14 @@ impl Project {
             .collect()
     }
 
-    /// Ids of every object in the drawing.
+    /// Ids of every object on a shown layer (Select All).
     pub fn all_ids(&self) -> Vec<u32> {
-        self.doc.objects().map(|o| o.id).collect()
+        self.doc
+            .layers
+            .iter()
+            .filter(|l| !self.layer_hidden(&l.name))
+            .flat_map(|l| l.objects.iter().map(|o| o.id))
+            .collect()
     }
 
     /// Ids of every object on a layer (empty if there's no such layer).

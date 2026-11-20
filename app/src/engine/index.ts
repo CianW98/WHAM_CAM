@@ -346,6 +346,8 @@ export interface View {
   toolpaths: ToolpathDisplay[];
   /** This computer's master tool list and tool libraries. */
   tooling: Tooling;
+  /** Layers hidden from view (not saved). */
+  hiddenLayers: string[];
   /** This computer's machines. */
   machines: Machines;
 }
@@ -744,6 +746,11 @@ export function renameLayer(oldName: string, newName: string): Promise<void> {
 /** Sets a layer's colour ("#rrggbb"). */
 export function setLayerColor(name: string, color: string): Promise<void> {
   return invoke<void>("set_layer_color", { name, color });
+}
+
+/** Shows or hides a layer (a view setting: not saved, not an undo step). */
+export function setLayerVisible(name: string, visible: boolean): Promise<void> {
+  return invoke<void>("set_layer_visible", { name, visible });
 }
 
 export function undo(): Promise<boolean> {

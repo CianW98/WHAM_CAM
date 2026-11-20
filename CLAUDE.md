@@ -180,7 +180,8 @@ Done:
 - DXF import: engine DXF reader (lines, arcs, circles, polylines, points, blocks), unit prompt for
   inch DXFs, click/box selection, delete, undo/redo. Splines/ellipses become polylines of arcs
   and lines on import (`curve.rs`, biarcs; tolerance dialog, 0.01 mm default; decided 2026-11-20).
-- Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree.
+- Layers: delete, colours (own preset picker), rename in the tree or Properties, open/close in the tree,
+  show/hide eye icon (view only: not saved, not undone; 2026-11-20).
 - Reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole top-level
   `tests/` folder is git-ignored for now (this machine only), so the expected moves from the
   references are written into the engine tests (`engine/tests/pocket.rs`, `profile.rs`, `drill.rs`).

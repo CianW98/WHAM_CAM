@@ -230,6 +230,11 @@ A classic CAD/CAM layout, with a toolbar:
 - Colour picker: 24 preset colours plus a box for an exact #rrggbb value.
 - Layer names must be unique and not empty. Renames and colour changes are undoable.
 - Deleting a layer deletes everything on it. An emptied layer stays until deleted.
+- **Show / hide** (decided 2026-11-20): an eye icon on each layer in the tree. A hidden layer's
+  shapes aren't drawn, clicked, box-selected or snapped to, and Select All skips them; operations
+  that use them still work and their toolpaths still show. It is a view setting only: not saved
+  in the project, not an undo step. The current layer can't be hidden (its eye is greyed);
+  making a hidden layer current, or adding shapes to it (drawing, pasting, importing), shows it.
 
 ### 5.3 Edit
 - Transform (right-click menu → Transform), always changing the selected shapes:

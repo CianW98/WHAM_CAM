@@ -21,7 +21,7 @@ fn rectangle_display_points_are_its_corners() {
         id: 7,
         shape: Shape::Polyline(Polyline::rectangle(0.0, 0.0, 100.0, 80.0)),
     });
-    let data = display_data(&doc);
+    let data = display_data(&doc, &Default::default());
     assert_eq!(data.shapes.len(), 1);
     assert_eq!(data.shapes[0].id, 7);
     assert!(data.shapes[0].closed);
@@ -41,7 +41,7 @@ fn circle_display_points_lie_on_the_radius() {
             radius: 25.0,
         },
     });
-    let shape = &display_data(&doc).shapes[0];
+    let shape = &display_data(&doc, &Default::default()).shapes[0];
     assert!(shape.closed);
     assert!(shape.points.len() > 16);
     for p in &shape.points {
@@ -76,7 +76,7 @@ fn bulge_semicircle_is_drawn_on_the_correct_side() {
         id: 1,
         shape: Shape::Polyline(pl),
     });
-    let pts = &display_data(&doc).shapes[0].points;
+    let pts = &display_data(&doc, &Default::default()).shapes[0].points;
     assert_eq!(pts.first(), Some(&[0.0, 0.0]));
     assert_eq!(pts.last(), Some(&[10.0, 0.0]));
     for p in pts {

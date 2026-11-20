@@ -4,6 +4,8 @@
 //! The interface collects the clicked points (a `Draft`) and asks the engine what shape they
 //! make. All geometry stays here.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::document::Document;
@@ -407,31 +409,35 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
 /// shape being drawn, which can be snapped to as end points (e.g. to close a polyline).
 pub fn snap(
     doc: &Document,
+    hidden: &BTreeSet<String>,
     at: Point,
     tolerance: f64,
     options: SnapOptions,
     extra: &[Point],
 ) -> Snap {
     if options.objects
-        && let Some(s) = object_snap(doc, at, tolerance, extra, |_| true)
+        && let Some(s) = object_snap(doc, hidden, at, tolerance, extra, |_| true)
     {
         return s;
     }
     grid_snap(doc, at, options)
 }
 
-/// The nearest object snap point within `tolerance` of `at` whose kind `allow`s, if any.
-/// `extra` points count as end points.
+/// The nearest object snap point within `tolerance` of `at` whose kind `allow`s, if any, on
+/// layers not named in `hidden`. `extra` points count as end points.
 pub fn object_snap(
     doc: &Document,
+    hidden: &BTreeSet<String>,
     at: Point,
     tolerance: f64,
     extra: &[Point],
     allow: impl Fn(SnapKind) -> bool,
 ) -> Option<Snap> {
     let mut candidates = Vec::new();
-    for obj in doc.objects() {
-        snap_points(&obj.shape, &mut candidates);
+    for layer in doc.layers.iter().filter(|l| !hidden.contains(&l.name)) {
+        for obj in &layer.objects {
+            snap_points(&obj.shape, &mut candidates);
+        }
     }
     candidates.extend(extra.iter().map(|p| (*p, SnapKind::End)));
     candidates

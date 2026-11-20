@@ -139,6 +139,8 @@ struct View {
     tooling: Tooling,
     /// This computer's machines.
     machines: Machines,
+    /// Layers hidden from view (not saved).
+    hidden_layers: Vec<String>,
 }
 
 fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines) -> View {
@@ -155,6 +157,7 @@ fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines
         toolpaths: p.toolpaths_display(),
         tooling: tooling.clone(),
         machines: machines.clone(),
+        hidden_layers: p.hidden_layers(),
     }
 }
 
@@ -555,6 +558,12 @@ fn set_layer_color(name: String, color: String, state: State<AppState>) -> Resul
     state.0.lock().unwrap().set_layer_color(&name, &color)
 }
 
+/// Shows or hides a layer (a view setting: not saved, not an undo step).
+#[tauri::command]
+fn set_layer_visible(name: String, visible: bool, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_layer_visible(&name, visible)
+}
+
 #[tauri::command]
 fn undo(state: State<AppState>) -> bool {
     state.0.lock().unwrap().undo()
@@ -882,6 +891,7 @@ pub fn run() {
             delete_layer,
             rename_layer,
             set_layer_color,
+            set_layer_visible,
             undo,
             redo,
             pick,

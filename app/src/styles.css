@@ -518,6 +518,26 @@ button.primary {
   color: #fff;
   border-color: var(--accent);
 }
+.tree-item .layer-eye {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px;
+  margin-right: 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tree-item .layer-eye:hover:not(:disabled) {
+  color: var(--accent);
+}
+.tree-item .layer-eye:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tree-item.hidden-layer {
+  opacity: 0.5;
+}
 .tree-item .current-layer {
   margin-left: 6px;
   font-size: 11px;

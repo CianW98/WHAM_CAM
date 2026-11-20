@@ -573,6 +573,17 @@ export default function App() {
     await refresh();
   }, [selection, view, refresh, deleteOperation]);
 
+  const hiddenLayers = useMemo(() => new Set(view?.hiddenLayers ?? []), [view]);
+
+  /** Shows or hides a layer, then redraws. */
+  const setLayerVisible = useCallback(
+    async (name: string, visible: boolean) => {
+      await engine.setLayerVisible(name, visible);
+      await refresh();
+    },
+    [refresh],
+  );
+
   /** Adds a new empty layer, selects it and makes it the current layer. */
   const addLayer = useCallback(async () => {
     const name = await engine.addLayer();
@@ -1181,7 +1192,12 @@ export default function App() {
   );
   const onSelect = (sel: Selection) => {
     setSelection(sel);
-    if (sel.kind === "layer" && layers[sel.layer]) setCurrentLayer(layers[sel.layer].name);
+    if (sel.kind === "layer" && layers[sel.layer]) {
+      const name = layers[sel.layer].name;
+      setCurrentLayer(name);
+      // The current layer can't be hidden: making a hidden layer current shows it.
+      if (hiddenLayers.has(name)) run(() => setLayerVisible(name, true));
+    }
   };
 
   const disabled = new Set<string>();
@@ -1419,6 +1435,8 @@ export default function App() {
             onSelect={onSelect}
             onRenameLayer={renameLayer}
             onSetLayerColor={setLayerColor}
+            hiddenLayers={hiddenLayers}
+            onSetLayerVisible={(name, visible) => run(() => setLayerVisible(name, visible))}
             currentLayer={drawLayer}
             onAddLayer={addLayer}
             operationStates={view?.operations ?? []}

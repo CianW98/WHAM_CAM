@@ -19,6 +19,9 @@ interface Props {
   /** Resolves false if the rename was rejected. */
   onRenameLayer: (oldName: string, newName: string) => Promise<boolean>;
   onSetLayerColor: (name: string, color: string) => void;
+  /** Layers hidden from view. */
+  hiddenLayers: Set<string>;
+  onSetLayerVisible: (name: string, visible: boolean) => void;
   /** Name of the layer new drawings go onto. */
   currentLayer: string | null;
   /** Adds a new empty layer (selected and made current); resolves to its name. */
@@ -140,11 +143,29 @@ function OperationItem({
  * A layer in the tree. Click: select and open/close. Double-click: rename in place
  * (Enter or clicking away saves, Esc cancels). Click the colour square: pick a colour.
  */
+/** An eye (shown) or a crossed-out eye (hidden). */
+function EyeIcon({ shown }: { shown: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        d="M1 8c1.8-3.2 4.2-4.8 7-4.8s5.2 1.6 7 4.8c-1.8 3.2-4.2 4.8-7 4.8S2.8 11.2 1 8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <circle cx="8" cy="8" r="2.2" fill="currentColor" />
+      {!shown && <path d="M2 14L14 2" stroke="currentColor" strokeWidth="1.5" />}
+    </svg>
+  );
+}
+
 function LayerItem({
   layer,
   open,
   selected,
   current,
+  hidden,
+  onToggleVisible,
   onClick,
   onRename,
   onColor,
@@ -157,6 +178,9 @@ function LayerItem({
   open: boolean;
   selected: boolean;
   current: boolean;
+  /** Hidden from view. */
+  hidden: boolean;
+  onToggleVisible: () => void;
   onClick: () => void;
   onRename: (newName: string) => Promise<boolean>;
   onColor: (color: string) => void;
@@ -191,12 +215,31 @@ function LayerItem({
   return (
     <li>
       <div
-        className={`tree-item${selected ? " selected" : ""}`}
+        className={`tree-item${selected ? " selected" : ""}${hidden ? " hidden-layer" : ""}`}
         onClick={onClick}
         onDoubleClick={start}
         onContextMenu={onContextMenu}
       >
         <span className="chevron">{open ? "▾" : "▸"}</span>
+        <button
+          type="button"
+          className="layer-eye"
+          disabled={current}
+          title={
+            current
+              ? "The current layer can't be hidden"
+              : hidden
+                ? `Show layer ${layer.name}`
+                : `Hide layer ${layer.name}`
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisible();
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <EyeIcon shown={!hidden} />
+        </button>
         <ColorSwatch color={layer.color} onPick={onColor} title={`Colour of layer ${layer.name}`} />
         {editing === null ? (
           <>
@@ -235,6 +278,8 @@ export default function Tree({
   onSelect,
   onRenameLayer,
   onSetLayerColor,
+  hiddenLayers,
+  onSetLayerVisible,
   currentLayer,
   onAddLayer,
   onDeleteLayer,
@@ -366,6 +411,8 @@ export default function Tree({
               open={!closed.has(layer.name)}
               selected={is({ kind: "layer", layer: li })}
               current={layer.name === currentLayer}
+              hidden={hiddenLayers.has(layer.name)}
+              onToggleVisible={() => onSetLayerVisible(layer.name, hiddenLayers.has(layer.name))}
               onClick={() => {
                 onSelect({ kind: "layer", layer: li });
                 toggle(layer.name);

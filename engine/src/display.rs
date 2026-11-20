@@ -4,6 +4,8 @@
 
 use std::f64::consts::TAU;
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::dimension::{Label, layout};
@@ -72,10 +74,12 @@ pub fn polyline_signed_area(pl: &Polyline) -> f64 {
     area
 }
 
-pub fn display_data(doc: &Document) -> DisplayData {
+/// What to draw for the document, leaving out layers named in `hidden`.
+pub fn display_data(doc: &Document, hidden: &BTreeSet<String>) -> DisplayData {
     let shapes: Vec<DisplayShape> = doc
         .layers
         .iter()
+        .filter(|layer| !hidden.contains(&layer.name))
         .flat_map(|layer| {
             layer.objects.iter().map(|obj| DisplayShape {
                 color: layer.color.clone(),
