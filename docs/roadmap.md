@@ -8,8 +8,12 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Machine-specific post-processors**: RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3, each with its
   own settings panel per machine type. v1 has one generic post-processor only, in a machine list
   in the Setup tab (decided 2026-11-20). Each is a different set of the same format choices, e.g.
-  drill cycles written out in full for controllers without `G81`/`G83` (the engine keeps each
-  hole as a cycle so this is easy), or a pause (`M0`) instead of `M6`.
+  a pause (`M0`) instead of `M6`.
+  - **Drill cycles as G0/G1** (a post-processor setting): write Standard/Peck holes as plain
+    G0/G1 moves instead of `G81`/`G83`, for controllers and simulators without canned cycles.
+    The engine keeps each hole as a cycle, so the post-processor expands it, using the same moves
+    as the preview (decided 2026-11-19/20). Found 2026-11-20: CAMotics 1.3.0 doesn't simulate
+    `G83` ("Not implemented: G83 (Peck Drilling)"); `G81` is fine.
 - **Inches**, together with CAM styles/templates and workspaces. v1 is mm only.
 - **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate. The reference
   Profile example uses a spiral (ramp) lead-in at 15°: plunge to the stock surface, then ramp down
