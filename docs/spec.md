@@ -160,10 +160,8 @@ A classic CAD/CAM layout, with a toolbar:
   **(?)** The font used to turn letters into outlines is decided when this is built: a font
   bundled with WHAM_CAM (its licence must allow that) and a font reader that builds for
   WebAssembly.
-- **DIMENSION** (decided 2026-11-19): aligned, radius, diameter and angular DXF dimensions become
-  WHAM_CAM dimensions (5.3) on their layer, keeping the DXF's measured value. Other kinds (e.g.
-  horizontal/vertical "rotated" and ordinate dimensions) are skipped and listed in the import
-  message.
+- **DIMENSION** entities are skipped in v1 and listed in the import message. Importing them as
+  WHAM_CAM dimensions moved to the roadmap (user's decision, 2026-11-20).
 - HATCH is skipped (its outline isn't imported).
 - **Splines and ellipses are converted on import** (decided 2026-11-20) into polylines of arcs
   and lines (biarcs: smooth, no faceting), so everything imported can be machined and edited like
@@ -669,7 +667,7 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   outlines with, and the font reader. Decided when DXF text import is built.
 
 Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
-(both decided 2026-11-16). Dimensions (5.3) and the further DXF entities, TEXT/MTEXT and DIMENSION
+(both decided 2026-11-16). Dimensions (5.3) and the further DXF entities, TEXT/MTEXT and DIMENSION (now on the roadmap)
 (5.1), decided 2026-11-19. The generic post-processor and machines (5.7, 7), decided 2026-11-20.
 
 ## 10. Out of scope for v1

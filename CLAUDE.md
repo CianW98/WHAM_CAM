@@ -259,8 +259,8 @@ Done:
 - Dimensions (spec 5.3, 2026-11-20): aligned, radius, diameter, angle (`dimension.rs`), measure
   only; one smart Dimension tool (key D) picks the kind from what is clicked; format 2.
 
-Next, towards 1.0.0: DXF dimensions, then SVG import and DXF text (each needs a library choice
-first) (spec 5.1), then a full end-to-end check by the user.
+Next, towards 1.0.0: SVG import and DXF text (each needs a library choice first) (spec 5.1),
+then a full end-to-end check by the user. DXF dimensions moved to the roadmap (2026-11-20).
 No 0.x releases before 1.0.0 (user's decision, 2026-11-20; no 0.5.0). The 1.0.0 notes need a
 "G-code output changed" section: G-code is new and Peck toolpaths changed (Peck checked by the
 user, 2026-11-20).

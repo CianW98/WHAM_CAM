@@ -5,6 +5,10 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 
 ## Soon after v1
 
+- **DXF dimensions** (moved out of v1, 2026-11-20): aligned, radius, diameter and angular DXF
+  DIMENSION entities become WHAM_CAM dimensions on their layer, keeping the DXF's measured value
+  (as decided 2026-11-19); other kinds (horizontal/vertical "rotated", ordinate) skipped and
+  listed. v1 skips all DIMENSION entities.
 - **Machine-specific post-processors**: RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3, each with its
   own settings panel per machine type. v1 has one generic post-processor only, in a machine list
   in the Setup tab (decided 2026-11-20). Each is a different set of the same format choices, e.g.
