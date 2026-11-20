@@ -16,6 +16,7 @@ use crate::draw::{self, Draft, Snap, SnapOptions};
 use crate::drill;
 use crate::dxf::{DxfError, DxfUnits, read_dxf};
 use crate::edit;
+use crate::gcode_read::check_program;
 use crate::geometry::{Point, Shape, Transform};
 use crate::operation::{
     DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
@@ -23,6 +24,7 @@ use crate::operation::{
 };
 use crate::path;
 use crate::pocket;
+use crate::post::{Header, JobOperation, PostFormat, Program, write_program};
 use crate::profile;
 use crate::project_file;
 use crate::safety;
@@ -1315,6 +1317,102 @@ impl Project {
                 }
             })
             .collect()
+    }
+
+    /// The G-code for the whole job (spec 7): every enabled operation in tree order, written by
+    /// the generic post-processor from the toolpaths as generated, then read back and checked.
+    /// `date` is when it is made, as the interface shows it. Refuses (with a plain-English
+    /// message) if there is nothing to write, if any enabled operation's toolpath is out of date,
+    /// failed or was never generated, or if the read-back check finds anything wrong.
+    pub fn gcode(&self, date: &str) -> Result<Program, String> {
+        let states = self.operation_states();
+        let enabled: Vec<&Operation> = self
+            .doc
+            .parts
+            .iter()
+            .flat_map(|p| &p.operations)
+            .filter(|o| o.enabled)
+            .collect();
+        if enabled.is_empty() {
+            return Err("Nothing to write: add an operation (and make sure it's enabled).".into());
+        }
+        let not_ready: Vec<String> = enabled
+            .iter()
+            .filter_map(|op| {
+                let st = states.iter().find(|s| s.id == op.id)?;
+                let why = match st.status.as_str() {
+                    "ok" => return None,
+                    "outdated" => "out of date",
+                    "error" => "failed",
+                    _ => "not generated",
+                };
+                Some(format!("{} ({why})", op.name))
+            })
+            .collect();
+        if !not_ready.is_empty() {
+            return Err(format!(
+                "Press Generate toolpaths and check them first: {}.",
+                not_ready.join(", ")
+            ));
+        }
+        let mut job = Vec::new();
+        for op in enabled {
+            let g = self
+                .toolpaths
+                .get(&op.id)
+                .ok_or_else(|| format!("{} has no toolpath.", op.name))?;
+            let tp = g.result.as_ref().map_err(|e| format!("{}: {e}", op.name))?;
+            let c = &g.operation.common;
+            let (kind, depth_increment) = match &g.operation.kind {
+                OperationKind::Profile(p) => (
+                    format!(
+                        "Profile [{}]",
+                        match p.side {
+                            ProfileSide::Inside => "Inside",
+                            ProfileSide::Outside => "Outside",
+                            ProfileSide::OnLine => "On line",
+                        }
+                    ),
+                    Some(c.depth_increment),
+                ),
+                OperationKind::Pocket(_) => ("Pocket".to_string(), Some(c.depth_increment)),
+                OperationKind::Drill(d) => (format!("Drill [{:?}]", d.method), None),
+            };
+            job.push(JobOperation {
+                name: op.name.clone(),
+                kind,
+                tool_number: c.tool_number,
+                tool_name: g
+                    .tool
+                    .as_ref()
+                    .map_or_else(|| "custom tool".to_string(), |t| t.name.clone()),
+                tool_diameter: c.tool_diameter,
+                spindle: c.spindle_direction,
+                spindle_speed: c.spindle_speed,
+                stock_surface: tp.limits.stock_surface,
+                target_depth: tp.limits.target_depth,
+                depth_increment,
+                fast_plunge_height: c.fast_plunge_height,
+                toolpath: tp,
+            });
+        }
+        let format = PostFormat::generic();
+        let header = Header {
+            project: self.doc.name.clone(),
+            date: date.to_string(),
+            machine: self.doc.machine.clone(),
+            post: "Generic".into(),
+        };
+        let program = write_program(&header, &job, &format);
+        let problems = check_program(&program, &job, format.decimals);
+        if !problems.is_empty() {
+            let shown: Vec<&str> = problems.iter().take(5).map(String::as_str).collect();
+            return Err(format!(
+                "The G-code check failed, so no file was written. Please report this. {}",
+                shown.join(" ")
+            ));
+        }
+        Ok(program)
     }
 
     /// The toolpath of an operation, if one has been generated without error.
