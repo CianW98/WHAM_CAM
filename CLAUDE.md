@@ -248,14 +248,18 @@ Done:
 - Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
   Machining tree, tool number checks, real 3D cutter). No G-code yet.
 
-Next: **G-code output and the generic post-processor, built together** (spec 5.7, 7; open
-questions in spec 9 to settle with the user first):
+Next: **G-code output and the generic post-processor, built together** (spec 5.7, 7; all G-code
+questions answered 2026-11-20):
 - The engine turns each toolpath (already safety-checked) into G-code through the generic
-  post-processor: header with the WHAM_CAM version, per-operation comments (name, tool, depths),
-  tool numbers from the tooling, arcs as arcs.
-- The safety checker also reads the G-code text back; known-good outputs go in reference tests.
-- File saving in the app layer (Machining menu → Produce G-code, already in the menu greyed out).
+  post-processor (spec 7: one `.nc` file per job, `T# M6`, `I J` arcs, `G81`/`G83` drilling with
+  each hole kept as a cycle, standard start/end block, 3 decimals, WHAM_CAM version in the header).
+- A machine list in the Setup tab (generic post only for now); a project picks its machine in
+  Machining properties.
+- The safety checker also reads the G-code text back (following canned cycles); known-good
+  outputs go in `tests/reference/` (this computer only) and are compared before each release.
+- File saving in the app layer (Machining menu / toolbar → Produce G-code).
 - This is toolpath/G-code logic: the user checks output in CAMotics or NC Viewer and with an air
-  cut before cutting material.
+  cut before cutting material. (Their own controller doesn't run `G81`/`G83`; that waits for a
+  machine-specific post.)
 
 Later in v1: dimensions, DXF text and dimensions, and SVG import (spec 5.1, 5.3).

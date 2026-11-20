@@ -6,7 +6,10 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 ## Soon after v1
 
 - **Machine-specific post-processors**: RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3, each with its
-  own settings panel per machine type. v1 has one generic post-processor only.
+  own settings panel per machine type. v1 has one generic post-processor only, in a machine list
+  in the Setup tab (decided 2026-11-20). Each is a different set of the same format choices, e.g.
+  drill cycles written out in full for controllers without `G81`/`G83` (the engine keeps each
+  hole as a cycle so this is easy), or a pause (`M0`) instead of `M6`.
 - **Inches**, together with CAM styles/templates and workspaces. v1 is mm only.
 - **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate. The reference
   Profile example uses a spiral (ramp) lead-in at 15°: plunge to the stock surface, then ramp down
@@ -22,10 +25,13 @@ yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough a
 - **Smarter moves between depth levels.** v1 retracts to clearance, rapids to the start, rapids
   down to fast plunge height and feeds down, as in the reference. The user wants to work on this
   later (2026-11-16), e.g. staying down when the next level starts where the last ended.
-- **Machine settings**, including the real rapid rate, so the tool playback's run time is accurate.
-  v1 assumes 5000 mm/min for rapids (decided 2026-11-16). They belong to the computer, so they go
-  in the Setup tab (which is global: decided 2026-11-19), probably with the machine-specific
-  post-processors.
+- **Machine settings**, on each machine in the Setup tab's machine list (v1 has only a name and
+  the generic post-processor, decided 2026-11-20):
+  - the real rapid rate, so the tool playback's run time is accurate (v1 assumes 5000 mm/min for
+    rapids, decided 2026-11-16);
+  - tool changer yes/no: a machine without one could be post-processed into one file per tool
+    (user's idea, 2026-11-20); v1 writes one file for the whole job;
+  - travel limits.
 - **Pocket: full clearing at stepovers over 0.5.** Above 0.5 × tool diameter, narrow parts of a
   pocket can keep an uncut sliver down the middle (spec 6.3, found 2026-11-16 at 0.7 on a complex
   pocket; 0.5 clears it). Fix idea: after each ring, work out what is still uncut area by area

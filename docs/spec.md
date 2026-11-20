@@ -105,13 +105,14 @@ A classic CAD/CAM layout, with a toolbar:
   - **Project** is the tree: Layers → drawing objects; Machining → Parts → operations. Click to
     select (Machining and parts too: their Properties are in 5.4), right-click for actions
     (rename, delete, enable/disable, generate toolpath).
-  - **Setup** holds the Master tool list and the Tool libraries (5.5). Clicking Master tool list
-    opens its window. Right-click Tool libraries → New library; right-click a library → Rename,
-    Delete library. Selecting a library shows its numbered tools in Properties, where tools are
-    added from the master list, renumbered or taken out.
+  - **Setup** holds the Master tool list, the Tool libraries (5.5) and the Machines (5.7).
+    Clicking Master tool list opens its window. Right-click Tool libraries → New library;
+    right-click a library → Rename, Delete library. Selecting a library shows its numbered tools
+    in Properties, where tools are added from the master list, renumbered or taken out. Machines
+    are added, renamed and deleted the same way.
 - **The Setup tab is global, not project-specific** (decided 2026-11-19). It holds what belongs to
-  the computer and is shared by every project: now the master tool list and tool libraries; later,
-  for example, machine settings and the materials library. It is only for configuring things at
+  the computer and is shared by every project: the master tool list, tool libraries and machines;
+  later, for example, the materials library. It is only for configuring things at
   that level:
   - Nothing in it changes the open project, and it shows no project information.
   - Project choices, such as which library a project uses, are made in the Project tab (5.4).
@@ -272,6 +273,7 @@ Properties show:
     (the Setup tab never changes a project).
   - **Tool**: a tool from that library, used by every part and operation that doesn't pick its
     own.
+  - **Machine**: the machine the G-code is for (5.7), saved in the project by name.
 - **Part**: **Tool**: "Use Machining tool" (default), or a tool from the library to use for the
   part's operations instead. A part has no library choice of its own.
 - **Operation**: Profile (inside / outside / on line), Pocket or Drill, with its settings
@@ -386,8 +388,14 @@ Standard, widely compatible G-code through one generic post-processor (section 7
 become G-code text only through the post-processor, so a machine-specific one can replace it
 without touching the toolpaths. Machine-specific post-processors, each with its own settings panel
 per machine type, come after v1 (roadmap).
-- Machining menu (and toolbar) → **Produce G-code**.
+- Machining menu (and toolbar) → **Produce G-code**: one `.nc` file for the whole job (section 7).
 - The tool number of each operation comes from its tool (5.5): one number is one cutter.
+- **Machines** (decided 2026-11-20): a machine list in the Setup tab (global, like the tool
+  libraries). Each machine has a name and its post-processor; v1 has only the **Generic**
+  post-processor. A project chooses its machine in the Machining item's Properties (saved in the
+  project by name, like the tool library); with none chosen, Produce G-code uses Generic.
+  Further machine settings (tool changer, rapid rate, travel limits) and machine-specific
+  post-processors come later (roadmap).
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
@@ -542,20 +550,51 @@ move; the reference itself uses a canned cycle G81 with G98):
 - Depth increment (except as Spiral's depth per turn), final depth increment and roughing
   clearance don't apply to drilling and are hidden for Drill.
 
-**(?)** The G-code format for drilling (written out in full, or canned cycles) is decided with
-the post-processor (section 9).
+In G-code, Standard and Peck are written as canned cycles (`G81`/`G83`) by the generic
+post-processor (section 7).
 
 ## 7. G-code output
 
-v1 writes standard G-code through one generic post-processor. It aims to run on most
-hobby and small-shop controllers. The exact format is refined later, when machine-specific
-post-processors are added (each with its own settings panel per machine type).
+v1 writes G-code through one generic post-processor that follows standard, structured G-code
+conventions (decided 2026-11-20). Machine-specific post-processors, each with its own settings
+panel, come later; some controllers (e.g. ones without canned cycles or `M6`) need one of those.
+
+**How it fits together** (all in the engine):
+1. Each operation's toolpath moves, as previewed and already safety-checked.
+2. The post-processor turns the moves into G-code text. It decides only *how* the program is
+   written (codes, number format, tool changes, start and end), never where the tool goes. A
+   post-processor is a set of format choices; machine-specific ones are other sets of the same
+   choices.
+3. The G-code text is read back and checked again by the safety checker.
+4. The app layer saves the file.
 
 Principles:
 - Plain and readable: one move per line, no unnecessary codes.
 - Commented: program name and date, and for each operation its name, tool and depths.
 - Millimetres, absolute coordinates.
 - Arcs are output as arcs, not broken into many short lines.
+
+**Generic post-processor** (decided 2026-11-20):
+- **File**: one file for the whole job: every enabled operation, in tree order. Extension `.nc`.
+- **Numbers**: coordinates to 3 decimals with trailing zeros trimmed (e.g. `X12.5`); feeds and
+  spindle speeds as whole numbers.
+- **Start**: header comments (program name, date, and the WHAM_CAM version, e.g.
+  `( WHAM_CAM 0.4.0 )`), then `G21 G90 G17` (mm, absolute, XY plane), then a rapid to the
+  clearance plane.
+- **Each operation**: a comment with its name, tool and depths. When the tool changes: a comment
+  naming the tool, then `T3 M6`. When the spindle starts or its speed changes: `S10000 M3` (`M4`
+  for CCW, `M5` for Off), then `G4 P2` (2 s for the spindle to come up to speed).
+- **Moves**: `G0` rapids, `G1` feeds, `G2`/`G3` arcs with `I J` centre offsets (relative to the
+  arc's start); a helix (e.g. spiral drilling) is an arc with a `Z` end.
+- **Drilling** (Standard and Peck): canned cycles, `G98 G81` (Standard) and `G98 G83` (Peck, `Q`
+  = peck distance), with `R` = retract height, `Z` = target depth and `F` = plunge feed rate,
+  then `G80`. `G98` returns to the clearance plane between holes, as in the preview. Spiral
+  drilling is written out (there is no cycle for it). The engine keeps each hole as a cycle
+  (position, R, depth, peck, feed) and makes the previewed moves from it with one shared function,
+  so a later post-processor can write the moves out in full for controllers without cycles.
+  With `G83` the controller sets how far above the last depth it stops before feeding on; the
+  preview uses the fast plunge height for this, so the machine can differ slightly there.
+- **End**: retract to the clearance plane, `M5`, `M30`. No park move.
 
 Safety rules (from CLAUDE.md; tests check these on every output):
 - Every rapid move happens at or above the clearance plane, **except** the final approach:
@@ -574,29 +613,17 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   stepovers, depth levels and cut order. They are not compared as exact text, because WHAM_CAM's
   G-code format differs from the reference program's.
 - **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
-  with an air cut, it is committed to `tests/reference/` and later output is compared to it exactly.
+  with an air cut, it is kept in `tests/reference/` (this computer only, decided 2026-11-20) and
+  later output is compared to it exactly. Because that folder isn't committed, GitHub's checks
+  don't run these comparisons; they run on this computer before each release.
 - **Safety checker**: reads any toolpath or G-code output and fails if it breaks the section 7
-  safety rules.
+  safety rules. Reading G-code, it follows canned cycles (`G81`/`G83` with `G98`) as the
+  controller would.
 - The engine is also built for `wasm32-unknown-unknown` in CI.
 - Whenever toolpath or post-processor logic changes, the user re-checks output in a simulator
   (CAMotics or NC Viewer) and with an air cut.
 
 ## 9. Open questions
-
-**G-code output and the post-processor** (5.7, 7; noted 2026-11-19):
-- **(?) Tool changes** in the generic post: `T3 M6` (tool changers), or a comment plus a pause
-  (`M0`) for a manual change, or both? Many hobby controllers don't accept `M6`.
-- **(?) What one G-code file holds**: the whole job, one file per part, or one per tool?
-- **(?) Program start and end**: e.g. `G21 G90 G17`, spindle on (`M3 S…`) before the first cut,
-  any dwell for the spindle to spin up, `M5` and `M30` at the end, and whether to park at a set
-  position at the end.
-- **(?) Arc format**: centre offsets (`I J`, recommended: exact, no ambiguity) or radius (`R`).
-- **(?) Drilling format** (6.4): written out in full, or canned cycles (`G81`/`G83`).
-- **(?) Number format and file extension**: decimal places (3 suggested), `.nc`, `.gcode`,
-  `.tap`, ...
-- **(?) Where known-good G-code lives**: section 8 says checked outputs go in `tests/reference/`,
-  but the top-level `tests/` folder is git-ignored (this machine only). They could go in
-  `engine/tests/reference/` (committed, checked by CI) instead.
 
 **Drawing and import**:
 - **(?) Font for text outlines** (5.1): which font DXF TEXT/MTEXT letters are turned into
@@ -604,7 +631,7 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 
 Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
 (both decided 2026-11-16). Dimensions (5.3) and the further DXF entities, TEXT/MTEXT and DIMENSION
-(5.1), decided 2026-11-19.
+(5.1), decided 2026-11-19. The generic post-processor and machines (5.7, 7), decided 2026-11-20.
 
 ## 10. Out of scope for v1
 
