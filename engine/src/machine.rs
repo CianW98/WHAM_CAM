@@ -8,6 +8,10 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// What a project's machine choice shows when no machine is chosen (the generic
+/// post-processor). No machine may have this name.
+pub const GENERIC: &str = "Generic";
+
 /// The post-processor a machine uses. v1 has only the generic one (spec 7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum PostProcessor {
@@ -64,11 +68,18 @@ impl Machines {
         name
     }
 
-    /// Renames a machine. Returns the new name as stored (trimmed).
+    /// Renames a machine. Returns the new name as stored (trimmed). A machine can't be called
+    /// "Generic" (in any capitals): that is the project's choice for no machine.
     pub fn rename_machine(&mut self, old: &str, new: &str) -> Result<String, String> {
         let new = new.trim();
         if new.is_empty() {
             return Err("A machine needs a name.".into());
+        }
+        // "Generic" is the project's choice for no machine (decided 2026-11-20).
+        if new.eq_ignore_ascii_case(GENERIC) {
+            return Err(format!(
+                "\"{new}\" can't be used: \"{GENERIC}\" already means no machine (the generic post-processor)."
+            ));
         }
         if new != old && self.machine(new).is_some() {
             return Err(format!("There is already a machine called \"{new}\"."));

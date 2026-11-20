@@ -433,7 +433,8 @@ per machine type, come after v1 (roadmap).
 - **Machines** (decided 2026-11-20): a machine list in the Setup tab (global, like the tool
   libraries). Each machine has a name and its post-processor; v1 has only the **Generic**
   post-processor. A project chooses its machine in the Machining item's Properties (saved in the
-  project by name, like the tool library); with none chosen, Produce G-code uses Generic.
+  project by name, like the tool library); with none chosen, Produce G-code uses Generic. That
+  choice is shown as **Generic**, so no machine may be called "Generic" (in any capitals).
   Further machine settings (tool changer, rapid rate, travel limits) and machine-specific
   post-processors come later (roadmap).
 

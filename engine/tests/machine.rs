@@ -49,3 +49,17 @@ fn the_project_names_its_machine_and_saves_it() {
     p.undo();
     assert_eq!(p.document().machine, None);
 }
+
+#[test]
+fn a_machine_cannot_be_called_generic() {
+    let mut m = Machines::default();
+    let name = m.add_machine();
+    for bad in ["Generic", "generic", "  GENERIC "] {
+        let err = m.rename_machine(&name, bad).unwrap_err();
+        assert!(err.contains("no machine"), "{err}");
+    }
+    assert_eq!(
+        m.rename_machine(&name, "Generic router").unwrap(),
+        "Generic router"
+    );
+}
