@@ -25,6 +25,9 @@ pub struct Document {
     /// generic post-processor.
     #[serde(default)]
     pub machine: Option<String>,
+    /// Dimensions (measure only; not on any layer, never machined or exported).
+    #[serde(default)]
+    pub dimensions: Vec<crate::dimension::DimensionObject>,
 }
 
 /// Grid spacing for new projects (and older project files that don't have one), in mm.
@@ -102,6 +105,7 @@ impl Document {
             active_library: None,
             machining_tool: None,
             machine: None,
+            dimensions: Vec::new(),
         }
     }
 
@@ -136,7 +140,10 @@ impl Document {
     }
 
     /// Highest object id in use (0 if empty).
+    /// The highest id used by an object or a dimension (they share one numbering).
     pub fn max_id(&self) -> u32 {
-        self.objects().map(|o| o.id).max().unwrap_or(0)
+        let objects = self.objects().map(|o| o.id);
+        let dimensions = self.dimensions.iter().map(|d| d.id);
+        objects.chain(dimensions).max().unwrap_or(0)
     }
 }

@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dimension::{Label, layout};
+use crate::dimension::{DIMENSION_COLOR, Dimension, Label, layout, resolve};
 use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{
     BulgeArc, Point, Polyline, Shape, angle_deg, arc_sweep_deg, bulge_arc, rectangle_corners,
@@ -74,9 +74,15 @@ pub fn polyline_signed_area(pl: &Polyline) -> f64 {
     area
 }
 
-/// What to draw for the document, leaving out layers named in `hidden`.
-pub fn display_data(doc: &Document, hidden: &BTreeSet<String>) -> DisplayData {
-    let shapes: Vec<DisplayShape> = doc
+/// What to draw for the document, leaving out layers named in `hidden`, with the dimensions
+/// (if `dimensions` is true) laid out for `mm_per_px` millimetres per screen pixel.
+pub fn display_data(
+    doc: &Document,
+    hidden: &BTreeSet<String>,
+    dimensions: bool,
+    mm_per_px: f64,
+) -> DisplayData {
+    let mut shapes: Vec<DisplayShape> = doc
         .layers
         .iter()
         .filter(|layer| !hidden.contains(&layer.name))
@@ -87,6 +93,13 @@ pub fn display_data(doc: &Document, hidden: &BTreeSet<String>) -> DisplayData {
             })
         })
         .collect();
+    if dimensions {
+        shapes.extend(
+            doc.dimensions
+                .iter()
+                .filter_map(|d| Some(display_dimension(d.id, &resolve(doc, &d.def)?, mm_per_px))),
+        );
+    }
     let mut bounds: Option<[f64; 4]> = None;
     for p in shapes.iter().flat_map(|s| s.all_points()) {
         let b = bounds.get_or_insert([p[0], p[1], p[0], p[1]]);
@@ -102,8 +115,6 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
     let mut closed = false;
     let mut markers = false;
     let mut direction = None;
-    let mut extra = Vec::new();
-    let mut label = None;
     let points = match shape {
         Shape::Line { start, end } => vec![[start.x, start.y], [end.x, end.y]],
         Shape::Arc {
@@ -159,12 +170,6 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
             markers = true;
             points.iter().map(|p| [p.x, p.y]).collect()
         }
-        Shape::Dimension(d) => {
-            let l = layout(d);
-            extra = l.lines;
-            label = Some(l.label);
-            Vec::new()
-        }
     };
     DisplayShape {
         id,
@@ -173,8 +178,23 @@ pub fn display_shape(id: u32, shape: &Shape) -> DisplayShape {
         markers,
         color: LAYER_PALETTE[0].to_string(),
         direction,
-        extra,
-        label,
+        extra: Vec::new(),
+        label: None,
+    }
+}
+
+/// How a dimension is drawn, laid out for `mm_per_px` millimetres per screen pixel.
+pub fn display_dimension(id: u32, d: &Dimension, mm_per_px: f64) -> DisplayShape {
+    let l = layout(d, mm_per_px);
+    DisplayShape {
+        id,
+        points: Vec::new(),
+        closed: false,
+        markers: false,
+        color: DIMENSION_COLOR.to_string(),
+        direction: None,
+        extra: l.lines,
+        label: Some(l.label),
     }
 }
 

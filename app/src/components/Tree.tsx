@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Document, Layer, OperationState, Shape } from "../engine";
+import type { DimensionInfo, Document, Layer, OperationState, Shape } from "../engine";
 import { selectedIds, selectObjects, type Selection } from "../selection";
 import ColorSwatch from "./ColorSwatch";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
@@ -8,7 +8,6 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 export function shapeLabel(shape: Shape): string {
   if (shape.type === "Points") return "PointList";
   if (shape.type === "Rectangle") return "PolyRectangle";
-  if (shape.type === "Dimension") return `${shape.kind} dimension`;
   return shape.type;
 }
 
@@ -22,6 +21,10 @@ interface Props {
   /** Layers hidden from view. */
   hiddenLayers: Set<string>;
   onSetLayerVisible: (name: string, visible: boolean) => void;
+  /** The dimensions as they are now, and whether they are shown. */
+  dimensions: DimensionInfo[];
+  dimensionsVisible: boolean;
+  onSetDimensionsVisible: (visible: boolean) => void;
   /** Name of the layer new drawings go onto. */
   currentLayer: string | null;
   /** Adds a new empty layer (selected and made current); resolves to its name. */
@@ -272,6 +275,54 @@ function LayerItem({
   );
 }
 
+/** The Dimensions heading (with one eye icon for all of them) and the dimensions under it. */
+function DimensionsItem({
+  dimensions,
+  visible,
+  onToggleVisible,
+  isSelected,
+  onSelect,
+}: {
+  dimensions: DimensionInfo[];
+  visible: boolean;
+  onToggleVisible: () => void;
+  isSelected: (id: number) => boolean;
+  onSelect: (id: number, add: boolean) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <li>
+      <div className={`tree-item${visible ? "" : " hidden-layer"}`} onClick={() => setOpen((o) => !o)}>
+        <span className="chevron">{open ? "▾" : "▸"}</span>
+        <button
+          type="button"
+          className="layer-eye"
+          title={visible ? "Hide dimensions" : "Show dimensions"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisible();
+          }}
+        >
+          <EyeIcon shown={visible} />
+        </button>
+        {`Dimensions (${dimensions.length})`}
+      </div>
+      {open && dimensions.length > 0 && (
+        <ul>
+          {dimensions.map((d) => (
+            <Item
+              key={d.id}
+              label={`${d.kind} dimension (${d.id}): ${d.text}`}
+              selected={isSelected(d.id)}
+              onClick={(e) => onSelect(d.id, e.shiftKey || e.ctrlKey)}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 export default function Tree({
   doc,
   selection,
@@ -280,6 +331,9 @@ export default function Tree({
   onSetLayerColor,
   hiddenLayers,
   onSetLayerVisible,
+  dimensions,
+  dimensionsVisible,
+  onSetDimensionsVisible,
   currentLayer,
   onAddLayer,
   onDeleteLayer,
@@ -434,6 +488,13 @@ export default function Tree({
             </LayerItem>
           ))}
         </Item>
+        <DimensionsItem
+          dimensions={dimensions}
+          visible={dimensionsVisible}
+          onToggleVisible={() => onSetDimensionsVisible(!dimensionsVisible)}
+          isSelected={(id) => ids.has(id)}
+          onSelect={(id, add) => onSelect(selectObjects(selection, [id], add))}
+        />
         <Item
           label="Machining"
           selected={is({ kind: "machining" })}

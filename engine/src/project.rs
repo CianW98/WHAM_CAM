@@ -13,7 +13,7 @@ use crate::display::{
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{Document, DrawingObject, is_hex_color};
-use crate::draw::{self, Draft, DrawTool, Pick, PickKind, Snap, SnapKind, SnapOptions};
+use crate::draw::{self, Draft, DrawTool, Snap, SnapKind, SnapOptions};
 use crate::drill;
 use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
@@ -56,17 +56,33 @@ pub struct SvgInfo {
     pub curve_count: usize,
 }
 
+/// Starting zoom for laying out dimensions (mm per screen pixel) until the app sets it.
+const DEFAULT_MM_PER_PX: f64 = 0.25;
+
 /// What a Dimension tool click is (see [`Project::dimension_click`]).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DimensionClick {
-    /// Where the click counts: the snapped point, or the click itself for a pick.
+    /// Where the click counts: a shape's point it snapped to, or the click itself.
     pub point: Point,
-    /// What a point snapped to (`None` for a pick).
+    /// What the point snapped to (`None` for a picked line/circle or the free last click).
     pub kind: SnapKind,
-    /// The circle, arc or line it picked, if any.
-    pub pick: Option<Pick>,
+    /// What it landed on, or `None` for the free last click.
+    pub target: Option<dimension::Target>,
     /// This click completes the dimension.
     pub finishes: bool,
+    /// Why this click can't be used (it must land on a shape), if so.
+    pub problem: Option<String>,
+}
+
+/// A dimension for the tree and Properties: its kind and value as it is now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DimensionInfo {
+    pub id: u32,
+    pub kind: dimension::DimensionKind,
+    /// mm, or degrees for an angle.
+    pub value: f64,
+    /// The value as shown, e.g. "R12.50".
+    pub text: String,
 }
 
 /// Result of an import, for the pop-up message.
@@ -191,6 +207,10 @@ pub struct Project {
     /// Layers hidden from view: not drawn, picked, snapped to or selected by Select All. A view
     /// setting only: not saved, not in undo (decided 2026-11-20).
     hidden_layers: BTreeSet<String>,
+    /// The zoom, in mm per screen pixel (set by the app), for laying out dimensions. View only.
+    mm_per_px: f64,
+    /// Whether dimensions are shown. View only: not saved, not in undo.
+    dimensions_visible: bool,
 }
 
 impl Default for Project {
@@ -202,7 +222,7 @@ impl Default for Project {
 impl Project {
     pub fn new() -> Self {
         let doc = Document::new("Untitled");
-        let display = display_data(&doc, &BTreeSet::new());
+        let display = display_data(&doc, &BTreeSet::new(), true, DEFAULT_MM_PER_PX);
         Self {
             saved: doc.clone(),
             doc,
@@ -213,6 +233,8 @@ impl Project {
             library_tools: Some(Vec::new()),
             toolpaths: BTreeMap::new(),
             hidden_layers: BTreeSet::new(),
+            mm_per_px: DEFAULT_MM_PER_PX,
+            dimensions_visible: true,
         }
     }
 
@@ -291,6 +313,16 @@ impl Project {
     fn edit(&mut self, change: impl FnOnce(&mut Document)) {
         let before = self.doc.clone();
         change(&mut self.doc);
+        // A dimension whose shapes are gone, replaced or no longer have what it measured goes in
+        // the same step (decided 2026-11-20).
+        let doc = &self.doc;
+        let keep: Vec<bool> = doc
+            .dimensions
+            .iter()
+            .map(|d| dimension::resolve(doc, &d.def).is_some())
+            .collect();
+        let mut keep = keep.into_iter();
+        self.doc.dimensions.retain(|_| keep.next().unwrap_or(true));
         if self.doc != before {
             // New objects (drawn, pasted, imported) never land out of sight: their layer shows.
             let newest = before.max_id();
@@ -317,7 +349,12 @@ impl Project {
     fn refresh_display(&mut self) {
         let names: BTreeSet<&String> = self.doc.layers.iter().map(|l| &l.name).collect();
         self.hidden_layers.retain(|h| names.contains(h));
-        self.display = display_data(&self.doc, &self.hidden_layers);
+        self.display = display_data(
+            &self.doc,
+            &self.hidden_layers,
+            self.dimensions_visible,
+            self.mm_per_px,
+        );
     }
 
     /// Shows or hides a layer (a view setting: not saved, not an undo step, doesn't mark the
@@ -473,6 +510,9 @@ impl Project {
                 layer.objects.retain(|o| !ids.contains(&o.id));
                 count += before - layer.objects.len();
             }
+            let before = doc.dimensions.len();
+            doc.dimensions.retain(|d| !ids.contains(&d.id));
+            count += before - doc.dimensions.len();
         });
         count
     }
@@ -560,42 +600,68 @@ impl Project {
     }
 
     /// Finishes a drawn shape and adds it to a layer, as one undo step. Returns the new id.
+    /// A finished Dimension draft adds a dimension instead (not on any layer).
     pub fn add_draft(&mut self, layer: &str, draft: &Draft) -> Result<u32, String> {
-        let shape = if draft.tool == DrawTool::Dimension {
-            let kinds = Self::pick_kinds(draft);
-            if !dimension::complete(&kinds) {
-                return Err("This dimension needs more clicks.".into());
-            }
-            Shape::Dimension(self.smart_dimension(draft, None).ok_or_else(|| {
-                if kinds.len() == 3 && kinds[0].is_some() {
-                    "Those lines lie on top of each other: there is nothing to measure."
-                } else {
-                    "That can't be dimensioned."
-                }
-                .to_string()
-            })?)
-        } else {
-            draw::finish(draft)?
-        };
+        if draft.tool == DrawTool::Dimension {
+            return self.add_dimension(draft);
+        }
+        let shape = draw::finish(draft)?;
         draw::validate(&shape)?;
         self.add_shape(layer, shape)
     }
 
-    /// What each click of a dimension draft picked (`None` for a point).
-    fn pick_kinds(draft: &Draft) -> Vec<Option<PickKind>> {
-        (0..draft.points.len())
-            .map(|i| draft.picks.get(i).copied().flatten().map(|p| p.kind))
-            .collect()
+    fn add_dimension(&mut self, draft: &Draft) -> Result<u32, String> {
+        let targets: Vec<Option<&dimension::Target>> = (0..draft.points.len())
+            .map(|i| draft.targets.get(i).and_then(Option::as_ref))
+            .collect();
+        if !dimension::complete(&targets) {
+            return Err("This dimension needs more clicks.".into());
+        }
+        let def = self
+            .dimension_def(draft, None)
+            .ok_or("That can't be dimensioned: there is nothing to measure there.")?;
+        let mut id = 0;
+        self.edit(|doc| {
+            id = doc.max_id() + 1;
+            doc.dimensions.push(dimension::DimensionObject { id, def });
+        });
+        Ok(id)
+    }
+
+    /// The placed dimension a Dimension draft makes, with `cursor` (if any) as the last click.
+    fn dimension_def(
+        &self,
+        draft: &Draft,
+        cursor: Option<Point>,
+    ) -> Option<dimension::DimensionDef> {
+        let mut clicks: Vec<(Point, Option<&dimension::Target>)> = draft
+            .points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (*p, draft.targets.get(i).and_then(Option::as_ref)))
+            .collect();
+        clicks.extend(cursor.map(|c| (c, None)));
+        // The targets, then the free click that places it.
+        let (&(at, None), defining) = clicks.split_last()? else {
+            return None;
+        };
+        let targets: Vec<dimension::Target> = defining
+            .iter()
+            .map(|c| c.1.cloned())
+            .collect::<Option<_>>()?;
+        let def = dimension::from_targets(&self.doc, &targets, defining.first()?.0)?;
+        dimension::place(&self.doc, &def, at)
     }
 
     /// What a Dimension tool click at (x, y) is, given the clicks so far (decided 2026-11-20):
-    /// - First click: an end or centre snap is a point; otherwise touching a circle, arc or line
-    ///   picks it (even at its midpoint); otherwise a grid/free point.
+    /// - First click: a shape's end or centre is a point; otherwise touching a circle, arc or
+    ///   line picks it (even at its midpoint). Anything else can't be used.
+    /// - After a point: the second point must be a shape's end, midpoint or centre.
     /// - After a line: touching another line picks it (angle, or distance if parallel);
-    ///   anything else is where the line's length goes.
-    /// - Otherwise: a snapped point (the second point, or where the dimension goes).
+    ///   anything else places the line's length.
+    /// - The last click (where the dimension sits) is free: never snapped.
     ///
-    /// `finishes` says whether this click completes the dimension.
+    /// Only shapes on shown layers count. `finishes` says whether the click completes it.
     pub fn dimension_click(
         &self,
         draft: &Draft,
@@ -604,139 +670,186 @@ impl Project {
         tolerance: f64,
         options: SnapOptions,
     ) -> DimensionClick {
+        use dimension::Target;
         let at = Point::new(x, y);
-        let kinds = Self::pick_kinds(draft);
-        let snapped = || draw::snap(&self.doc, &self.hidden_layers, at, tolerance, options, &[]);
-        let picked = |pick: Pick| (at, SnapKind::None, Some(pick));
-        let (point, kind, pick) = match kinds[..] {
-            [] => {
-                let point_snap = options
-                    .objects
-                    .then(|| {
-                        draw::object_snap(&self.doc, &self.hidden_layers, at, tolerance, &[], |k| {
-                            matches!(k, SnapKind::End | SnapKind::Centre)
-                        })
-                    })
-                    .flatten();
-                match (point_snap, self.nearest_pick(at, tolerance, None)) {
-                    (Some(s), _) => (s.point, s.kind, None),
-                    (None, Some(pick)) => picked(pick),
-                    (None, None) => {
-                        let s = draw::grid_snap(&self.doc, at, options);
-                        (s.point, s.kind, None)
-                    }
-                }
-            }
-            [Some(PickKind::Line)] => {
-                let first = draft.picks[0].map(|p| (p.id, draft.points[0]));
-                match self.nearest_pick(at, tolerance, first) {
-                    Some(pick) if pick.kind == PickKind::Line => picked(pick),
-                    _ => {
-                        let s = snapped();
-                        (s.point, s.kind, None)
-                    }
-                }
-            }
-            _ => {
-                let s = snapped();
-                (s.point, s.kind, None)
-            }
+        let _ = options; // dimension clicks snap to shapes only, never to the grid
+        let done: Vec<Option<&Target>> = (0..draft.points.len())
+            .map(|i| draft.targets.get(i).and_then(Option::as_ref))
+            .collect();
+        let point = |allow: &dyn Fn(SnapKind) -> bool| {
+            self.nearest_anchor(at, tolerance, allow)
+                .map(|(p, kind, a)| (p, kind, Some(Target::Point(a))))
         };
-        let mut next = kinds;
-        next.push(pick.map(|p| p.kind));
+        let free = (at, SnapKind::None, None);
+        let refuse = |msg: &str| DimensionClick {
+            point: at,
+            kind: SnapKind::None,
+            target: None,
+            finishes: false,
+            problem: Some(msg.to_string()),
+        };
+        let (point, kind, target) = match done[..] {
+            [] => {
+                let p = point(&|k| matches!(k, SnapKind::End | SnapKind::Centre));
+                match p.or_else(|| {
+                    self.nearest_segment(at, tolerance, None)
+                        .map(|t| (at, SnapKind::None, Some(t)))
+                }) {
+                    Some(found) => found,
+                    None => {
+                        return refuse(
+                            "Click a circle, an arc, a line, or a shape's end or centre.",
+                        );
+                    }
+                }
+            }
+            [Some(Target::Point(_))] => {
+                match point(&|k| matches!(k, SnapKind::End | SnapKind::Mid | SnapKind::Centre)) {
+                    Some(found) => found,
+                    None => return refuse("Click a shape's end, midpoint or centre."),
+                }
+            }
+            [Some(Target::Line(first))] => match self.nearest_segment(at, tolerance, Some(first)) {
+                Some(t @ Target::Line(_)) => (at, SnapKind::None, Some(t)),
+                _ => free,
+            },
+            _ => free,
+        };
+        let mut next = done;
+        next.push(target.as_ref());
         DimensionClick {
             point,
             kind,
-            pick,
             finishes: dimension::complete(&next),
+            target,
+            problem: None,
         }
     }
 
-    /// The circle, arc or line nearest to `at` within `tolerance` mm. With `not_line` (the id and
-    /// click point of a line already picked), that same line segment is left out.
-    fn nearest_pick(
+    /// The shapes on shown layers.
+    fn visible_objects(&self) -> impl Iterator<Item = &DrawingObject> {
+        self.doc
+            .layers
+            .iter()
+            .filter(|l| !self.layer_hidden(&l.name))
+            .flat_map(|l| &l.objects)
+    }
+
+    /// The nearest end, midpoint or centre (of the kinds `allow`ed) within `tolerance` of `at`.
+    fn nearest_anchor(
         &self,
         at: Point,
         tolerance: f64,
-        not_line: Option<(u32, Point)>,
-    ) -> Option<Pick> {
-        let same = |id: u32, l: dimension::PickedLine| {
-            not_line.is_some_and(|(nid, click)| {
-                nid == id
-                    && self
-                        .object_shape(id)
-                        .and_then(|s| dimension::pick_line(s, click))
-                        .is_some_and(|first| first.a == l.a && first.b == l.b)
-            })
-        };
-        let mut best: Option<(f64, Pick)> = None;
-        let visible = self
-            .doc
-            .layers
-            .iter()
-            .filter(|l| !self.layer_hidden(&l.name));
-        for o in visible.flat_map(|l| &l.objects) {
-            let mut consider = |d: f64, kind: PickKind| {
-                if d <= tolerance && best.is_none_or(|b| d < b.0) {
-                    best = Some((d, Pick { id: o.id, kind }));
+        allow: &dyn Fn(SnapKind) -> bool,
+    ) -> Option<(Point, SnapKind, dimension::Anchor)> {
+        self.visible_objects()
+            .flat_map(|o| dimension::anchors(o.id, &o.shape))
+            .filter(|(p, a)| allow(a.kind) && p.distance_to(at) <= tolerance)
+            .min_by(|x, y| x.0.distance_to(at).total_cmp(&y.0.distance_to(at)))
+            .map(|(p, a)| (p, a.kind, a))
+    }
+
+    /// The circle, arc or straight segment nearest to `at` within `tolerance` mm, leaving out
+    /// the segment `not` (a line already picked).
+    fn nearest_segment(
+        &self,
+        at: Point,
+        tolerance: f64,
+        not: Option<&dimension::SegmentRef>,
+    ) -> Option<dimension::Target> {
+        use dimension::Target;
+        let mut best: Option<(f64, Target)> = None;
+        for o in self.visible_objects() {
+            for round in [true, false] {
+                let Some((d, seg)) = dimension::nearest_segment(o.id, &o.shape, at, round) else {
+                    continue;
+                };
+                if d > tolerance || not == Some(&seg) || best.as_ref().is_some_and(|b| d >= b.0) {
+                    continue;
                 }
-            };
-            if let Some(c) = dimension::pick_circle(&o.shape, at) {
-                consider(c.distance, PickKind::Circle);
-            }
-            if let Some(l) = dimension::pick_line(&o.shape, at)
-                && !same(o.id, l)
-            {
-                consider(l.distance, PickKind::Line);
+                best = Some((
+                    d,
+                    if round {
+                        Target::Circle(seg)
+                    } else {
+                        Target::Line(seg)
+                    },
+                ));
             }
         }
         best.map(|b| b.1)
     }
 
-    fn object_shape(&self, id: u32) -> Option<&Shape> {
-        self.doc.objects().find(|o| o.id == id).map(|o| &o.shape)
+    /// The dimensions as they are now (for the tree and Properties).
+    pub fn dimensions(&self) -> Vec<DimensionInfo> {
+        self.doc
+            .dimensions
+            .iter()
+            .filter_map(|d| {
+                let r = dimension::resolve(&self.doc, &d.def)?;
+                Some(DimensionInfo {
+                    id: d.id,
+                    kind: r.kind(),
+                    value: r.value(),
+                    text: r.text(),
+                })
+            })
+            .collect()
     }
 
-    /// The dimension a Dimension draft makes, with `cursor` (if any) as the next click: the
-    /// clicks are read as in [`Project::dimension_click`].
-    fn smart_dimension(
-        &self,
-        draft: &Draft,
-        cursor: Option<Point>,
-    ) -> Option<dimension::Dimension> {
-        let mut clicks: Vec<(Point, Option<Pick>)> = draft
-            .points
+    /// The dimension whose lines or value are within `tolerance` mm of (x, y), if any (for
+    /// dragging it).
+    pub fn dimension_at(&self, x: f64, y: f64, tolerance: f64) -> Option<u32> {
+        let ids: HashSet<u32> = self.doc.dimensions.iter().map(|d| d.id).collect();
+        self.display
+            .shapes
             .iter()
-            .enumerate()
-            .map(|(i, p)| (*p, draft.picks.get(i).copied().flatten()))
-            .collect();
-        clicks.extend(cursor.map(|c| (c, None)));
-        let circle = |i: usize| {
-            let (click, pick) = clicks[i];
-            dimension::pick_circle(self.object_shape(pick?.id)?, click)
-        };
-        let line = |i: usize| {
-            let (click, pick) = clicks[i];
-            dimension::pick_line(self.object_shape(pick?.id)?, click)
-        };
-        let kinds: Vec<Option<PickKind>> = clicks.iter().map(|c| c.1.map(|p| p.kind)).collect();
-        use PickKind::{Circle, Line};
-        match kinds[..] {
-            [Some(Circle), None] => dimension::circular(circle(0)?, clicks[1].0),
-            [Some(Line), None] => {
-                let l = line(0)?;
-                dimension::aligned(l.a, l.b, clicks[1].0)
-            }
-            [Some(Line), Some(Line), None] => {
-                let (l1, l2, at) = (line(0)?, line(1)?, clicks[2].0);
-                dimension::angle(l1, l2, at)
-                    .or_else(|| dimension::parallel_distance(l1, clicks[0].0, l2, at))
-            }
-            // Second point following the cursor: the line runs straight between the points.
-            [None, None] => dimension::aligned(clicks[0].0, clicks[1].0, clicks[1].0),
-            [None, None, None] => dimension::aligned(clicks[0].0, clicks[1].0, clicks[2].0),
-            _ => None,
+            .filter(|s| ids.contains(&s.id))
+            .map(|s| (s.id, distance_to_shape(s, x, y)))
+            .filter(|(_, d)| *d <= tolerance)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(id, _)| id)
+    }
+
+    /// A dimension moved to sit at (x, y), as it would be drawn (while dragging it).
+    pub fn dimension_drag_preview(&self, id: u32, x: f64, y: f64) -> Option<DisplayShape> {
+        let d = self.doc.dimensions.iter().find(|d| d.id == id)?;
+        let def = dimension::place(&self.doc, &d.def, Point::new(x, y))?;
+        let r = dimension::resolve(&self.doc, &def)?;
+        Some(crate::display::display_dimension(id, &r, self.mm_per_px))
+    }
+
+    /// Moves where a dimension sits to (x, y) (keeping what it measures), as one undo step.
+    pub fn reposition_dimension(&mut self, id: u32, x: f64, y: f64) -> Result<(), String> {
+        let index = self
+            .doc
+            .dimensions
+            .iter()
+            .position(|d| d.id == id)
+            .ok_or_else(|| format!("There is no dimension with id {id}."))?;
+        let def = dimension::place(&self.doc, &self.doc.dimensions[index].def, Point::new(x, y))
+            .ok_or("That dimension can't be placed there.")?;
+        self.edit(|doc| doc.dimensions[index].def = def);
+        Ok(())
+    }
+
+    /// Sets the zoom (millimetres per screen pixel), so dimension text and arrows keep the same
+    /// size on screen. A view setting: not saved, not an undo step.
+    pub fn set_view_scale(&mut self, mm_per_px: f64) {
+        if mm_per_px.is_finite() && mm_per_px > 0.0 && mm_per_px != self.mm_per_px {
+            self.mm_per_px = mm_per_px;
+            self.refresh_display();
         }
+    }
+
+    /// Shows or hides every dimension (a view setting: not saved, not an undo step).
+    pub fn set_dimensions_visible(&mut self, visible: bool) {
+        self.dimensions_visible = visible;
+        self.refresh_display();
+    }
+
+    pub fn dimensions_visible(&self) -> bool {
+        self.dimensions_visible
     }
 
     /// Replaces an object's shape (e.g. after editing values in Properties) as one undo step.
@@ -783,11 +896,25 @@ impl Project {
 
     /// The rubber-band preview of a shape being drawn, with the cursor as its next point.
     pub fn preview(&self, draft: &Draft, cursor: Option<Point>) -> Option<DisplayShape> {
-        let shape = match draft.tool {
-            DrawTool::Dimension => self.smart_dimension(draft, cursor).map(Shape::Dimension),
-            _ => draw::preview(draft, cursor),
-        };
-        shape.map(|shape| display_shape(0, &shape))
+        if draft.tool == DrawTool::Dimension {
+            // The dimension once placed at the cursor; or, with only its first point clicked,
+            // a straight line from that point to the cursor.
+            if let Some(def) = self.dimension_def(draft, cursor) {
+                let r = dimension::resolve(&self.doc, &def)?;
+                return Some(crate::display::display_dimension(0, &r, self.mm_per_px));
+            }
+            if let ([from], Some(to)) = (&draft.points[..], cursor) {
+                return Some(display_shape(
+                    0,
+                    &Shape::Line {
+                        start: *from,
+                        end: to,
+                    },
+                ));
+            }
+            return None;
+        }
+        draw::preview(draft, cursor).map(|shape| display_shape(0, &shape))
     }
 
     /// The selected objects' (layer index, object index, shape), in document order.
@@ -1801,14 +1928,13 @@ impl Project {
             .collect()
     }
 
-    /// Ids of every object on a shown layer (Select All).
+    /// Ids of every object on a shown layer, and the dimensions if shown (Select All).
     pub fn all_ids(&self) -> Vec<u32> {
-        self.doc
-            .layers
-            .iter()
-            .filter(|l| !self.layer_hidden(&l.name))
-            .flat_map(|l| l.objects.iter().map(|o| o.id))
-            .collect()
+        let mut ids: Vec<u32> = self.visible_objects().map(|o| o.id).collect();
+        if self.dimensions_visible {
+            ids.extend(self.doc.dimensions.iter().map(|d| d.id));
+        }
+        ids
     }
 
     /// Ids of every object on a layer (empty if there's no such layer).

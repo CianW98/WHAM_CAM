@@ -52,22 +52,6 @@ impl DrawTool {
     }
 }
 
-/// What a dimension click picked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PickKind {
-    /// A circle, an arc, or an arc segment of a polyline.
-    Circle,
-    /// A line, a straight segment of a polyline, or a side of a rectangle.
-    Line,
-}
-
-/// An object picked by a dimension click (its click point is in the draft's `points`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Pick {
-    pub id: u32,
-    pub kind: PickKind,
-}
-
 /// A shape being drawn: the points clicked so far.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Draft {
@@ -81,13 +65,14 @@ pub struct Draft {
     /// tangent arc.
     #[serde(default)]
     pub arc_next: bool,
-    /// Dimension only: for each click in `points`, the object it picked, or `None` for a point.
+    /// Dimension only: for each click in `points`, what it landed on (a shape's point, a line,
+    /// or a circle/arc), or `None` for the free last click.
     #[serde(default)]
-    pub picks: Vec<Option<Pick>>,
+    pub targets: Vec<Option<crate::dimension::Target>>,
 }
 
 /// What a point snapped to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SnapKind {
     /// Not snapped: the point is exactly where the cursor is.
     None,
@@ -235,7 +220,7 @@ pub fn preview(draft: &Draft, cursor: Option<Point>) -> Option<Shape> {
             (pts.len() >= 2).then(|| Shape::Polyline(polyline_from(&pts, &arcs, false)))
         }
         DrawTool::Points => Some(Shape::Points { points: pts }),
-        // Dimensions need the picked objects: see `Project::preview`.
+        // Dimensions aren't shapes: see `Project::preview`.
         DrawTool::Dimension => None,
     }
 }
@@ -345,7 +330,6 @@ pub fn validate(shape: &Shape) -> Result<(), String> {
             ok(points.iter().all(|p| finite(*p)), NOT_NUMBER)?;
             ok(!points.is_empty(), "A point list needs at least 1 point.")
         }
-        Shape::Dimension(d) => d.problem().map_or(Ok(()), |m| Err(m.to_string())),
     }
 }
 
@@ -353,6 +337,14 @@ pub fn validate(shape: &Shape) -> Result<(), String> {
 // Snapping
 
 /// Points a shape offers for object snapping.
+/// The points a shape offers for object snapping, in a fixed order (dimensions refer to them by
+/// kind and position in this list).
+pub fn snap_features(shape: &Shape) -> Vec<(Point, SnapKind)> {
+    let mut out = Vec::new();
+    snap_points(shape, &mut out);
+    out
+}
+
 fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
     use SnapKind::*;
     let polar = |c: Point, r: f64, deg: f64| on_circle(c, r, deg.to_radians());
@@ -399,8 +391,6 @@ fn snap_points(shape: &Shape, out: &mut Vec<(Point, SnapKind)>) {
             }
         }
         Shape::Points { points } => out.extend(points.iter().map(|p| (*p, End))),
-        // Dimensions offer nothing to snap to: they describe the drawing, they aren't part of it.
-        Shape::Dimension(_) => {}
     }
 }
 

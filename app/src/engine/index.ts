@@ -27,15 +27,43 @@ export type Shape =
   | { type: "Polyline"; vertices: Vertex[]; closed: boolean }
   /** A "PolyRectangle": width along `rotation` degrees CCW from +X, height at right angles. */
   | { type: "Rectangle"; lower_left: Point; width: number; height: number; rotation: number }
-  | { type: "Points"; points: Point[] }
-  | ({ type: "Dimension" } & Dimension);
+  | { type: "Points"; points: Point[] };
 
-/** A dimension (measure only, never machined). `value` is mm, or degrees for an angle. */
-export type Dimension =
-  | { kind: "Aligned"; from: Point; to: Point; at: Point; value: number }
-  | { kind: "Radius"; center: Point; radius: number; at: Point; value: number }
-  | { kind: "Diameter"; center: Point; radius: number; at: Point; value: number }
-  | { kind: "Angle"; vertex: Point; start: Point; end: Point; value: number };
+/** A shape's end, midpoint or centre, picked by a dimension click. */
+export interface Anchor {
+  id: number;
+  shape: string;
+  kind: SnapKind;
+  n: number;
+}
+
+/** One segment of a shape (a line, arc/circle, polyline segment or rectangle side). */
+export interface SegmentRef {
+  id: number;
+  shape: string;
+  index: number;
+}
+
+/** What a dimension click landed on. */
+export type Target =
+  | ({ type: "Point" } & Anchor)
+  | ({ type: "Line" } & SegmentRef)
+  | ({ type: "Circle" } & SegmentRef);
+
+/** A dimension in the document (what it measures and where it sits; the engine works it out). */
+export interface DimensionObject {
+  id: number;
+  def: unknown;
+}
+
+/** A dimension as it is now: its kind and value (mm, or degrees for an angle). */
+export interface DimensionInfo {
+  id: number;
+  kind: "Aligned" | "Radius" | "Diameter" | "Angle";
+  value: number;
+  /** The value as shown, e.g. "R12.50". */
+  text: string;
+}
 
 export interface DrawingObject {
   id: number;
@@ -217,6 +245,8 @@ export interface Document {
   machining_tool: PickedTool | null;
   /** The machine the G-code is for (by name); null = the generic post-processor. */
   machine: string | null;
+  /** Dimensions (not on any layer; see `View.dimensions` for their values). */
+  dimensions: DimensionObject[];
 }
 
 // --- Machines (spec 5.7) ------------------------------------------------------------------------
@@ -348,6 +378,10 @@ export interface View {
   tooling: Tooling;
   /** Layers hidden from view (not saved). */
   hiddenLayers: string[];
+  /** The dimensions as they are now. */
+  dimensions: DimensionInfo[];
+  /** Whether dimensions are shown (not saved). */
+  dimensionsVisible: boolean;
   /** This computer's machines. */
   machines: Machines;
 }
@@ -386,21 +420,19 @@ export type DrawTool =
   /** One tool for every dimension: the kind comes from what is clicked (see `dimensionClick`). */
   | "Dimension";
 
-/** An object picked by a dimension click. */
-export interface Pick {
-  id: number;
-  kind: "Circle" | "Line";
-}
 
 /** What a Dimension tool click is, from the engine. */
 export interface DimensionClick {
-  /** The snapped point, or the click itself for a pick. */
+  /** A shape's point it snapped to, or the click itself. */
   point: Point;
-  /** What a point snapped to ("None" for a pick). */
+  /** What the point snapped to ("None" for a picked line/circle or the free last click). */
   kind: SnapKind;
-  pick: Pick | null;
+  /** What it landed on, or null for the free last click. */
+  target: Target | null;
   /** This click completes the dimension. */
   finishes: boolean;
+  /** Why this click can't be used (it must land on a shape), if so. */
+  problem: string | null;
 }
 
 /** How many clicks finish each tool's shape; null = finished with Enter (polyline, points). */
@@ -423,8 +455,8 @@ export interface Draft {
   arcs: boolean[];
   /** Polyline: the next segment (to the cursor) is a tangent arc. */
   arc_next: boolean;
-  /** Dimension: for each click in `points`, the object it picked, or null for a point. */
-  picks: (Pick | null)[];
+  /** Dimension: for each click in `points`, what it landed on, or null for the free last click. */
+  targets: (Target | null)[];
 }
 
 export type SnapKind = "None" | "Grid" | "End" | "Mid" | "Centre";
@@ -746,6 +778,31 @@ export function renameLayer(oldName: string, newName: string): Promise<void> {
 /** Sets a layer's colour ("#rrggbb"). */
 export function setLayerColor(name: string, color: string): Promise<void> {
   return invoke<void>("set_layer_color", { name, color });
+}
+
+/** The zoom, in mm per screen pixel: dimension text and arrows keep their size on screen. */
+export function setViewScale(mmPerPx: number): Promise<void> {
+  return invoke<void>("set_view_scale", { mmPerPx });
+}
+
+/** Shows or hides every dimension (a view setting: not saved, not an undo step). */
+export function setDimensionsVisible(visible: boolean): Promise<void> {
+  return invoke<void>("set_dimensions_visible", { visible });
+}
+
+/** The dimension whose lines or value are within `tolerance` mm of (x, y), if any. */
+export function dimensionAt(x: number, y: number, tolerance: number): Promise<number | null> {
+  return invoke<number | null>("dimension_at", { x, y, tolerance });
+}
+
+/** A dimension moved to sit at (x, y), as it would be drawn (while dragging it). */
+export function dimensionDragPreview(id: number, x: number, y: number): Promise<DisplayShape | null> {
+  return invoke<DisplayShape | null>("dimension_drag_preview", { id, x, y });
+}
+
+/** Moves where a dimension sits to (x, y), as one undo step. */
+export function repositionDimension(id: number, x: number, y: number): Promise<void> {
+  return invoke<void>("reposition_dimension", { id, x, y });
 }
 
 /** Shows or hides a layer (a view setting: not saved, not an undo step). */

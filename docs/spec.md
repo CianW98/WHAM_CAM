@@ -261,37 +261,40 @@ A classic CAD/CAM layout, with a toolbar:
   opens at the cut. A shape is not cut where it crosses itself.
 - **Close polyline**: closes open polylines; a last point on top of the first is dropped.
 - Each of these is one undo step, and the results become the selection.
-- **Dimensions** (v1 scope: "basic dimensioning"; decided 2026-11-19):
-  - Kinds: **aligned** (the distance between two snapped points, measured along the line between
-    them), **radius** and **diameter** (click an arc or circle), and **angle** (between two
-    lines).
-  - **Measure only**: a dimension shows a size; it never drives the geometry. Shapes are changed
-    in Properties as usual (keeping to "no parametric history").
-  - Dimensions are drawing objects **on a layer** (the current layer when placed): saved in the
-    project, drawn in the layer's colour, selectable, deletable and undoable like other objects.
-    They are **never machined**: operations refuse them, like other unsuitable shapes.
-  - The value is measured when the dimension is placed and is read-only. A dimension isn't linked
-    to the shape it measured: moving or editing that shape doesn't update it (delete and place it
-    again to re-measure).
-  - One look in v1: values in mm with 2 decimals (`50.00`, `R12.50`, `Ø25.00`, `45.00°`), text
-    3.5 mm high on the drawing.
-  - **Placing: one smart Dimension tool** (Draw → Dimension, toolbar button, key **D**; decided
-    2026-11-20). The kind comes from what is clicked:
+- **Dimensions** (v1 scope: "basic dimensioning"; decided 2026-11-19, reworked 2026-11-20):
+  - Kinds: **aligned** (the distance between two points, measured along the line between them),
+    **radius** and **diameter** (an arc or circle), and **angle** (between two lines).
+  - **Measure only**: a dimension shows a size; it never drives the geometry (keeping to "no
+    parametric history"). Never machined, never exported.
+  - **Their own place**: not on any drawing layer. The tree lists them under a **Dimensions**
+    heading with one eye icon to show or hide them all (a view setting, not saved). Drawn in one
+    fixed colour (yellow when selected). Selectable, deletable and undoable; copy/paste and the
+    Transform tools ignore them (they follow their shapes instead). Properties shows the kind and
+    value, read-only.
+  - **Attached to the geometry**: a dimension stores what it measures (a shape's end, midpoint or
+    centre; a straight segment; a circle or arc) and where it sits relative to that. Its value and
+    position follow every change (move, scale, rotate, mirror, edits in Properties); moving a
+    part carries its dimensions along by the same amount. When what it measures is deleted or
+    replaced (Explode, Join, Break; a polyline edit that removes the segment), the dimension is
+    deleted in the same undo step.
+  - **Placing: one smart Dimension tool** (Draw → Dimension, toolbar button, key **D**). The kind
+    comes from what is clicked:
     - a circle → **diameter**; an arc, or an arc segment of a polyline → **radius**;
-    - two points (ends, midpoints, centres, grid) → **aligned**;
+    - a shape's point, then another (ends, midpoints, centres) → **aligned**;
     - a line (also a straight segment of a polyline, or a rectangle side), then another line →
       **angle** (lines extended to where they cross), or the **distance** between them if they
       are parallel (square across from the first click);
-    - a line, then anywhere else → that line's **length** (aligned).
-    On the **first click**, an end or centre snap counts as a point; otherwise touching a
-    circle, arc or line picks it, even at its midpoint. After the defining clicks the dimension
-    follows the mouse, drawn faded in the layer's colour (like toolpaths during playback), and
-    the last click places it: the dimension line, the value, or which of the four angles (and
-    the arc's radius). The tool stays on for the next dimension.
-  - **Transforms** (decided 2026-11-20): moving, rotating and mirroring keep the value; scaling
-    multiplies a length by the factor (angles stay), so a dimension always matches its own
-    drawing. Snapping ignores dimensions. Properties shows the kind and value, read-only.
-  - Saving dimensions made the project file format version 2; version 1 files still open.
+    - a line, then anywhere else → that line's **length**.
+    On the **first click**, an end or centre counts as a point; otherwise touching a circle, arc
+    or line picks it, even at its midpoint. The defining clicks must land on shapes (never the
+    grid or empty space). After them the dimension follows the mouse, drawn faded until the
+    **last click places it, freely (no snapping)**: the dimension line, the value, or which of
+    the four angles (and the arc's radius). The tool stays on for the next dimension.
+  - **Dragging** a dimension's line or value moves where it sits (freely; one undo step);
+    dragging elsewhere still draws a selection box.
+  - **Look**: values in mm with 2 decimals (`50.00`, `R12.50`, `Ø25.00`, `45.00°`); text and
+    arrowheads keep the same size on screen at every zoom (text 12 px).
+  - Project files: format version 2 (no compatibility with dimensions saved before 2026-11-20).
 
 ### 5.4 Operations and the Machining tree
 The Machining branch of the Project tree holds the project's machining, in three levels: the

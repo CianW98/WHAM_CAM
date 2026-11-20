@@ -8,10 +8,10 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
-    BoxMode, BreakReport, CutWidthStep, DimensionClick, DisplayData, DisplayShape, Document, Draft,
-    DxfInfo, GenerateReport, ImportReport, JoinReport, Machines, Operation, OperationState,
-    PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions, SvgInfo, Tool,
-    ToolDrawing, ToolSetting, Tooling, ToolpathDisplay, TransformOp,
+    BoxMode, BreakReport, CutWidthStep, DimensionClick, DimensionInfo, DisplayData, DisplayShape,
+    Document, Draft, DxfInfo, GenerateReport, ImportReport, JoinReport, Machines, Operation,
+    OperationState, PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions,
+    SvgInfo, Tool, ToolDrawing, ToolSetting, Tooling, ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -141,6 +141,10 @@ struct View {
     machines: Machines,
     /// Layers hidden from view (not saved).
     hidden_layers: Vec<String>,
+    /// The dimensions as they are now (kind and value).
+    dimensions: Vec<DimensionInfo>,
+    /// Whether dimensions are shown (not saved).
+    dimensions_visible: bool,
 }
 
 fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines) -> View {
@@ -158,6 +162,8 @@ fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines
         tooling: tooling.clone(),
         machines: machines.clone(),
         hidden_layers: p.hidden_layers(),
+        dimensions: p.dimensions(),
+        dimensions_visible: p.dimensions_visible(),
     }
 }
 
@@ -558,6 +564,36 @@ fn set_layer_color(name: String, color: String, state: State<AppState>) -> Resul
     state.0.lock().unwrap().set_layer_color(&name, &color)
 }
 
+/// The zoom in mm per screen pixel, so dimensions keep their size on screen.
+#[tauri::command]
+fn set_view_scale(mm_per_px: f64, state: State<AppState>) {
+    state.0.lock().unwrap().set_view_scale(mm_per_px);
+}
+
+/// Shows or hides every dimension (a view setting: not saved, not an undo step).
+#[tauri::command]
+fn set_dimensions_visible(visible: bool, state: State<AppState>) {
+    state.0.lock().unwrap().set_dimensions_visible(visible);
+}
+
+/// The dimension under (x, y), for dragging it.
+#[tauri::command]
+fn dimension_at(x: f64, y: f64, tolerance: f64, state: State<AppState>) -> Option<u32> {
+    state.0.lock().unwrap().dimension_at(x, y, tolerance)
+}
+
+/// A dimension moved to (x, y), as it would be drawn while dragging it.
+#[tauri::command]
+fn dimension_drag_preview(id: u32, x: f64, y: f64, state: State<AppState>) -> Option<DisplayShape> {
+    state.0.lock().unwrap().dimension_drag_preview(id, x, y)
+}
+
+/// Moves where a dimension sits, as one undo step.
+#[tauri::command]
+fn reposition_dimension(id: u32, x: f64, y: f64, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().reposition_dimension(id, x, y)
+}
+
 /// Shows or hides a layer (a view setting: not saved, not an undo step).
 #[tauri::command]
 fn set_layer_visible(name: String, visible: bool, state: State<AppState>) -> Result<(), String> {
@@ -892,6 +928,11 @@ pub fn run() {
             rename_layer,
             set_layer_color,
             set_layer_visible,
+            set_view_scale,
+            set_dimensions_visible,
+            dimension_at,
+            dimension_drag_preview,
+            reposition_dimension,
             undo,
             redo,
             pick,

@@ -126,8 +126,6 @@ pub enum Shape {
     Points {
         points: Vec<Point>,
     },
-    /// A dimension (measure only: never machined).
-    Dimension(crate::dimension::Dimension),
 }
 
 impl Shape {
@@ -140,7 +138,6 @@ impl Shape {
             Shape::Polyline(_) => "Polyline",
             Shape::Rectangle { .. } => "PolyRectangle",
             Shape::Points { .. } => "PointList",
-            Shape::Dimension(_) => "Dimension",
         }
     }
 }
@@ -498,7 +495,6 @@ impl Shape {
             Shape::Points { points } => Shape::Points {
                 points: points.iter().map(|p| t.apply(*p)).collect(),
             },
-            Shape::Dimension(d) => Shape::Dimension(d.transformed(t)?),
             Shape::Circle { center, radius } => Shape::Circle {
                 center: t.apply(*center),
                 radius: radius * uniform?,

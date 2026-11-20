@@ -258,7 +258,8 @@ Done:
   corners, convex, concave) checks G2/G3. CAMotics and NC Viewer don't simulate `G83`.
 
 - Dimensions (spec 5.3, 2026-11-20): aligned, radius, diameter, angle (`dimension.rs`), measure
-  only; one smart Dimension tool (key D) picks the kind from what is clicked; format 2.
+  only; own list (Dimensions in the tree), attached to the shapes they measure (follow changes,
+  deleted with them), free placing and dragging, fixed size on screen; smart tool (key D).
 
 - SVG import (spec 5.1, 2026-11-20): roxmltree =0.21.2 + svgtypes =0.16.2, only in `svg.rs`;
   circles/rects/circular arcs stay exact, curves → arcs within the tolerance; units prompt when

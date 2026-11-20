@@ -79,7 +79,7 @@ const TOOL_KEY_LABELS: Record<string, string> = {
 
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
 
-const emptyDraft = (tool: DrawTool): Draft => ({ tool, points: [], arcs: [], arc_next: false, picks: [] });
+const emptyDraft = (tool: DrawTool): Draft => ({ tool, points: [], arcs: [], arc_next: false, targets: [] });
 
 /** What to tell the user at each step of drawing. */
 function drawHint(d: Draft): string {
@@ -99,16 +99,16 @@ function drawHint(d: Draft): string {
           (n >= 2 ? " · click the first point to close" : "") +
           " · Backspace removes a point";
   } else if (d.tool === "Dimension") {
-    const kinds = d.picks.map((p) => p?.kind ?? "Point").join(",");
-    hint =
-      {
-        "": "Click a circle, an arc, a line, or the first point",
-        Circle: "Click where the value goes",
-        Line: "Click another line for the angle (or distance if parallel), or where the length goes",
-        "Line,Line": "Click where the dimension goes (for an angle: inside the angle to measure)",
-        Point: "Click the second point",
-        "Point,Point": "Click where the dimension line goes",
-      }[kinds] ?? "";
+    const kinds = d.targets.map((t) => t?.type ?? "").join(",");
+    const hints: Record<string, string> = {
+      "": "Click a circle, an arc, a line, or a shape's end or centre",
+      Circle: "Click where the value goes",
+      Line: "Click another line for the angle (or distance if parallel), or where the length goes",
+      "Line,Line": "Click where the dimension goes (for an angle: inside the angle to measure)",
+      Point: "Click a second end, midpoint or centre",
+      "Point,Point": "Click where the dimension line goes",
+    };
+    hint = hints[kinds] ?? "";
   } else if (d.tool === "Points") {
     hint = "Click to add points · Enter or double-click finishes" + (n > 0 ? " · Backspace removes a point" : "");
   } else {
@@ -1004,7 +1004,11 @@ export default function App() {
       if (d?.tool === "Dimension" && click) {
         // The engine said what this click is (a point, or a picked circle/arc/line) and whether
         // it completes the dimension.
-        const next: Draft = { ...d, points: [...d.points, click.point], picks: [...d.picks, click.pick] };
+        if (click.problem) {
+          notify("info", click.problem);
+          return;
+        }
+        const next: Draft = { ...d, points: [...d.points, click.point], targets: [...d.targets, click.target] };
         if (click.finishes) void commitDraft(next);
         else setDraft(next);
         return;
@@ -1033,7 +1037,7 @@ export default function App() {
         });
       }
     },
-    [addDrawPoint, applyTransform, commitDraft, refresh, run, setDraft, setSpecial],
+    [addDrawPoint, applyTransform, commitDraft, notify, refresh, run, setDraft, setSpecial],
   );
 
   const toggleCutWidth = () => {
@@ -1437,6 +1441,12 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             hiddenLayers={hiddenLayers}
             onSetLayerVisible={(name, visible) => run(() => setLayerVisible(name, visible))}
+            dimensions={view?.dimensions ?? []}
+            dimensionsVisible={view?.dimensionsVisible ?? true}
+            onSetDimensionsVisible={(visible) => run(async () => {
+              await engine.setDimensionsVisible(visible);
+              await refresh();
+            })}
             currentLayer={drawLayer}
             onAddLayer={addLayer}
             operationStates={view?.operations ?? []}
@@ -1455,6 +1465,7 @@ export default function App() {
             doc={view?.document ?? null}
             display={view?.display ?? null}
             selection={selection}
+            dimensions={view?.dimensions ?? []}
             onRenameLayer={renameLayer}
             onSetLayerColor={setLayerColor}
             onSetShape={setShape}
@@ -1500,6 +1511,15 @@ export default function App() {
         onPick={onPick}
         onBox={onBox}
         onPlacePoint={placePoint}
+        onScale={(mmPerPx) => run(async () => {
+          await engine.setViewScale(mmPerPx);
+          await refresh();
+        })}
+        onRepositionDimension={(id, p) => run(async () => {
+          await engine.repositionDimension(id, p.x, p.y);
+          await refresh();
+          setSelection({ kind: "objects", ids: [id] });
+        })}
         drawColor={layers.find((l) => l.name === drawLayer)?.color ?? "#ffffff"}
         onFinishDraft={finishDraft}
         onContextMenu={(x, y) => {

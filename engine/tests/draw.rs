@@ -13,7 +13,7 @@ fn draft(tool: DrawTool, points: &[(f64, f64)]) -> Draft {
         points: points.iter().map(|&(x, y)| p(x, y)).collect(),
         arcs: Vec::new(),
         arc_next: false,
-        picks: Vec::new(),
+        targets: Vec::new(),
     }
 }
 

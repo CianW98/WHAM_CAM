@@ -139,6 +139,8 @@ interface Scene3 {
   preview: THREE.Group;
   /** Re-checks the snap and preview at the last cursor position. */
   hover: () => void;
+  /** Call after the zoom changes (dimension sizes follow it). */
+  scaleChanged: () => void;
   /** Drawn objects by engine id, so selection can recolour them without rebuilding. */
   byId: Map<number, THREE.Object3D[]>;
   materials: {
@@ -202,8 +204,12 @@ interface Props {
    * engine's answer for that click (a point or a picked object, and whether it finishes).
    */
   onPlacePoint: (p: Point, click: engine.DimensionClick | null) => void;
-  /** Colour of the layer new shapes go on (for the dimension being placed). */
+  /** Colour of the layer new shapes go on (for previews). */
   drawColor: string;
+  /** The zoom changed: `mmPerPx` millimetres per screen pixel (dimensions are laid out for it). */
+  onScale: (mmPerPx: number) => void;
+  /** A dimension was dragged to `p`: move where it sits. */
+  onRepositionDimension: (id: number, p: Point) => void;
   /** Double-click while drawing: finish a polyline or point list. */
   onFinishDraft: () => void;
   /** Right-click without dragging, at page position (x, y). */
@@ -529,9 +535,10 @@ function showPreview(s: Scene3, shapes: DisplayShape[], drawColor: string) {
   clearGroup(s.preview);
   for (const shape of shapes) {
     if (shape.label) {
-      // A dimension following the mouse: drawn as it will be, in the layer's colour but faded
+      // A dimension following the mouse: drawn as it will be, in its own colour but faded
       // (like the toolpaths during playback) until the click places it.
-      const label = makeLabel(shape.label, drawColor);
+      const color = shape.color || drawColor;
+      const label = makeLabel(shape.label, color);
       const fade = (m: THREE.Material) => {
         m.transparent = true;
         m.opacity = DIMENSION_PREVIEW_OPACITY;
@@ -543,7 +550,7 @@ function showPreview(s: Scene3, shapes: DisplayShape[], drawColor: string) {
       for (const path of paths(shape)) {
         const geom = new THREE.BufferGeometry();
         geom.setAttribute("position", new THREE.Float32BufferAttribute(path.points.flatMap(([x, y]) => [x, y, 0]), 3));
-        const line = new THREE.Line(geom, fade(new THREE.LineBasicMaterial({ color: drawColor, depthTest: false })));
+        const line = new THREE.Line(geom, fade(new THREE.LineBasicMaterial({ color, depthTest: false })));
         line.renderOrder = 12;
         s.preview.add(line);
       }
@@ -619,6 +626,7 @@ function fitTo(s: Scene3, bounds: [number, number, number, number]) {
     scale: Math.max(w / s.width, h / s.height) * 1.15,
   };
   applyOrtho(s);
+  s.scaleChanged();
 }
 
 export default function Viewport({
@@ -641,6 +649,8 @@ export default function Viewport({
   onBox,
   onPlacePoint,
   drawColor,
+  onScale,
+  onRepositionDimension,
   onFinishDraft,
   onContextMenu,
 }: Props) {
@@ -651,8 +661,30 @@ export default function Viewport({
   const [snapMark, setSnapMark] = useState<SnapMark | null>(null);
 
   // Latest props, so the once-only event listeners below always use the current ones.
-  const live = useRef({ onPick, onBox, onPlacePoint, onFinishDraft, onContextMenu, placing, snapOptions, drawColor });
-  live.current = { onPick, onBox, onPlacePoint, onFinishDraft, onContextMenu, placing, snapOptions, drawColor };
+  const live = useRef({
+    onPick,
+    onBox,
+    onPlacePoint,
+    onFinishDraft,
+    onContextMenu,
+    placing,
+    snapOptions,
+    drawColor,
+    onScale,
+    onRepositionDimension,
+  });
+  live.current = {
+    onPick,
+    onBox,
+    onPlacePoint,
+    onFinishDraft,
+    onContextMenu,
+    placing,
+    snapOptions,
+    drawColor,
+    onScale,
+    onRepositionDimension,
+  };
 
   // Create the WebGL scene once.
   useEffect(() => {
@@ -720,6 +752,7 @@ export default function Viewport({
       grid,
       preview: previewGroup,
       hover: () => {},
+      scaleChanged: () => {},
       byId: new Map(),
       materials: {
         line: cached(lineCache, (color) => new THREE.LineBasicMaterial({ color, depthTest: false })),
@@ -755,7 +788,41 @@ export default function Viewport({
     const canvas = renderer.domElement;
     let panFrom: { x: number; y: number } | null = null;
     let rightDown: { x: number; y: number; moved: boolean } | null = null;
-    let leftDown: { x: number; y: number; dragging: boolean } | null = null;
+    /** A left button press: where, whether it has become a drag, and the dimension under it
+     * (undefined while the engine is being asked, null for none). Dragging a dimension moves
+     * it; dragging anywhere else draws a selection box. */
+    let leftDown: { x: number; y: number; dragging: boolean; dimension?: number | null } | null = null;
+    /** The zoom changed: tell the app a moment after it settles (dimension sizes follow it). */
+    let scaleTimer: ReturnType<typeof setTimeout> | undefined;
+    const scaleChanged = () => {
+      clearTimeout(scaleTimer);
+      scaleTimer = setTimeout(() => live.current.onScale(s.view.scale), 120);
+    };
+    s.scaleChanged = scaleChanged;
+    scaleChanged();
+    /** While dragging a dimension: show it at the cursor (one engine request at a time). */
+    let dragBusy = false;
+    let dragAgain: Point | null = null;
+    const dragTo = async (id: number, p: Point) => {
+      if (dragBusy) {
+        dragAgain = p;
+        return;
+      }
+      dragBusy = true;
+      try {
+        let at: Point | null = p;
+        while (at) {
+          dragAgain = null;
+          const shape = await engine.dimensionDragPreview(id, at.x, at.y);
+          if (leftDown?.dimension !== id) break; // let go meanwhile
+          for (const obj of s.byId.get(id) ?? []) obj.visible = false;
+          showPreview(s, shape ? [shape] : [], live.current.drawColor);
+          at = dragAgain;
+        }
+      } finally {
+        dragBusy = false;
+      }
+    };
     let mouse: { x: number; y: number } | null = null;
     const local = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -852,6 +919,7 @@ export default function Viewport({
       applyOrtho(s);
       s.render();
       s.hover();
+      scaleChanged();
     };
     const onPointerDown = (e: PointerEvent) => {
       if (e.button === 2) rightDown = { x: e.clientX, y: e.clientY, moved: false };
@@ -861,7 +929,17 @@ export default function Viewport({
         panFrom = { x: e.clientX, y: e.clientY };
       } else if (e.button === 0) {
         const m = local(e);
-        leftDown = { ...m, dragging: false };
+        const down: NonNullable<typeof leftDown> = { ...m, dragging: false };
+        leftDown = down;
+        if (!live.current.placing) {
+          const p = screenToWorld(s, m.x, m.y);
+          engine.dimensionAt(p.x, p.y, PICK_RADIUS_PX * s.view.scale).then(
+            (id) => (down.dimension = id),
+            () => (down.dimension = null),
+          );
+        } else {
+          down.dimension = null;
+        }
       } else return;
       canvas.setPointerCapture(e.pointerId);
     };
@@ -882,7 +960,11 @@ export default function Viewport({
         if (!leftDown.dragging && Math.hypot(m.x - leftDown.x, m.y - leftDown.y) > DRAG_THRESHOLD_PX) {
           leftDown.dragging = true;
         }
-        if (leftDown.dragging && !live.current.placing) setBox({ x0: leftDown.x, y0: leftDown.y, x1: m.x, y1: m.y });
+        if (leftDown.dragging && !live.current.placing) {
+          const id = leftDown.dimension;
+          if (typeof id === "number") void dragTo(id, screenToWorld(s, m.x, m.y));
+          else if (id === null) setBox({ x0: leftDown.x, y0: leftDown.y, x1: m.x, y1: m.y });
+        }
       }
       mouse = m;
       setCursor(screenToWorld(s, m.x, m.y));
@@ -904,6 +986,13 @@ export default function Viewport({
           const snap = await snapAt(m);
           live.current.onPlacePoint(snap.point, snap.click);
         });
+      } else if (leftDown.dragging && typeof leftDown.dimension === "number") {
+        // Let go of a dragged dimension: it sits here now.
+        const id = leftDown.dimension;
+        const p = screenToWorld(s, m.x, m.y);
+        showPreview(s, [], live.current.drawColor);
+        for (const obj of s.byId.get(id) ?? []) obj.visible = true;
+        live.current.onRepositionDimension(id, p);
       } else if (leftDown.dragging) {
         const a = screenToWorld(s, leftDown.x, leftDown.y);
         const b = screenToWorld(s, m.x, m.y);

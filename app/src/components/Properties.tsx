@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
+  DimensionInfo,
   CutOrdering,
   DisplayData,
   DrillMethod,
@@ -186,7 +187,7 @@ function CollectionField({ onOpen }: { onOpen: () => void }) {
 
 // --- Shapes ---------------------------------------------------------------------------------
 
-/** The rows for a shape's own values: editable, except a dimension's. */
+/** The rows for a shape's own values, editable. */
 function ShapeRows({
   shape,
   direction,
@@ -305,15 +306,6 @@ function ShapeRows({
               }
             />
           </Row>
-        </>
-      );
-    case "Dimension":
-      // Measure only: the value was measured when placed and can't be edited (delete and place
-      // it again to re-measure).
-      return (
-        <>
-          <Row label="Kind">{shape.kind}</Row>
-          <Row label="Value">{`${num(shape.value)}${shape.kind === "Angle" ? "°" : " mm"}`}</Row>
         </>
       );
   }
@@ -752,6 +744,8 @@ function KindRows({
 // --- Panel ----------------------------------------------------------------------------------
 
 interface Edits {
+  /** The dimensions as they are now (shown read-only when one is selected). */
+  dimensions: DimensionInfo[];
   /** Resolves false if the rename was rejected (the box then shows the old name again). */
   onRenameLayer: (oldName: string, newName: string) => Promise<boolean>;
   onSetLayerColor: (name: string, color: string) => void;
@@ -1081,6 +1075,16 @@ function Content({
     }
     case "objects": {
       if (selection.ids.length > 1) return <div className="empty">{selection.ids.length} objects selected.</div>;
+      // A dimension: measure only, so its value can't be edited (it follows its shapes).
+      const dim = edits.dimensions.find((d) => d.id === selection.ids[0]);
+      if (dim)
+        return (
+          <Grid>
+            <Row label="ID">{dim.id}</Row>
+            <Row label="Type">{`${dim.kind} dimension`}</Row>
+            <Row label="Value">{`${num(dim.value)}${dim.kind === "Angle" ? "°" : " mm"}`}</Row>
+          </Grid>
+        );
       for (const layer of doc.layers) {
         const obj = layer.objects.find((o) => o.id === selection.ids[0]);
         if (!obj) continue;
