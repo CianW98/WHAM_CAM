@@ -254,7 +254,7 @@ Done:
 - Release 0.4.0 (2026-11-19): tooling (master tool list, libraries, Setup tab, tools through the
   Machining tree, tool number checks, real 3D cutter). No G-code yet.
 
-- G-code output (spec 5.7, 7), merged into `main` 2026-11-20, not released yet: generic
+- G-code output (spec 5.7, 7), merged into `main` 2026-11-20, released in 0.5.0: generic
   post-processor (`post.rs`), read-back check (`gcode_read.rs`), drill holes as G81/G83 cycles
   (Peck now follows G83), machine list in the Setup tab, Produce G-code. Arc test shape (square
   corners, convex, concave) checks G2/G3. CAMotics and NC Viewer don't simulate `G83`.
@@ -267,7 +267,9 @@ Done:
   circles/rects/circular arcs stay exact, curves → arcs within the tolerance; units prompt when
   the file has no real size; Inkscape layers; one Import for DXF or SVG.
 
-Next: release 0.5.0 (user's decision, 2026-11-20; replaces "no 0.x releases before 1.0.0").
-Then, before 1.0.0: machine configuration dialog (spec 5.9) and project setup/defaults (spec
+- Release 0.5.0 published (2026-11-20): G-code output, machines, SVG import, dimensions,
+  show/hide layers.
+
+Next, before 1.0.0: machine configuration dialog (spec 5.9) and project setup/defaults (spec
 5.10), both to be designed with the user; then a full end-to-end check by the user. DXF
 dimensions and DXF text are on the roadmap.
