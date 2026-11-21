@@ -1120,8 +1120,6 @@ export default function App() {
         return run(() => undoRedo("redo"));
       case "Delete":
         return run(deleteSelected);
-      case "Zoom to fit":
-        return setFitRequest((n) => n + 1);
       case "Profile":
         return run(addProfile);
       case "Pocket":
@@ -1207,6 +1205,10 @@ export default function App() {
     } else if (!ctrl && !e.altKey && TOOL_KEYS[key]) {
       // Drawing tool shortcuts (L, A, C, R, P, full stop for points). The tool already in use carries on as it is.
       if (d?.tool !== TOOL_KEYS[key]) setDraft(emptyDraft(TOOL_KEYS[key]));
+    } else if (!ctrl && !e.altKey && key === "t") toggleToolpaths();
+    else if (!ctrl && !e.altKey && key === "w") {
+      // Cut width only shows with the toolpaths, the same as its button.
+      if (showToolpaths) toggleCutWidth();
     } else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
     else if (key === "delete") run(deleteSelected);
     else if (ctrl && key === "z" && !e.shiftKey) run(() => undoRedo("undo"));
@@ -1273,8 +1275,14 @@ export default function App() {
         { label: "Zoom to fit", action: () => setFitRequest((n) => n + 1) },
         { label: "2D view", disabled: viewMode === "2D", action: () => setViewMode("2D") },
         { label: "3D view", disabled: viewMode === "3D", action: () => setViewMode("3D") },
-        { label: "Show toolpaths", checked: showToolpaths, action: toggleToolpaths, separatorBefore: true },
-        { label: "Show cut width", checked: showCutWidth, disabled: !showToolpaths, action: toggleCutWidth },
+        { label: "Show toolpaths", shortcut: "T", checked: showToolpaths, action: toggleToolpaths, separatorBefore: true },
+        {
+          label: "Show cut width",
+          shortcut: "W",
+          checked: showCutWidth,
+          disabled: !showToolpaths,
+          action: toggleCutWidth,
+        },
         {
           label: "Toolpath playback",
           checked: showPlaybackBar,

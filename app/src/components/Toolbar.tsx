@@ -1,10 +1,12 @@
-const GROUPS: string[][] = [
-  ["New", "Open", "Save", "Import"],
-  ["Undo", "Redo", "Delete"],
-  ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point", "Dimension"],
-  ["Profile", "Pocket", "Drill"],
-  ["Generate toolpaths", "Show toolpaths", "Show cut width", "Produce G-code"],
-  ["Zoom to fit"],
+import { ActionIcon } from "./Icons";
+
+/** The toolbar's groups of actions, each shown under its heading. */
+const GROUPS: { heading: string; actions: string[] }[] = [
+  { heading: "File", actions: ["New", "Open", "Save", "Import"] },
+  { heading: "Edit", actions: ["Undo", "Redo", "Delete"] },
+  { heading: "Draw", actions: ["Line", "Arc", "Circle", "Rectangle", "Polyline", "Point", "Dimension"] },
+  { heading: "Machining", actions: ["Profile", "Pocket", "Drill"] },
+  { heading: "Toolpaths", actions: ["Generate toolpaths", "Show toolpaths", "Show cut width", "Produce G-code"] },
 ];
 
 interface Props {
@@ -21,18 +23,22 @@ export default function Toolbar({ onAction, disabled, active, on }: Props) {
   return (
     <header className="toolbar">
       <span className="brand">WHAM_CAM</span>
-      {GROUPS.map((group, i) => (
-        <div className="tool-group" key={i}>
-          {group.map((name) => (
-            <button
-              key={name}
-              className={active === name || on.has(name) ? "active" : ""}
-              disabled={disabled.has(name)}
-              onClick={() => onAction(name)}
-            >
-              {name}
-            </button>
-          ))}
+      {GROUPS.map(({ heading, actions }) => (
+        <div className="tool-group" key={heading}>
+          <div className="tool-group-heading">{heading}</div>
+          <div className="tool-group-buttons">
+            {actions.map((name) => (
+              <button
+                key={name}
+                aria-label={name}
+                className={`tool-button${active === name || on.has(name) ? " active" : ""}`}
+                disabled={disabled.has(name)}
+                onClick={() => onAction(name)}
+              >
+                <ActionIcon name={name} />
+              </button>
+            ))}
+          </div>
         </div>
       ))}
     </header>

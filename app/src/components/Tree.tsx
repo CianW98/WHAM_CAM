@@ -3,6 +3,7 @@ import type { DimensionInfo, Document, Layer, OperationState, Shape } from "../e
 import { selectedIds, selectObjects, type Selection } from "../selection";
 import ColorSwatch from "./ColorSwatch";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
+import { EyeIcon } from "./Icons";
 
 /** Tree label for a shape type, using common CAM names. */
 export function shapeLabel(shape: Shape): string {
@@ -146,22 +147,6 @@ function OperationItem({
  * A layer in the tree. Click: select and open/close. Double-click: rename in place
  * (Enter or clicking away saves, Esc cancels). Click the colour square: pick a colour.
  */
-/** An eye (shown) or a crossed-out eye (hidden). */
-function EyeIcon({ shown }: { shown: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path
-        d="M1 8c1.8-3.2 4.2-4.8 7-4.8s5.2 1.6 7 4.8c-1.8 3.2-4.2 4.8-7 4.8S2.8 11.2 1 8z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-      <circle cx="8" cy="8" r="2.2" fill="currentColor" />
-      {!shown && <path d="M2 14L14 2" stroke="currentColor" strokeWidth="1.5" />}
-    </svg>
-  );
-}
-
 function LayerItem({
   layer,
   open,
@@ -218,7 +203,7 @@ function LayerItem({
   return (
     <li>
       <div
-        className={`tree-item${selected ? " selected" : ""}${hidden ? " hidden-layer" : ""}`}
+        className={`tree-item${selected ? " selected" : ""}${current ? " current-layer" : ""}${hidden ? " hidden-layer" : ""}`}
         onClick={onClick}
         onDoubleClick={start}
         onContextMenu={onContextMenu}
@@ -245,14 +230,7 @@ function LayerItem({
         </button>
         <ColorSwatch color={layer.color} onPick={onColor} title={`Colour of layer ${layer.name}`} />
         {editing === null ? (
-          <>
-            {`${layer.name} (${layer.objects.length})`}
-            {current && (
-              <span className="current-layer" title="Current layer: new drawings go here">
-                ✎
-              </span>
-            )}
-          </>
+          `${layer.name} (${layer.objects.length})`
         ) : (
           <input
             className="tree-rename"

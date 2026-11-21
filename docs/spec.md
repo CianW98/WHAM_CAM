@@ -95,10 +95,12 @@ A classic CAD/CAM layout, with a toolbar:
 
   Click a heading to open it; while one is open, hovering another switches to it. Items that
   can't be used right now are greyed.
-- **Toolbar**: file actions (new, open, save, import), undo/redo/delete, drawing tools (line, arc,
-  circle, rectangle, polyline, point), operations (Profile, Pocket, Drill), Generate toolpaths,
-  Show toolpaths, Show cut width, Produce G-code, and Zoom to fit. Everything on the toolbar is
-  also in the menus.
+- **Toolbar**: icon buttons in groups, each with a small heading above it: File (new, open, save,
+  import), Edit (undo, redo, delete), Draw (line, arc, circle, rectangle, polyline, point,
+  dimension), Machining (Profile, Pocket, Drill), Toolpaths (Generate toolpaths, Show toolpaths,
+  Show cut width, Produce G-code). Pressed buttons (the drawing tool in use,
+  Show toolpaths/cut width when on) are light blue. Everything on the toolbar is also in the menus; Zoom to fit is in the View
+  and right-click menus only.
 - **Left panel tabs**: *Project* and *Setup*, above the tree. The Properties panel stays below
   both.
   - **Project** is the tree: Layers → drawing objects; Machining → Parts → operations. Click to
@@ -127,6 +129,7 @@ A classic CAD/CAM layout, with a toolbar:
 - **Right-click menu** in the drawing area (right-click without dragging; right-drag pans): View
   (Zoom to fit, 2D/3D), Draw (the drawing tools), Transform, Edit, Select All, Select All On Layer
   (current layer), Cut, Copy, Paste, Undo, Redo. Items that can't be used right now are greyed.
+  Right-clicking anywhere without its own menu does nothing, except in text boxes (Cut, Copy, Paste).
 - **Drawing area**: dark background, grid, X/Y axes. Pan, zoom, select (click and box-select). A
   toggle switches between the 2D top view and a 3D orbit view of the toolpaths. The cursor X/Y
   position is shown in a small readout in a corner of the drawing area.
@@ -196,7 +199,7 @@ A classic CAD/CAM layout, with a toolbar:
   - Shortcut keys start a tool: **L** line, **A** arc, **C** circle, **R** rectangle, **P**
     polyline, **.** (full stop) point (shown in the Draw menu). While a polyline is being drawn
     (after its first click), A and L instead switch its next segment between arc and line.
-- New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
+- New shapes go onto the **current layer**, highlighted light blue in the tree. Clicking a layer makes it current.
 - Points are set by clicking. Clicks snap to end points, mid points and centres of shapes
   (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the
   drawing area (saved with the project), and a marker shows what was snapped to. A finished shape
@@ -393,10 +396,10 @@ Properties show:
   `⟳` (out of date) in the tree; one that failed is marked `!` with the message in Properties.
 - Every toolpath is checked by the safety checker (section 7 rules) when it is generated; one that
   fails is not used.
-- **Show toolpaths** (toolbar button next to Generate toolpaths, and the View menu) hides or shows
+- **Show toolpaths** (toolbar button next to Generate toolpaths, the View menu, or key **T**) hides or shows
   all toolpaths at once. View state only: not saved, not an undo step. Each operation's own "Show
   toolpath" still applies.
-- **Show cut width** (toolbar button next to Show toolpaths, and the View menu; off by default)
+- **Show cut width** (toolbar button next to Show toolpaths, the View menu, or key **W**; off by default)
   shades the band the cutter sweeps along every cutting move (tool diameter wide, rounded at
   bends and ends), under the toolpath lines. Rapids and plunges aren't shaded. View state only.
   During playback it fades and brightens with the tool, like the toolpath lines.

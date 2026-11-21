@@ -2,7 +2,7 @@
 
 ## Road to 1.0.0
 
-- **UI improvements**: replace the text-based actions at the top with icons; highlight the active layer instead of marking it with the small pencil icon; add hotkeys for showing and hiding toolpaths and cut widths.
+- **Hover descriptions**: show a short description, and the shortcut key, when hovering over buttons and settings across the whole program.
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
 
 ## Release themes after 1.0.0
