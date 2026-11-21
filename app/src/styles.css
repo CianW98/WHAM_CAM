@@ -159,7 +159,10 @@ button:hover {
   font-size: inherit;
 }
 .tree-star {
-  color: #d09a00;
+  display: inline-block;
+  width: 1em;
+  color: var(--accent);
+  font-size: 0.8em;
 }
 .tree-item.selected .props th.prop-own {
   font-weight: 700;

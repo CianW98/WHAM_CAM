@@ -433,8 +433,8 @@ without touching the toolpaths.
   - Right-click **Machines** → **New**: a machine with Default's settings. Right-click a machine →
     **New from** (an editable copy, "<name> copy"), Rename, Use for new projects, Delete machine
     (Rename and Delete aren't offered on Default). A new machine starts renaming in place.
-  - One machine is used for new projects, marked ★ (tooltip "Used for new projects"); File ▸ New
-    and startup use it. Deleting it goes back to Default.
+  - One machine is used for new projects, marked with a dot before its name (tooltip "Used for
+    new projects"); File ▸ New and startup use it. Deleting it goes back to Default.
   - Selecting a machine shows its settings in Properties. Changes are saved straight away and are
     not undo steps; an invalid value is refused with a message and the old value kept.
 - **The project's machine**: the Machining item's Properties choose the machine, then show the
@@ -492,7 +492,7 @@ spacing, grid area and snap to grid / snap to objects. They have no effect on to
 - The templates are a list in the Setup tab (global, like the machines), kept in
   `project_templates.json` in WHAM_CAM's settings folder. They work as the machines do (5.7):
   the built-in read-only **Default** (grid 10 mm, major 50 mm, area -1000 to 1000, both snaps
-  on), New / New from, Rename, Use for new projects (★), Delete template.
+  on), New / New from, Rename, Use for new projects (the dot), Delete template.
 - The **Project** item's Properties: **Template**, then the project's own grid spacing, grid area
   and snaps. They follow the template as the project's machine settings follow the machine
   (5.7): changed settings in bold with ↺, editing or renaming the template in Setup followed,

@@ -44,7 +44,7 @@ const BUILT_IN = "Default";
 function LibraryItem({
   name,
   count,
-  star = false,
+  star,
   fixed = false,
   selected,
   onClick,
@@ -56,7 +56,7 @@ function LibraryItem({
   name: string;
   /** Shown after the name in brackets (e.g. a library's tool count), if given. */
   count?: number | string;
-  /** Marked as used for new projects. */
+  /** Marked as used for new projects (a dot before the name). Undefined = no mark column. */
   star?: boolean;
   /** Can't be renamed (the built-in Default). */
   fixed?: boolean;
@@ -97,13 +97,13 @@ function LibraryItem({
       >
         {editing === null ? (
           <>
-            {count === undefined ? name : `${name} (${count})`}
-            {star && (
-              <span className="tree-star" title="Used for new projects">
-                {" "}
-                ★
+            {star !== undefined && (
+              // Always takes its space, so names line up whether marked or not.
+              <span className="tree-star" title={star ? "Used for new projects" : undefined}>
+                {star ? "●" : ""}
               </span>
             )}
+            {count === undefined ? name : `${name} (${count})`}
           </>
         ) : (
           <input
