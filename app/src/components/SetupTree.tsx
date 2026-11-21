@@ -22,20 +22,30 @@ interface Props {
   /** Resolves false if the new name was rejected. */
   onRenameMachine: (oldName: string, newName: string) => Promise<boolean>;
   onDeleteMachine: (name: string) => void;
+  /** Adds an editable copy of a machine; resolves to its name. */
+  onNewMachineFrom: (name: string) => Promise<string>;
+  onSetMachineForNewProjects: (name: string) => void;
   templates: ProjectTemplates | null;
   /** Adds a project template; resolves to its name. */
   onAddTemplate: () => Promise<string>;
   /** Resolves false if the new name was rejected. */
   onRenameTemplate: (oldName: string, newName: string) => Promise<boolean>;
   onDeleteTemplate: (name: string) => void;
+  /** Adds an editable copy of a template; resolves to its name. */
+  onNewTemplateFrom: (name: string) => Promise<string>;
   onSetTemplateForNewProjects: (name: string) => void;
 }
+
+/** The built-in machine and template: can't be renamed, edited or deleted. */
+const BUILT_IN = "Default";
 
 /** A library, machine or template row: click selects, double-click renames in place (Enter saves,
  * Esc cancels). */
 function LibraryItem({
   name,
   count,
+  star = false,
+  fixed = false,
   selected,
   onClick,
   onContextMenu,
@@ -46,6 +56,10 @@ function LibraryItem({
   name: string;
   /** Shown after the name in brackets (e.g. a library's tool count), if given. */
   count?: number | string;
+  /** Marked as used for new projects. */
+  star?: boolean;
+  /** Can't be renamed (the built-in Default). */
+  fixed?: boolean;
   selected: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -56,6 +70,7 @@ function LibraryItem({
   const [editing, setEditing] = useState<string | null>(null);
   const finished = useRef(true);
   const start = () => {
+    if (fixed) return;
     finished.current = false;
     setEditing(name);
   };
@@ -81,7 +96,15 @@ function LibraryItem({
         onContextMenu={onContextMenu}
       >
         {editing === null ? (
-          count === undefined ? name : `${name} (${count})`
+          <>
+            {count === undefined ? name : `${name} (${count})`}
+            {star && (
+              <span className="tree-star" title="Used for new projects">
+                {" "}
+                ★
+              </span>
+            )}
+          </>
         ) : (
           <input
             className="tree-rename"
@@ -115,10 +138,13 @@ export default function SetupTree({
   onAddMachine,
   onRenameMachine,
   onDeleteMachine,
+  onNewMachineFrom,
+  onSetMachineForNewProjects,
   templates,
   onAddTemplate,
   onRenameTemplate,
   onDeleteTemplate,
+  onNewTemplateFrom,
   onSetTemplateForNewProjects,
 }: Props) {
   type Group = "library" | "machine" | "template";
@@ -154,44 +180,53 @@ export default function SetupTree({
     setRenaming(`library:${name}`);
   };
 
-  const newMachine = async () => {
-    const name = await onAddMachine();
-    setMachinesOpen(true);
-    onSelect({ kind: "machine", name });
-    setRenaming(`machine:${name}`);
-  };
-
-  const newTemplate = async () => {
-    const name = await onAddTemplate();
-    setTemplatesOpen(true);
-    onSelect({ kind: "template", name });
-    setRenaming(`template:${name}`);
+  /** Selects a new machine or template and starts renaming it. */
+  const started = (group: "machine" | "template", name: string) => {
+    if (group === "machine") setMachinesOpen(true);
+    else setTemplatesOpen(true);
+    onSelect({ kind: group, name });
+    setRenaming(`${group}:${name}`);
   };
 
   const menuItems = (group: Group, name: string | null): MenuItem[] => {
-    const items: MenuItem[] = [
-      group === "library"
-        ? { label: "New library", action: () => void newLibrary() }
-        : group === "machine"
-          ? { label: "New machine", action: () => void newMachine() }
-          : { label: "New template", action: () => void newTemplate() },
-    ];
-    if (name !== null) {
-      items.push({ label: "Rename", action: () => setRenaming(`${group}:${name}`) });
-      if (group === "template") {
-        items.push({
-          label: "Use for new projects",
-          disabled: templates?.for_new_projects === name,
-          action: () => onSetTemplateForNewProjects(name),
-        });
+    if (group === "library") {
+      const items: MenuItem[] = [{ label: "New library", action: () => void newLibrary() }];
+      if (name !== null) {
+        items.push({ label: "Rename", action: () => setRenaming(`library:${name}`) });
+        items.push({ label: "Delete library", separatorBefore: true, action: () => onDeleteLibrary(name) });
       }
-      items.push({
-        label: group === "library" ? "Delete library" : group === "machine" ? "Delete machine" : "Delete template",
-        separatorBefore: true,
-        action: () =>
-          group === "library" ? onDeleteLibrary(name) : group === "machine" ? onDeleteMachine(name) : onDeleteTemplate(name),
-      });
+      return items;
     }
+    const isMachine = group === "machine";
+    // On the heading: New (a copy of Default).
+    if (name === null)
+      return [
+        {
+          label: "New",
+          action: () => void (isMachine ? onAddMachine() : onAddTemplate()).then((n) => started(group, n)),
+        },
+      ];
+    // On a machine or template: New from (an editable copy of it).
+    const builtIn = name === BUILT_IN;
+    const forNew = isMachine ? machines?.for_new_projects : templates?.for_new_projects;
+    const items: MenuItem[] = [
+      {
+        label: "New from",
+        action: () => void (isMachine ? onNewMachineFrom(name) : onNewTemplateFrom(name)).then((n) => started(group, n)),
+      },
+    ];
+    if (!builtIn) items.push({ label: "Rename", action: () => setRenaming(`${group}:${name}`) });
+    items.push({
+      label: "Use for new projects",
+      disabled: forNew === name,
+      action: () => (isMachine ? onSetMachineForNewProjects(name) : onSetTemplateForNewProjects(name)),
+    });
+    if (!builtIn)
+      items.push({
+        label: isMachine ? "Delete machine" : "Delete template",
+        separatorBefore: true,
+        action: () => (isMachine ? onDeleteMachine(name) : onDeleteTemplate(name)),
+      });
     return items;
   };
 
@@ -242,7 +277,7 @@ export default function SetupTree({
         <li>
           <div
             className="tree-item"
-            title="Right-click for New machine"
+            title="Right-click for New"
             onClick={() => setMachinesOpen((o) => !o)}
             onContextMenu={(e) => openMenu(e, "machine", null)}
           >
@@ -255,6 +290,8 @@ export default function SetupTree({
                 <LibraryItem
                   key={m.name}
                   name={m.name}
+                  star={machines.for_new_projects === m.name}
+                  fixed={m.name === BUILT_IN}
                   selected={selection.kind === "machine" && selection.name === m.name}
                   onClick={() => onSelect({ kind: "machine", name: m.name })}
                   onContextMenu={(e) => openMenu(e, "machine", m.name)}
@@ -273,7 +310,7 @@ export default function SetupTree({
         <li>
           <div
             className="tree-item"
-            title="Right-click for New template"
+            title="Right-click for New"
             onClick={() => setTemplatesOpen((o) => !o)}
             onContextMenu={(e) => openMenu(e, "template", null)}
           >
@@ -286,7 +323,8 @@ export default function SetupTree({
                 <LibraryItem
                   key={t.name}
                   name={t.name}
-                  count={templates.for_new_projects === t.name ? "new projects" : undefined}
+                  star={templates.for_new_projects === t.name}
+                  fixed={t.name === BUILT_IN}
                   selected={selection.kind === "template" && selection.name === t.name}
                   onClick={() => onSelect({ kind: "template", name: t.name })}
                   onContextMenu={(e) => openMenu(e, "template", t.name)}

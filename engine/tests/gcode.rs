@@ -71,7 +71,7 @@ fn a_pocket_program_has_the_decided_start_tool_spindle_and_end() {
     let l = lines(&p);
     assert_eq!(l[0], format!("( WHAM_CAM {} )", env!("CARGO_PKG_VERSION")));
     assert_eq!(l[1], format!("( Project: Untitled   {DATE} )"));
-    assert_eq!(l[2], "( Post-processor: Generic   Machine: none )");
+    assert_eq!(l[2], "( Post-processor: Generic   Machine: Default )");
     assert_eq!(l[3], "( T1: 6mm 2F Spiral End Mill, 20mm flute, D6 )");
     assert_eq!(l[4], "G21 G90 G17");
     assert_eq!(l[5], "G0 Z3");

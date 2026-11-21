@@ -16,7 +16,7 @@ interface Props {
   onSpeed: (s: number) => void;
   /** Operation names by id, for the readout. */
   names: Map<number, string>;
-  /** The project's machine's rapid rates; null = no machine chosen (the default rates). */
+  /** The project's machine's rapid rates (null until the first view arrives). */
   rapid: RapidRates | null;
 }
 
@@ -100,9 +100,7 @@ export default function PlaybackBar({ playback, time, onTime, playing, onPlaying
       />
       <SpeedPicker speed={speed} onSpeed={onSpeed} />
       <span className="playback-time" title={
-          rapid
-            ? `Estimated: rapids at the machine's rates (XY ${rapid.xy}, Z ${rapid.z} mm/min)`
-            : "Estimated: no machine chosen, rapids assumed at 5000 mm/min"
+          rapid ? `Estimated: rapids at the machine's rates (XY ${rapid.xy}, Z ${rapid.z} mm/min)` : "Estimated"
         }>
         {formatTime(time)} / {formatTime(total)} (est.)
       </span>

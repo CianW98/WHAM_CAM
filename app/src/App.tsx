@@ -136,7 +136,7 @@ function specialHint(sp: Special): string {
 const EMPTY_TOOLPATHS: ToolpathDisplay[] = [];
 const EMPTY_CUT_WIDTHS: CutWidthStep[] = [];
 const EMPTY_TOOLING: Tooling = { tools: [], libraries: [] };
-const EMPTY_MACHINES: Machines = { machines: [] };
+const EMPTY_MACHINES: Machines = { machines: [], for_new_projects: "Default" };
 
 const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
@@ -410,9 +410,22 @@ export default function App() {
     if (!path) return;
     await engine.openProject(path);
     resetForNewDocument();
+    // The template or machine may have been edited in Setup since the project was saved.
+    const differ = await engine.setupMismatches();
+    if (differ.length > 0) {
+      const keep = "Keep project values";
+      const answer = await ask({
+        title: "Settings don't match",
+        message: `This project's values from ${differ.join(" and ")} don't match ${
+          differ.length === 1 ? "it" : "them"
+        } on this computer. Keep the project's values (they then count as changed in this project), or use the new values from Setup?`,
+        options: [keep, "Use new values"],
+      });
+      await engine.resolveSetupMismatches(answer === keep || answer === null);
+    }
     await refresh();
     setFitRequest((n) => n + 1);
-  }, [confirmDiscard, resetForNewDocument, refresh]);
+  }, [confirmDiscard, resetForNewDocument, refresh, ask]);
 
   // The title bar: file name, with * while there are unsaved changes.
   const title = `WHAM_CAM - ${view?.fileName ?? view?.document.name ?? "Untitled"}${view?.modified ? " *" : ""}`;
@@ -757,7 +770,7 @@ export default function App() {
     async (name: string) => {
       const answer = await ask({
         title: "Delete project template",
-        message: `Delete the project template "${name}"? Projects that used it keep their own grid and snap settings. This can't be undone.`,
+        message: `Delete the project template "${name}"? Projects that used it keep their own grid and snap settings, and show it as not on this computer. This can't be undone.`,
         options: ["Delete"],
       });
       if (answer !== "Delete") return;
@@ -771,7 +784,7 @@ export default function App() {
     async (name: string) => {
       const answer = await ask({
         title: "Delete machine",
-        message: `Delete the machine "${name}"? Projects that use it will show it as not on this computer. This can't be undone.`,
+        message: `Delete the machine "${name}"? Projects that use it keep their own machine settings, and show it as not on this computer. This can't be undone.`,
         options: ["Delete"],
       });
       if (answer !== "Delete") return;
@@ -1412,9 +1425,6 @@ export default function App() {
     return on;
   }, [showToolpaths, showCutWidth]);
 
-  // The project's machine's rapid rates, for the playback's time note (the engine times the moves).
-  const projectRapid =
-    view?.machines.machines.find((m) => m.name === view.document.machine)?.rapid ?? null;
   const playbackShown = showToolpaths && showPlaybackBar && playback && playback.steps.length > 0 ? playback : null;
 
   return (
@@ -1465,6 +1475,12 @@ export default function App() {
               }}
               onRenameMachine={renameMachine}
               onDeleteMachine={(name) => void deleteMachine(name)}
+              onNewMachineFrom={async (from) => {
+                const name = await engine.newMachineFrom(from);
+                await refresh();
+                return name;
+              }}
+              onSetMachineForNewProjects={(name) => void toolingTry(() => engine.setMachineForNewProjects(name))}
               templates={view?.templates ?? null}
               onAddTemplate={async () => {
                 const name = await engine.addTemplate();
@@ -1473,6 +1489,11 @@ export default function App() {
               }}
               onRenameTemplate={renameTemplate}
               onDeleteTemplate={(name) => void deleteTemplate(name)}
+              onNewTemplateFrom={async (from) => {
+                const name = await engine.newTemplateFrom(from);
+                await refresh();
+                return name;
+              }}
               onSetTemplateForNewProjects={(name) => void toolingTry(() => engine.setTemplateForNewProjects(name))}
             />
           ) : (
@@ -1532,9 +1553,11 @@ export default function App() {
             onSetPartTool={(part, n) => tryEdit(() => engine.setPartTool(part, n))}
             machines={view?.machines ?? EMPTY_MACHINES}
             onRenameMachine={renameMachine}
-            onSetMachinePost={(name, post) => toolingTry(() => engine.setMachinePost(name, post))}
             onSetMachineSettings={(name, settings) => toolingTry(() => engine.setMachineSettings(name, settings))}
             onSetProjectMachine={(name) => tryEdit(() => engine.setProjectMachine(name))}
+            onSetProjectMachineSettings={(settings) => tryEdit(() => engine.setProjectMachineSettings(settings))}
+            onResetMachineSetting={(setting) => tryEdit(() => engine.resetProjectMachineSetting(setting))}
+            onResetTemplateSetting={(setting) => tryEdit(() => engine.resetProjectTemplateSetting(setting))}
             onSetActiveLibrary={setActiveLibrary}
             onRenameLibrary={renameLibrary}
             onAddLibraryTool={(library, toolId, number) =>
@@ -1590,7 +1613,7 @@ export default function App() {
             speed={speed}
             onSpeed={setSpeed}
             names={operationNames}
-            rapid={projectRapid}
+            rapid={view?.document.machine_settings.rapid ?? null}
           />
         )}
       </Viewport>

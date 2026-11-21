@@ -479,7 +479,7 @@ fn state(proj: &Project, op: u32) -> OperationState {
 
 /// The tool diameter the operation's toolpath was made with (from the playback).
 fn cut_with(proj: &Project) -> f64 {
-    proj.playback(RapidRates::default()).steps[0].tool_diameter
+    proj.playback().steps[0].tool_diameter
 }
 
 #[test]
@@ -845,7 +845,7 @@ fn playback_carries_each_operations_real_tool() {
     t.overall_length = 75.0;
     proj.set_operation(o).unwrap();
     assert_eq!(proj.generate(&[]).generated, 2);
-    let pb = proj.playback(RapidRates::default());
+    let pb = proj.playback();
     let tool = |id: u32| pb.tools.iter().find(|t| t.operation_id == id).unwrap();
     assert_eq!(tool(a).profile, picked(1).tool.profile().unwrap());
     let bp = &tool(b).profile;

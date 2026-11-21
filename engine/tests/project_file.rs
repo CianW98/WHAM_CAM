@@ -159,7 +159,7 @@ fn modified_tracking() {
     // Undo after saving doesn't bring back the old project name.
     assert!(proj.undo());
     assert_eq!(proj.document().name, "one");
-    proj.new_project(&ProjectTemplate::built_in("Default"));
+    proj.new_project(&ProjectTemplate::built_in("Default"), &Machine::built_in());
     assert!(!proj.is_modified());
     assert!(proj.document().objects().next().is_none());
 }

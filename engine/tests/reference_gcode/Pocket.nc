@@ -1,6 +1,6 @@
 ( WHAM_CAM 0.4.0 )
 ( Project: Pocket   reference )
-( Post-processor: Generic   Machine: none )
+( Post-processor: Generic   Machine: Default )
 ( T1: 3mm 2F Spiral End Mill, 20mm flute, D3 )
 G21 G90 G17
 G0 Z3

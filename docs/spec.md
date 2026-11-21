@@ -109,12 +109,13 @@ A classic CAD/CAM layout, with a toolbar:
     Clicking Master tool list opens its window. Right-click Tool libraries → New library;
     right-click a library → Rename, Delete library. Selecting a library shows its numbered tools
     in Properties, where tools are added from the master list, renumbered or taken out. Machines
-    are added, renamed and deleted the same way, and so are Project templates.
+    and Project templates have their own right-click actions (5.7, 5.9).
 - **The Setup tab is global, not project-specific.** It holds what belongs to
   the computer and is shared by every project: the master tool list, tool libraries, machines and
   project templates.
   It is only for configuring things at that level:
-  - Nothing in it changes the open project, and it shows no project information.
+  - It shows no project information. The only way it changes the open project is that the
+    project's machine and template settings follow their machine and template (5.7, 5.9).
   - Project choices, such as which library a project uses, are made in the Project tab (5.4).
   - Renaming or deleting a library doesn't change any project: a project using the old name
     shows it as "not on this computer" until another library is chosen in its Machining
@@ -306,7 +307,7 @@ Properties show:
     (the Setup tab never changes a project).
   - **Tool**: a tool from that library, used by every part and operation that doesn't pick its
     own.
-  - **Machine**: the machine the G-code is for (5.7), saved in the project by name.
+  - **Machine**: the machine the G-code is for, then the project's copy of its settings (5.7).
 - **Part**: **Tool**: "Use Machining tool" (default), or a tool from the library to use for the
   part's operations instead. A part has no library choice of its own.
 - **Operation**: Profile (inside / outside / on line), Pocket or Drill, with its settings
@@ -405,8 +406,7 @@ Properties show:
     a speed of 1×, 2×, 5×, 10×, 50× or 100× real time.
   - Real time follows the feed rates (arcs by their true length). Rapids use the project's
     machine's **rapid rates** (5.7): X and Y each at the XY rate, Z at the Z rate, the slowest
-    axis setting the time. With no machine chosen they are 5000 mm/min. The run time is shown as
-    an estimate.
+    axis setting the time. The run time is shown as an estimate.
   - The readout shows operation, move number (as in safety checker messages), kind, feed and X Y Z.
   - The tool is a circle of the tool diameter in 2D. In 3D it is the operation's real cutter
     (from the tool it was generated with: end shape, flute length, shank diameter, overall
@@ -425,17 +425,33 @@ without touching the toolpaths.
   check them first"). After saving, a pop-up reminds the user to check the
   file in a simulator and with an air cut.
 - The tool number of each operation comes from its tool (5.5): one number is one cutter.
-- **Machines**: a machine list in the Setup tab (global, like the tool
-  libraries). Each machine has a name and its post-processor; v1 has only the **Generic**
-  post-processor. A project chooses its machine in the Machining item's Properties (saved in the
-  project by name, like the tool library); with none chosen, Produce G-code uses Generic. That
-  choice is shown as **Generic**, so no machine may be called "Generic" (in any capitals).
-- Selecting a machine shows its settings in Properties. Changes are saved straight away and are
-  not undo steps; an invalid value is refused with a message and the old value kept.
+- **Machines**: a machine list in the Setup tab (global, like the tool libraries), kept in
+  `machines.json` in WHAM_CAM's settings folder. v1 has only the **Generic** post-processor.
+  - **Default** is built in: always first in the list, read-only (its values are shown, not
+    editable), and it can't be renamed or deleted. No other machine may be called "Default" (in
+    any capitals).
+  - Right-click **Machines** → **New**: a machine with Default's settings. Right-click a machine →
+    **New from** (an editable copy, "<name> copy"), Rename, Use for new projects, Delete machine
+    (Rename and Delete aren't offered on Default). A new machine starts renaming in place.
+  - One machine is used for new projects, marked ★ (tooltip "Used for new projects"); File ▸ New
+    and startup use it. Deleting it goes back to Default.
+  - Selecting a machine shows its settings in Properties. Changes are saved straight away and are
+    not undo steps; an invalid value is refused with a message and the old value kept.
+- **The project's machine**: the Machining item's Properties choose the machine, then show the
+  project's own copy of its settings, editable. The project file keeps the copy.
+  - Choosing a machine copies all its settings into the project.
+  - A setting changed in the project shows its label in **bold** with a ↺ button that puts it
+    back to the machine's value. Changed settings stay as they are; the others follow the machine:
+    editing the machine in Setup changes them in the open project, and renaming it is followed.
+  - Opening a project whose machine (or template, 5.9) has values in Setup that differ from the
+    project's, in settings not changed in the project, asks: **Keep project values** (they then
+    count as changed in the project) or **Use new values**.
+  - A machine not on this computer shows as "not on this computer"; the project keeps its values.
+  - Changing the project's machine or its settings marks it unsaved but is not an undo step.
 
-  | Setting | Meaning | New machine |
+  | Setting | Meaning | Default |
   |---|---|---|
-  | Name, Post-processor | As above | Machine 1…, Generic |
+  | Post-processor | Generic | Generic |
   | Rapid rate XY, Rapid rate Z | mm/min, more than 0. Used by the tool playback (5.6) | 5000, 5000 |
   | Spindle control | Variable RPM or On/off only | Variable RPM |
   | Max spindle speed | RPM, blank = not set | blank |
@@ -450,10 +466,11 @@ without touching the toolpaths.
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
-- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (2), `"saved_by"` (the
+- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (3), `"saved_by"` (the
   WHAM_CAM version) and the document: project name, minor and major grid spacing, grid area, snap
   settings, the
-  project template's name, layers (name, colour, shapes),
+  project template's name, the machine's name and the project's machine settings, which template
+  and machine settings were changed in the project, layers (name, colour, shapes),
   the project's tool library (by name) and Machining tool, and parts with their tool and
   operations (settings and tool).
 - Numbers are written so they read back exactly. Files are written to a temporary file and then
@@ -473,17 +490,14 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 A project template is a saved set of a project's interface settings: minor and major grid
 spacing, grid area and snap to grid / snap to objects. They have no effect on toolpaths or G-code.
 - The templates are a list in the Setup tab (global, like the machines), kept in
-  `project_templates.json` in WHAM_CAM's settings folder. Right-click → New template; on a template
-  → Rename, Use for new projects, Delete template. Selecting a template shows its settings in
-  Properties. Changes are saved straight away and are not undo steps.
-- WHAM_CAM starts with one template, **Default** (grid 10 mm, major 50 mm, area -1000 to 1000,
-  both snaps on).
-  One template is marked "new projects": File ▸ New and startup use it. It can't be deleted until
-  another is marked.
+  `project_templates.json` in WHAM_CAM's settings folder. They work as the machines do (5.7):
+  the built-in read-only **Default** (grid 10 mm, major 50 mm, area -1000 to 1000, both snaps
+  on), New / New from, Rename, Use for new projects (★), Delete template.
 - The **Project** item's Properties: **Template**, then the project's own grid spacing, grid area
-  and snaps. Picking a template copies its values into the project, which keeps them; changing
-  or deleting the template later never changes the project (a missing one shows "not on this
-  computer").
+  and snaps. They follow the template as the project's machine settings follow the machine
+  (5.7): changed settings in bold with ↺, editing or renaming the template in Setup followed,
+  the question on open, and a missing template shows "not on this computer". The four grid area
+  values count as one setting.
 - Changing a project's grid, snap or template settings marks it unsaved but is not an undo step.
 
 ## 6. Operation settings

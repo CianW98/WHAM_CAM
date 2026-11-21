@@ -1,7 +1,7 @@
 //! Project templates (spec 5.9): saved sets of a project's interface settings (grid spacing,
-//! grid area, snaps). Like the machines, the templates belong to the computer, not to a project:
-//! picking one copies its values into the project, and changing a template later never changes
-//! a project. Nothing here affects toolpaths or G-code. The engine turns the list into text and
+//! grid area, snaps). Like the machines, the templates belong to the computer: a project keeps a
+//! copy of its template's values, which follow the template except the ones changed in the
+//! project. Nothing here affects toolpaths or G-code. The engine turns the list into text and
 //! back; the app reads and writes the file.
 
 use std::collections::HashSet;
@@ -15,8 +15,35 @@ use crate::document::{
 };
 use crate::draw::SnapOptions;
 
-/// The name of the template WHAM_CAM starts with.
+/// The built-in template: always in the list, can't be renamed, edited or deleted.
 pub const DEFAULT_TEMPLATE: &str = "Default";
+
+/// One template setting, to say which ones a project has changed for itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum TemplateSetting {
+    GridSpacing,
+    MajorGridSpacing,
+    GridArea,
+    SnapToGrid,
+    SnapToObjects,
+}
+
+impl TemplateSetting {
+    pub const ALL: [TemplateSetting; 5] = [
+        TemplateSetting::GridSpacing,
+        TemplateSetting::MajorGridSpacing,
+        TemplateSetting::GridArea,
+        TemplateSetting::SnapToGrid,
+        TemplateSetting::SnapToObjects,
+    ];
+}
+
+/// The error for changing the Default template.
+fn read_only() -> String {
+    format!(
+        "\"{DEFAULT_TEMPLATE}\" is built in and can't be changed. Use New from to make an editable copy."
+    )
+}
 
 /// One project template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -66,7 +93,11 @@ impl ProjectTemplates {
         self.templates.iter().find(|t| t.name == name)
     }
 
+    /// A template other than Default, to change.
     fn template_mut(&mut self, name: &str) -> Result<&mut ProjectTemplate, String> {
+        if name == DEFAULT_TEMPLATE {
+            return Err(read_only());
+        }
         self.templates
             .iter_mut()
             .find(|t| t.name == name)
@@ -80,22 +111,52 @@ impl ProjectTemplates {
             .expect("there is always at least one template")
     }
 
+    /// The first free name of the form "<base> 1", "<base> 2", ... (or `first` if free).
+    fn free_name(&self, first: Option<&str>, base: &str) -> String {
+        first
+            .filter(|n| self.template(n).is_none())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                (1..)
+                    .map(|n| format!("{base} {n}"))
+                    .find(|n| self.template(n).is_none())
+                    .expect("there is always a free name")
+            })
+    }
+
     /// Adds a template called "Template 1", "Template 2", ... with the built-in values.
     /// Returns its name.
     pub fn add_template(&mut self) -> String {
-        let name = (1..)
-            .map(|n| format!("Template {n}"))
-            .find(|n| self.template(n).is_none())
-            .expect("there is always a free name");
+        let name = self.free_name(None, "Template");
         self.templates.push(ProjectTemplate::built_in(&name));
         name
     }
 
-    /// Renames a template. Returns the new name as stored (trimmed).
+    /// Adds an editable copy of template `from`, called "<from> copy" (then "<from> copy 2",
+    /// ...). Returns its name.
+    pub fn new_from(&mut self, from: &str) -> Result<String, String> {
+        let mut copy = self
+            .template(from)
+            .ok_or_else(|| format!("There is no project template called \"{from}\"."))?
+            .clone();
+        let base = format!("{from} copy");
+        copy.name = self.free_name(Some(&base), &base);
+        let name = copy.name.clone();
+        self.templates.push(copy);
+        Ok(name)
+    }
+
+    /// Renames a template. Returns the new name as stored (trimmed). Default can't be renamed,
+    /// and no other template can be called "Default" (in any capitals).
     pub fn rename_template(&mut self, old: &str, new: &str) -> Result<String, String> {
         let new = new.trim();
         if new.is_empty() {
             return Err("A project template needs a name.".into());
+        }
+        if new.eq_ignore_ascii_case(DEFAULT_TEMPLATE) && old != DEFAULT_TEMPLATE {
+            return Err(format!(
+                "\"{new}\" can't be used: it is the built-in template's name."
+            ));
         }
         if new != old && self.template(new).is_some() {
             return Err(format!(
@@ -109,21 +170,22 @@ impl ProjectTemplates {
         Ok(new.to_string())
     }
 
-    /// Deletes a template. The one used for new projects can't be deleted: pick another first.
+    /// Deletes a template. Default can't be deleted. If it was used for new projects, Default is
+    /// used instead.
     pub fn delete_template(&mut self, name: &str) -> Result<(), String> {
         self.template_mut(name)?;
-        if self.for_new_projects == name {
-            return Err(format!(
-                "\"{name}\" is used for new projects. Choose another template for new projects first."
-            ));
-        }
         self.templates.retain(|t| t.name != name);
+        if self.for_new_projects == name {
+            self.for_new_projects = DEFAULT_TEMPLATE.to_string();
+        }
         Ok(())
     }
 
     /// Makes File ▸ New start from this template.
     pub fn set_for_new_projects(&mut self, name: &str) -> Result<(), String> {
-        self.template_mut(name)?;
+        if self.template(name).is_none() {
+            return Err(format!("There is no project template called \"{name}\"."));
+        }
         self.for_new_projects = name.to_string();
         Ok(())
     }
@@ -197,8 +259,15 @@ pub fn from_text(text: &str) -> Result<ProjectTemplates, String> {
                 .into(),
         );
     }
-    let templates: ProjectTemplates = serde_json::from_value(value)
+    let mut templates: ProjectTemplates = serde_json::from_value(value)
         .map_err(|e| format!("The project templates file is damaged ({e})."))?;
+    // Default is built in: whatever the file says about it, it has the built-in values.
+    templates
+        .templates
+        .retain(|t| !t.name.eq_ignore_ascii_case(DEFAULT_TEMPLATE));
+    templates
+        .templates
+        .insert(0, ProjectTemplate::built_in(DEFAULT_TEMPLATE));
     let damaged = |what: String| Err(format!("The project templates file is damaged: {what}."));
     let mut names = HashSet::new();
     for t in &templates.templates {

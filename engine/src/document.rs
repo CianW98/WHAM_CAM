@@ -24,10 +24,15 @@ pub struct Document {
     /// The tool every part and operation uses unless it picks its own. None = not chosen.
     #[serde(default)]
     pub machining_tool: Option<PickedTool>,
-    /// The machine the G-code is for (by name; machines belong to the computer). None = the
-    /// generic post-processor.
+    /// The machine the G-code is for (by name; machines belong to the computer).
+    #[serde(default = "default_source")]
+    pub machine: String,
+    /// The project's copy of its machine's settings (spec 5.7).
     #[serde(default)]
-    pub machine: Option<String>,
+    pub machine_settings: crate::machine::MachineSettings,
+    /// The machine settings changed in this project: they don't follow the machine.
+    #[serde(default)]
+    pub machine_overrides: std::collections::BTreeSet<crate::machine::MachineSetting>,
     /// Dimensions (measure only; not on any layer, never machined or exported).
     #[serde(default)]
     pub dimensions: Vec<crate::dimension::DimensionObject>,
@@ -37,11 +42,18 @@ pub struct Document {
     /// Which snaps are on while drawing.
     #[serde(default)]
     pub snap: crate::draw::SnapOptions,
-    /// The project template the grid and snap settings were last copied from (by name; the
-    /// templates belong to the computer). None = not picked. Display only: the values above are
-    /// the project's own.
+    /// The project template the grid and snap settings are copied from (by name; the templates
+    /// belong to the computer).
+    #[serde(default = "default_source")]
+    pub template: String,
+    /// The template settings changed in this project: they don't follow the template.
     #[serde(default)]
-    pub template: Option<String>,
+    pub template_overrides: std::collections::BTreeSet<crate::project_template::TemplateSetting>,
+}
+
+/// The built-in machine and template are both called "Default".
+fn default_source() -> String {
+    "Default".to_string()
 }
 
 /// The area the drawing grid is drawn over, in mm. Interface only: it never affects snapping,
@@ -182,11 +194,14 @@ impl Document {
             major_grid_spacing: DEFAULT_MAJOR_GRID_SPACING,
             active_library: None,
             machining_tool: None,
-            machine: None,
+            machine: default_source(),
+            machine_settings: crate::machine::MachineSettings::default(),
+            machine_overrides: Default::default(),
             dimensions: Vec::new(),
             grid_area: GridArea::default(),
             snap: crate::draw::SnapOptions::default(),
-            template: None,
+            template: default_source(),
+            template_overrides: Default::default(),
         }
     }
 

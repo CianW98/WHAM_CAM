@@ -245,16 +245,22 @@ export interface Document {
   active_library: string | null;
   /** The tool every part and operation uses unless it has its own; null = none. */
   machining_tool: PickedTool | null;
-  /** The machine the G-code is for (by name); null = the generic post-processor. */
-  machine: string | null;
+  /** The machine the G-code is for (by name). */
+  machine: string;
+  /** The project's copy of its machine's settings. */
+  machine_settings: MachineSettings;
+  /** Machine settings changed in this project (they don't follow the machine). */
+  machine_overrides: MachineSetting[];
   /** Dimensions (not on any layer; see `View.dimensions` for their values). */
   dimensions: DimensionObject[];
   /** The area the grid is drawn over (display only). */
   grid_area: GridArea;
   /** Which snaps are on while drawing (saved with the project). */
   snap: SnapOptions;
-  /** The project template the grid and snaps were last copied from; null = none picked. */
-  template: string | null;
+  /** The project template the grid and snaps are copied from. */
+  template: string;
+  /** Template settings changed in this project (they don't follow the template). */
+  template_overrides: TemplateSetting[];
 }
 
 /** The area the drawing grid is drawn over, in mm. */
@@ -266,6 +272,11 @@ export interface GridArea {
 }
 
 // --- Project templates (spec 5.9) ---------------------------------------------------------------
+
+/** The built-in machine and template: always there, read-only. */
+export const BUILT_IN = "Default";
+
+export type TemplateSetting = "GridSpacing" | "MajorGridSpacing" | "GridArea" | "SnapToGrid" | "SnapToObjects";
 
 export interface ProjectTemplate {
   name: string;
@@ -285,6 +296,16 @@ export interface ProjectTemplates {
 /** Adds a template ("Template 1", ...) with the built-in values. Returns its name. */
 export function addTemplate(): Promise<string> {
   return invoke<string>("add_template");
+}
+
+/** Adds an editable copy of a template ("<name> copy"). Returns its name. */
+export function newTemplateFrom(name: string): Promise<string> {
+  return invoke<string>("new_template_from", { name });
+}
+
+/** Puts one of the project's template settings back to the template's value. */
+export function resetProjectTemplateSetting(setting: TemplateSetting): Promise<void> {
+  return invoke<void>("reset_project_template_setting", { setting });
 }
 
 /** Renames a template. Resolves to the name as stored. */
@@ -340,8 +361,19 @@ export interface Travel {
   max: number;
 }
 
-export interface Machine {
-  name: string;
+export type MachineSetting =
+  | "Post"
+  | "RapidXy"
+  | "RapidZ"
+  | "ToolChanger"
+  | "TravelX"
+  | "TravelY"
+  | "TravelZ"
+  | "SpindleControl"
+  | "MaxSpindleRpm"
+  | "MaxFeed";
+
+export interface MachineSettings {
   post: PostProcessor;
   /** Used to time rapids in the tool playback. */
   rapid: RapidRates;
@@ -356,9 +388,15 @@ export interface Machine {
   max_feed: number | null;
 }
 
-/** This computer's machines. */
+export interface Machine extends MachineSettings {
+  name: string;
+}
+
+/** This computer's machines (the first is the built-in Default). */
 export interface Machines {
   machines: Machine[];
+  /** The machine File ▸ New starts with. */
+  for_new_projects: string;
 }
 
 // --- Tooling (spec 5.5) -------------------------------------------------------------------------
@@ -648,7 +686,37 @@ export function settingsProblems(): Promise<string[]> {
   return invoke<string[]>("settings_problems");
 }
 
-/** Adds a machine ("Machine 1", ...) with the generic post-processor. Returns its name. */
+/** Adds an editable copy of a machine ("<name> copy"). Returns its name. */
+export function newMachineFrom(name: string): Promise<string> {
+  return invoke<string>("new_machine_from", { name });
+}
+
+export function setMachineForNewProjects(name: string): Promise<void> {
+  return invoke<void>("set_machine_for_new_projects", { name });
+}
+
+/** The project's own machine settings. Not an undo step. */
+export function setProjectMachineSettings(settings: MachineSettings): Promise<void> {
+  return invoke<void>("set_project_machine_settings", { settings });
+}
+
+/** Puts one of the project's machine settings back to the machine's value. */
+export function resetProjectMachineSetting(setting: MachineSetting): Promise<void> {
+  return invoke<void>("reset_project_machine_setting", { setting });
+}
+
+/** After opening: the project's template / machine whose Setup values differ from the
+ * project's, e.g. `machine "Shop"`. */
+export function setupMismatches(): Promise<string[]> {
+  return invoke<string[]>("setup_mismatches");
+}
+
+/** Keep the project's values (true; they then count as changed in the project) or use Setup's. */
+export function resolveSetupMismatches(keep: boolean): Promise<void> {
+  return invoke<void>("resolve_setup_mismatches", { keep });
+}
+
+/** Adds a machine ("Machine 1", ...) with the Default machine's settings. Returns its name. */
 export function addMachine(): Promise<string> {
   return invoke<string>("add_machine");
 }
@@ -658,21 +726,17 @@ export function renameMachine(oldName: string, newName: string): Promise<string>
   return invoke<string>("rename_machine", { old: oldName, new: newName });
 }
 
-export function deleteMachine(name: string): Promise<boolean> {
-  return invoke<boolean>("delete_machine", { name });
+export function deleteMachine(name: string): Promise<void> {
+  return invoke<void>("delete_machine", { name });
 }
 
-export function setMachinePost(name: string, post: PostProcessor): Promise<void> {
-  return invoke<void>("set_machine_post", { name, post });
-}
-
-/** Sets every setting of a machine except its name (the engine checks them). */
-export function setMachineSettings(name: string, settings: Machine): Promise<void> {
+/** Sets every setting of a machine in Setup (the engine checks them). */
+export function setMachineSettings(name: string, settings: MachineSettings): Promise<void> {
   return invoke<void>("set_machine_settings", { name, settings });
 }
 
-/** Sets the project's machine (null = the generic post-processor). An undo step. */
-export function setProjectMachine(name: string | null): Promise<void> {
+/** Copies a machine's settings into the project. Not an undo step. */
+export function setProjectMachine(name: string): Promise<void> {
   return invoke<void>("set_project_machine", { name });
 }
 

@@ -176,7 +176,7 @@ fn project_plays_shown_toolpaths_with_their_tool() {
     o.common.target_depth = Some(-2.0);
     proj.set_operation(o.clone()).unwrap();
     proj.generate(&[]);
-    let pb = proj.playback(RapidRates::default());
+    let pb = proj.playback();
     let tp = proj.toolpath(op).unwrap();
     assert_eq!(pb.steps.len(), tp.moves.len());
     assert!(pb.total_s > 0.0);
@@ -185,7 +185,7 @@ fn project_plays_shown_toolpaths_with_their_tool() {
     // Hidden toolpaths are not played.
     o.show_toolpath = false;
     proj.set_operation(o).unwrap();
-    assert!(proj.playback(RapidRates::default()).steps.is_empty());
+    assert!(proj.playback().steps.is_empty());
 }
 
 // --- Cut width (display of the band the cutter sweeps) ---

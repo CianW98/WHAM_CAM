@@ -21,7 +21,7 @@ use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
 use crate::gcode_read::check_program;
 use crate::geometry::{Point, Shape, Transform};
-use crate::machine::RapidRates;
+use crate::machine::{Machine, MachineSetting, MachineSettings, Machines};
 use crate::operation::{
     DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
     ToolSource,
@@ -31,7 +31,7 @@ use crate::pocket;
 use crate::post::{Header, JobOperation, PostFormat, Program, write_program};
 use crate::profile;
 use crate::project_file;
-use crate::project_template::ProjectTemplate;
+use crate::project_template::{ProjectTemplate, ProjectTemplates, TemplateSetting};
 use crate::safety;
 use crate::svg::{SvgError, SvgOptions, read_svg};
 use crate::tooling::{PickedTool, Tool};
@@ -244,11 +244,12 @@ impl Project {
 
     // --- Project files ---------------------------------------------------------------------
 
-    /// Starts a new, empty project. The clipboard is kept.
-    /// Starts a new, empty project with the template's grid and snap settings.
-    pub fn new_project(&mut self, template: &ProjectTemplate) {
+    /// Starts a new, empty project with the template's grid and snap settings and the machine's
+    /// settings. The clipboard is kept.
+    pub fn new_project(&mut self, template: &ProjectTemplate, machine: &Machine) {
         let mut doc = Document::new("Untitled");
         copy_template(&mut doc, template);
+        copy_machine(&mut doc, machine);
         self.replace_document(doc);
     }
 
@@ -887,33 +888,188 @@ impl Project {
     /// project unsaved but is not an undo step.
     pub fn set_grid_spacing(&mut self, mm: f64) -> Result<(), String> {
         check_grid_spacing(mm)?;
-        self.set_setting(|doc| doc.grid_spacing = mm);
+        self.set_setting(|doc| {
+            doc.grid_spacing = mm;
+            doc.template_overrides.insert(TemplateSetting::GridSpacing);
+        });
         Ok(())
     }
 
     /// Sets the spacing of the heavier grid lines. Not an undo step.
     pub fn set_major_grid_spacing(&mut self, mm: f64) -> Result<(), String> {
         check_major_grid_spacing(mm)?;
-        self.set_setting(|doc| doc.major_grid_spacing = mm);
+        self.set_setting(|doc| {
+            doc.major_grid_spacing = mm;
+            doc.template_overrides
+                .insert(TemplateSetting::MajorGridSpacing);
+        });
         Ok(())
     }
 
     /// Sets the area the grid is drawn over. Not an undo step.
     pub fn set_grid_area(&mut self, area: GridArea) -> Result<(), String> {
         area.validate()?;
-        self.set_setting(|doc| doc.grid_area = area);
+        self.set_setting(|doc| {
+            doc.grid_area = area;
+            doc.template_overrides.insert(TemplateSetting::GridArea);
+        });
         Ok(())
     }
 
     /// Switches the drawing snaps. Not an undo step.
     pub fn set_snap(&mut self, snap: SnapOptions) {
-        self.set_setting(|doc| doc.snap = snap);
+        self.set_setting(|doc| {
+            if doc.snap.grid != snap.grid {
+                doc.template_overrides.insert(TemplateSetting::SnapToGrid);
+            }
+            if doc.snap.objects != snap.objects {
+                doc.template_overrides
+                    .insert(TemplateSetting::SnapToObjects);
+            }
+            doc.snap = snap;
+        });
     }
 
-    /// Copies a project template's values into the project and remembers its name. Not an
-    /// undo step. Operations are never affected.
+    /// Copies a project template's values into the project and remembers its name; none of
+    /// them count as changed in the project any more. Not an undo step. Operations are never
+    /// affected.
     pub fn apply_template(&mut self, template: &ProjectTemplate) {
         self.set_setting(|doc| copy_template(doc, template));
+    }
+
+    /// Copies a machine's settings into the project and remembers its name; none of them count
+    /// as changed in the project any more. Not an undo step.
+    pub fn apply_machine(&mut self, machine: &Machine) {
+        self.set_setting(|doc| copy_machine(doc, machine));
+    }
+
+    /// Sets the project's machine settings. Each one that changes counts as changed in the
+    /// project, so it no longer follows the machine. Not an undo step.
+    pub fn set_machine_settings(&mut self, settings: &MachineSettings) -> Result<(), String> {
+        settings.check()?;
+        self.set_setting(|doc| {
+            for s in MachineSetting::ALL {
+                if doc.machine_settings.differs(settings, s) {
+                    doc.machine_overrides.insert(s);
+                }
+            }
+            doc.machine_settings = settings.clone();
+        });
+        Ok(())
+    }
+
+    /// Puts one template setting back to the template's value, so it follows the template again.
+    pub fn reset_template_setting(&mut self, template: &ProjectTemplate, setting: TemplateSetting) {
+        self.set_setting(|doc| {
+            doc.template_overrides.remove(&setting);
+            copy_template_setting(doc, template, setting);
+        });
+    }
+
+    /// Puts one machine setting back to the machine's value, so it follows the machine again.
+    pub fn reset_machine_setting(&mut self, machine: &Machine, setting: MachineSetting) {
+        self.set_setting(|doc| {
+            doc.machine_overrides.remove(&setting);
+            doc.machine_settings.copy(&machine.settings, setting);
+        });
+    }
+
+    /// A template renamed in the Setup tab: a project using it follows the new name.
+    pub fn template_renamed(&mut self, old: &str, new: &str) {
+        if self.doc.template == old {
+            self.set_setting(|doc| doc.template = new.to_string());
+        }
+    }
+
+    /// A machine renamed in the Setup tab: a project using it follows the new name.
+    pub fn machine_renamed(&mut self, old: &str, new: &str) {
+        if self.doc.machine == old {
+            self.set_setting(|doc| doc.machine = new.to_string());
+        }
+    }
+
+    /// After a change in the Setup tab: the project's template and machine settings that weren't
+    /// changed in the project take the values from Setup. Not an undo step.
+    pub fn follow_setup(&mut self, templates: &ProjectTemplates, machines: &Machines) {
+        let template = templates.template(&self.doc.template).cloned();
+        let machine = machines.machine(&self.doc.machine).cloned();
+        self.set_setting(|doc| {
+            if let Some(t) = &template {
+                for s in TemplateSetting::ALL {
+                    if !doc.template_overrides.contains(&s) {
+                        copy_template_setting(doc, t, s);
+                    }
+                }
+            }
+            if let Some(m) = &machine {
+                for s in MachineSetting::ALL {
+                    if !doc.machine_overrides.contains(&s) {
+                        doc.machine_settings.copy(&m.settings, s);
+                    }
+                }
+            }
+        });
+    }
+
+    /// The project's template and machine (as named) whose values differ from the project's in
+    /// settings not changed in the project: e.g. after opening a file saved before the template
+    /// or machine was edited. Each is described as `template "Name"` / `machine "Name"`.
+    pub fn setup_mismatches(
+        &self,
+        templates: &ProjectTemplates,
+        machines: &Machines,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(t) = templates.template(&self.doc.template)
+            && !self.template_differences(t).is_empty()
+        {
+            out.push(format!("template \"{}\"", t.name));
+        }
+        if let Some(m) = machines.machine(&self.doc.machine)
+            && !self.machine_differences(m).is_empty()
+        {
+            out.push(format!("machine \"{}\"", m.name));
+        }
+        out
+    }
+
+    /// After [`Project::setup_mismatches`]: keep the project's values, which then count as
+    /// changed in the project (they no longer follow Setup). Not an undo step.
+    pub fn keep_project_values(&mut self, templates: &ProjectTemplates, machines: &Machines) {
+        let t = templates
+            .template(&self.doc.template)
+            .map(|t| self.template_differences(t))
+            .unwrap_or_default();
+        let m = machines
+            .machine(&self.doc.machine)
+            .map(|m| self.machine_differences(m))
+            .unwrap_or_default();
+        self.set_setting(|doc| {
+            doc.template_overrides.extend(t.iter().copied());
+            doc.machine_overrides.extend(m.iter().copied());
+        });
+    }
+
+    /// Template settings not changed in the project whose values differ from the template's.
+    fn template_differences(&self, t: &ProjectTemplate) -> Vec<TemplateSetting> {
+        TemplateSetting::ALL
+            .into_iter()
+            .filter(|s| !self.doc.template_overrides.contains(s))
+            .filter(|&s| {
+                let mut copy = self.doc.clone();
+                copy_template_setting(&mut copy, t, s);
+                copy != self.doc
+            })
+            .collect()
+    }
+
+    /// Machine settings not changed in the project whose values differ from the machine's.
+    fn machine_differences(&self, m: &Machine) -> Vec<MachineSetting> {
+        MachineSetting::ALL
+            .into_iter()
+            .filter(|s| !self.doc.machine_overrides.contains(s))
+            .filter(|&s| self.doc.machine_settings.differs(&m.settings, s))
+            .collect()
     }
 
     /// Changes a project setting everywhere in the history, so it marks the project unsaved
@@ -1608,13 +1764,6 @@ impl Project {
         }
     }
 
-    /// Sets the project's machine (by name; None = generic post-processor) as one undo step.
-    pub fn set_machine(&mut self, name: Option<String>) {
-        if self.doc.machine != name {
-            self.edit(|doc| doc.machine = name);
-        }
-    }
-
     /// Sets the project's active tool library (by name; None = none) as one undo step.
     pub fn set_active_library(&mut self, name: Option<String>) {
         if self.doc.active_library != name {
@@ -1901,8 +2050,8 @@ impl Project {
         let header = Header {
             project: self.doc.name.clone(),
             date: date.to_string(),
-            machine: self.doc.machine.clone(),
-            post: "Generic".into(),
+            machine: Some(self.doc.machine.clone()),
+            post: self.doc.machine_settings.post.label().into(),
         };
         let program = write_program(&header, &job, &format);
         let problems = check_program(&program, &job, format.decimals);
@@ -1933,9 +2082,9 @@ impl Project {
     }
 
     /// The tool playback of the drawn toolpaths: the same operations as `toolpaths_display`, in
-    /// tree order, timing rapids at the machine's `rapid` rates.
-    pub fn playback(&self, rapid: RapidRates) -> Playback {
-        let mut pb = playback(&self.shown_toolpaths(), rapid);
+    /// tree order, timing rapids at the project's machine's rapid rates.
+    pub fn playback(&self) -> Playback {
+        let mut pb = playback(&self.shown_toolpaths(), self.doc.machine_settings.rapid);
         // The cutter of each shown operation, as it was when generated.
         pb.tools = self
             .doc
@@ -1960,8 +2109,7 @@ impl Project {
     /// The width the cutter sweeps along each step of `playback()` (same steps, same order), so
     /// it can be revealed as the tool plays back.
     pub fn cut_widths(&self) -> Vec<CutWidthStep> {
-        // Same steps whatever the timing.
-        cut_width_steps(&self.playback(RapidRates::default()))
+        cut_width_steps(&self.playback())
     }
 
     /// Generated toolpaths of enabled, shown operations in tree order, each with the tool
@@ -2159,9 +2307,25 @@ fn segment_hits_rect(a: [f64; 2], b: [f64; 2], r: &Rect) -> bool {
 
 /// Copies a project template's values into a document.
 fn copy_template(doc: &mut Document, template: &ProjectTemplate) {
-    doc.grid_spacing = template.grid_spacing;
-    doc.major_grid_spacing = template.major_grid_spacing;
-    doc.grid_area = template.grid_area;
-    doc.snap = template.snap;
-    doc.template = Some(template.name.clone());
+    for s in TemplateSetting::ALL {
+        copy_template_setting(doc, template, s);
+    }
+    doc.template = template.name.clone();
+    doc.template_overrides.clear();
+}
+
+fn copy_template_setting(doc: &mut Document, template: &ProjectTemplate, setting: TemplateSetting) {
+    match setting {
+        TemplateSetting::GridSpacing => doc.grid_spacing = template.grid_spacing,
+        TemplateSetting::MajorGridSpacing => doc.major_grid_spacing = template.major_grid_spacing,
+        TemplateSetting::GridArea => doc.grid_area = template.grid_area,
+        TemplateSetting::SnapToGrid => doc.snap.grid = template.snap.grid,
+        TemplateSetting::SnapToObjects => doc.snap.objects = template.snap.objects,
+    }
+}
+
+fn copy_machine(doc: &mut Document, machine: &Machine) {
+    doc.machine = machine.name.clone();
+    doc.machine_settings = machine.settings.clone();
+    doc.machine_overrides.clear();
 }

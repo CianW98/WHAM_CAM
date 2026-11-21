@@ -14,8 +14,8 @@ pub const FORMAT_NAME: &str = "WHAM_CAM project";
 
 /// The file format version written by this WHAM_CAM. Bump it when the format changes in a way
 /// older versions can't read, and upgrade older files in [`from_text`].
-/// 2: dimensions (2026-11-20). Version 1 files open unchanged (they have none).
-pub const FORMAT_VERSION: u32 = 2;
+/// 3: the project's machine settings and the settings changed in the project.
+pub const FORMAT_VERSION: u32 = 3;
 
 /// The file extension for project files (without the dot).
 pub const EXTENSION: &str = "whamcam";
@@ -78,6 +78,11 @@ fn check(doc: &Document) -> Result<(), String> {
     }
     if let Err(e) = check_major_grid_spacing(doc.major_grid_spacing).and(doc.grid_area.validate()) {
         return Err(format!("The project file is damaged: {e}"));
+    }
+    if let Err(e) = doc.machine_settings.check() {
+        return Err(format!(
+            "The project file is damaged: machine settings: {e}"
+        ));
     }
     if doc.layers.is_empty() {
         return damaged("it has no layers".into());

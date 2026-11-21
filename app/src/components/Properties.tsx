@@ -2,6 +2,7 @@
 // Values only change through the engine.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BUILT_IN } from "../engine";
 import type {
   DimensionInfo,
   CutOrdering,
@@ -22,8 +23,11 @@ import type {
   ProfileSide,
   Shape,
   Machine,
+  MachineSetting,
+  MachineSettings,
   Machines,
   SpindleControl,
+  TemplateSetting,
   Travel,
   OperationTool,
   PickedTool,
@@ -65,10 +69,29 @@ function Grid({ children }: { children: ReactNode }) {
   );
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+/** A label and its value. `own` marks a setting changed in this project (it no longer follows
+ * its template or machine); `onReset` then puts it back. */
+function Row({
+  label,
+  children,
+  own = false,
+  onReset,
+}: {
+  label: string;
+  children: ReactNode;
+  own?: boolean;
+  onReset?: () => void;
+}) {
   return (
     <tr>
-      <th>{label}</th>
+      <th className={own ? "prop-own" : undefined} title={own ? "Changed in this project" : undefined}>
+        {label}
+        {own && onReset && (
+          <button className="prop-reset" title="Back to the template's or machine's value" onClick={onReset}>
+            ↺
+          </button>
+        )}
+      </th>
       <td>{children}</td>
     </tr>
   );
@@ -787,10 +810,12 @@ interface Edits {
   machines: Machines;
   /** Resolves false if the rename was rejected. */
   onRenameMachine: (oldName: string, newName: string) => Promise<boolean>;
-  onSetMachinePost: (name: string, post: PostProcessor) => Promise<boolean>;
-  onSetMachineSettings: (name: string, settings: Machine) => Promise<boolean>;
-  /** Sets the project's machine (null = generic post-processor). */
-  onSetProjectMachine: (name: string | null) => Promise<boolean>;
+  onSetMachineSettings: (name: string, settings: MachineSettings) => Promise<boolean>;
+  /** Copies a machine's settings into the project. */
+  onSetProjectMachine: (name: string) => Promise<boolean>;
+  onSetProjectMachineSettings: (settings: MachineSettings) => Promise<boolean>;
+  onResetMachineSetting: (setting: MachineSetting) => Promise<boolean>;
+  onResetTemplateSetting: (setting: TemplateSetting) => Promise<boolean>;
   onSetActiveLibrary: (name: string | null) => Promise<boolean>;
   /** Resolves false if the rename was rejected. */
   onRenameLibrary: (oldName: string, newName: string) => Promise<boolean>;
@@ -834,11 +859,10 @@ function TemplateChoice({
 }) {
   const chosen = doc.template;
   const list = templates?.templates ?? [];
-  const missing = chosen !== null && !list.some((t) => t.name === chosen);
+  const missing = !list.some((t) => t.name === chosen);
   return (
-    <select className="prop-input" value={chosen ?? ""} onChange={(e) => e.target.value !== "" && onSet(e.target.value)}>
-      {chosen === null && <option value="">No template selected</option>}
-      {missing && <option value={chosen!}>{chosen} – not on this computer</option>}
+    <select className="prop-input" value={chosen} onChange={(e) => onSet(e.target.value)}>
+      {missing && <option value={chosen}>{chosen} – not on this computer</option>}
       {list.map((t) => (
         <option key={t.name} value={t.name}>
           {t.name}
@@ -847,6 +871,9 @@ function TemplateChoice({
     </select>
   );
 }
+
+/** Shows a value as plain text when read-only (the built-in Default), else its field. */
+const shownAs = (readOnly: boolean, text: string, field: ReactNode) => (readOnly ? text : field);
 
 /** Grid spacing, grid area and snaps: the same rows for the project and for a template. */
 function GridRows({
@@ -858,6 +885,9 @@ function GridRows({
   onMajor,
   onArea,
   onSnap,
+  readOnly = false,
+  own = () => false,
+  onReset,
 }: {
   spacing: number;
   major: number;
@@ -867,29 +897,39 @@ function GridRows({
   onMajor: (mm: number) => Promise<boolean>;
   onArea: (area: GridArea) => Promise<boolean>;
   onSnap: (snap: SnapOptions) => void;
+  readOnly?: boolean;
+  /** True for a setting changed in this project. */
+  own?: (s: TemplateSetting) => boolean;
+  onReset?: (s: TemplateSetting) => void;
 }) {
+  const mark = (s: TemplateSetting) => ({ own: own(s), onReset: onReset && (() => onReset(s)) });
   const side = (label: string, key: keyof GridArea) => (
-    <Row label={label}>
-      <NumberField value={area[key]} onSave={(v) => onArea({ ...area, [key]: v })} />
+    <Row label={label} {...mark("GridArea")}>
+      {shownAs(readOnly, num(area[key]), <NumberField value={area[key]} onSave={(v) => onArea({ ...area, [key]: v })} />)}
     </Row>
   );
+  const yesNo = (v: boolean) => (v ? "Yes" : "No");
   return (
     <>
-      <Row label="Minor grid spacing (mm)">
-        <NumberField value={spacing} onSave={onSpacing} />
+      <Row label="Minor grid spacing (mm)" {...mark("GridSpacing")}>
+        {shownAs(readOnly, num(spacing), <NumberField value={spacing} onSave={onSpacing} />)}
       </Row>
-      <Row label="Major grid spacing (mm)">
-        <NumberField value={major} onSave={onMajor} />
+      <Row label="Major grid spacing (mm)" {...mark("MajorGridSpacing")}>
+        {shownAs(readOnly, num(major), <NumberField value={major} onSave={onMajor} />)}
       </Row>
       {side("Grid X min (mm)", "x_min")}
       {side("Grid X max (mm)", "x_max")}
       {side("Grid Y min (mm)", "y_min")}
       {side("Grid Y max (mm)", "y_max")}
-      <Row label="Snap to grid">
-        <BoolField value={snap.grid} onSave={(grid) => onSnap({ ...snap, grid })} />
+      <Row label="Snap to grid" {...mark("SnapToGrid")}>
+        {shownAs(readOnly, yesNo(snap.grid), <BoolField value={snap.grid} onSave={(grid) => onSnap({ ...snap, grid })} />)}
       </Row>
-      <Row label="Snap to objects">
-        <BoolField value={snap.objects} onSave={(objects) => onSnap({ ...snap, objects })} />
+      <Row label="Snap to objects" {...mark("SnapToObjects")}>
+        {shownAs(
+          readOnly,
+          yesNo(snap.objects),
+          <BoolField value={snap.objects} onSave={(objects) => onSnap({ ...snap, objects })} />,
+        )}
       </Row>
     </>
   );
@@ -933,61 +973,103 @@ function TravelField({ value, onSave }: { value: Travel | null; onSave: (t: Trav
   );
 }
 
-/** A machine's settings (spec 5.7). Only the rapid rates are used for now (playback). */
-function MachineRows({ machine: m, onSave }: { machine: Machine; onSave: (s: Machine) => Promise<boolean> }) {
-  const set = (change: Partial<Machine>) => onSave({ ...m, ...change });
+/** A machine's settings (spec 5.7), for a machine in Setup or the project's copy. Only the
+ * rapid rates are used for now (playback). */
+function MachineRows({
+  settings: m,
+  onSave,
+  readOnly = false,
+  own = () => false,
+  onReset,
+}: {
+  settings: MachineSettings;
+  onSave: (s: MachineSettings) => Promise<boolean>;
+  readOnly?: boolean;
+  /** True for a setting changed in this project. */
+  own?: (s: MachineSetting) => boolean;
+  onReset?: (s: MachineSetting) => void;
+}) {
+  const set = (change: Partial<MachineSettings>) => onSave({ ...m, ...change });
+  const mark = (s: MachineSetting) => ({ own: own(s), onReset: onReset && (() => onReset(s)) });
+  const blank = (v: number | null) => (v === null ? "not set" : num(v));
+  const travel = (t: Travel | null) => (t === null ? "not set" : `${num(t.min)}, ${num(t.max)}`);
+  const spindleChoices: [SpindleControl, string][] = [
+    ["VariableRpm", "Variable RPM"],
+    ["OnOff", "On/off only"],
+  ];
   return (
     <>
-      <GroupRow label="Rapids" />
-      <Row label="Rapid rate XY (mm/min)">
-        <NumberField value={m.rapid.xy} onSave={(xy) => set({ rapid: { ...m.rapid, xy } })} />
+      <Row label="Post-processor" {...mark("Post")}>
+        {shownAs(
+          readOnly,
+          "Generic",
+          <ChoiceField<PostProcessor> value={m.post} choices={[["Generic", "Generic"]]} onSave={(post) => void set({ post })} />,
+        )}
       </Row>
-      <Row label="Rapid rate Z (mm/min)">
-        <NumberField value={m.rapid.z} onSave={(z) => set({ rapid: { ...m.rapid, z } })} />
+      <GroupRow label="Rapids" />
+      <Row label="Rapid rate XY (mm/min)" {...mark("RapidXy")}>
+        {shownAs(readOnly, num(m.rapid.xy), <NumberField value={m.rapid.xy} onSave={(xy) => set({ rapid: { ...m.rapid, xy } })} />)}
+      </Row>
+      <Row label="Rapid rate Z (mm/min)" {...mark("RapidZ")}>
+        {shownAs(readOnly, num(m.rapid.z), <NumberField value={m.rapid.z} onSave={(z) => set({ rapid: { ...m.rapid, z } })} />)}
       </Row>
       <GroupRow label="Spindle and feed" />
-      <Row label="Spindle control">
-        <ChoiceField<SpindleControl>
-          value={m.spindle_control}
-          choices={[
-            ["VariableRpm", "Variable RPM"],
-            ["OnOff", "On/off only"],
-          ]}
-          onSave={(spindle_control) => void set({ spindle_control })}
-        />
+      <Row label="Spindle control" {...mark("SpindleControl")}>
+        {shownAs(
+          readOnly,
+          spindleChoices.find(([v]) => v === m.spindle_control)?.[1] ?? m.spindle_control,
+          <ChoiceField<SpindleControl>
+            value={m.spindle_control}
+            choices={spindleChoices}
+            onSave={(spindle_control) => void set({ spindle_control })}
+          />,
+        )}
       </Row>
-      <Row label="Max spindle speed (RPM)">
-        <OptionalNumberField value={m.max_spindle_rpm} onSave={(max_spindle_rpm) => set({ max_spindle_rpm })} />
+      <Row label="Max spindle speed (RPM)" {...mark("MaxSpindleRpm")}>
+        {shownAs(
+          readOnly,
+          blank(m.max_spindle_rpm),
+          <OptionalNumberField value={m.max_spindle_rpm} onSave={(max_spindle_rpm) => set({ max_spindle_rpm })} />,
+        )}
       </Row>
-      <Row label="Max feed (mm/min)">
-        <OptionalNumberField value={m.max_feed} onSave={(max_feed) => set({ max_feed })} />
+      <Row label="Max feed (mm/min)" {...mark("MaxFeed")}>
+        {shownAs(readOnly, blank(m.max_feed), <OptionalNumberField value={m.max_feed} onSave={(max_feed) => set({ max_feed })} />)}
       </Row>
       <GroupRow label="Tool changer" />
-      <Row label="Tool changer">
-        <BoolField value={m.tool_changer} onSave={(tool_changer) => void set({ tool_changer })} />
+      <Row label="Tool changer" {...mark("ToolChanger")}>
+        {shownAs(
+          readOnly,
+          m.tool_changer ? "Yes" : "No",
+          <BoolField value={m.tool_changer} onSave={(tool_changer) => void set({ tool_changer })} />,
+        )}
       </Row>
       <GroupRow label="Travel limits (min, max)" />
-      <Row label="X travel (mm)">
-        <TravelField value={m.travel_x} onSave={(travel_x) => set({ travel_x })} />
+      <Row label="X travel (mm)" {...mark("TravelX")}>
+        {shownAs(readOnly, travel(m.travel_x), <TravelField value={m.travel_x} onSave={(travel_x) => set({ travel_x })} />)}
       </Row>
-      <Row label="Y travel (mm)">
-        <TravelField value={m.travel_y} onSave={(travel_y) => set({ travel_y })} />
+      <Row label="Y travel (mm)" {...mark("TravelY")}>
+        {shownAs(readOnly, travel(m.travel_y), <TravelField value={m.travel_y} onSave={(travel_y) => set({ travel_y })} />)}
       </Row>
-      <Row label="Z travel (mm)">
-        <TravelField value={m.travel_z} onSave={(travel_z) => set({ travel_z })} />
+      <Row label="Z travel (mm)" {...mark("TravelZ")}>
+        {shownAs(readOnly, travel(m.travel_z), <TravelField value={m.travel_z} onSave={(travel_z) => set({ travel_z })} />)}
       </Row>
     </>
   );
 }
 
-/** The project's machine drop-down (none = the generic post-processor). */
-function MachineChoice({ doc, machines, onSet }: { doc: Document; machines: Machines; onSet: (n: string | null) => void }) {
+/** A machine's settings without its name. */
+function settingsOf(m: Machine): MachineSettings {
+  const { name: _name, ...settings } = m;
+  return settings;
+}
+
+/** The project's machine drop-down. */
+function MachineChoice({ doc, machines, onSet }: { doc: Document; machines: Machines; onSet: (n: string) => void }) {
   const chosen = doc.machine;
-  const missing = chosen !== null && !machines.machines.some((m) => m.name === chosen);
+  const missing = !machines.machines.some((m) => m.name === chosen);
   return (
-    <select className="prop-input" value={chosen ?? ""} onChange={(e) => onSet(e.target.value === "" ? null : e.target.value)}>
-      <option value="">Generic</option>
-      {missing && <option value={chosen!}>{chosen} – not on this computer</option>}
+    <select className="prop-input" value={chosen} onChange={(e) => onSet(e.target.value)}>
+      {missing && <option value={chosen}>{chosen} – not on this computer</option>}
       {machines.machines.map((m) => (
         <option key={m.name} value={m.name}>
           {m.name}
@@ -1170,6 +1252,12 @@ function Content({
               onMajor={edits.onSetMajorGridSpacing}
               onArea={edits.onSetGridArea}
               onSnap={(snap) => void edits.onSetSnap(snap)}
+              own={(st) => doc.template_overrides.includes(st)}
+              onReset={
+                edits.templates?.templates.some((t) => t.name === doc.template)
+                  ? (st) => void edits.onResetTemplateSetting(st)
+                  : undefined
+              }
             />
           </>
         </Grid>
@@ -1192,6 +1280,16 @@ function Content({
           <Row label="Machine">
             <MachineChoice doc={doc} machines={edits.machines} onSet={(n) => void edits.onSetProjectMachine(n)} />
           </Row>
+          <MachineRows
+            settings={doc.machine_settings}
+            onSave={edits.onSetProjectMachineSettings}
+            own={(st) => doc.machine_overrides.includes(st)}
+            onReset={
+              edits.machines.machines.some((m) => m.name === doc.machine)
+                ? (st) => void edits.onResetMachineSetting(st)
+                : undefined
+            }
+          />
         </Grid>
       );
     case "part": {
@@ -1240,42 +1338,43 @@ function Content({
       return <LibraryRows key={selection.name} name={selection.name} edits={edits} />;
     case "machine": {
       const m = edits.machines.machines.find((x) => x.name === selection.name);
-      return m ? (
+      if (!m) return nothing;
+      const builtIn = m.name === BUILT_IN;
+      return (
         <Grid>
           <Row label="Name">
-            <TextField
-              shown={m.name}
-              parse={(t) => (t.trim() ? t : null)}
-              onSave={(n) => edits.onRenameMachine(m.name, n)}
-            />
+            {builtIn ? (
+              m.name
+            ) : (
+              <TextField
+                shown={m.name}
+                parse={(t) => (t.trim() ? t : null)}
+                onSave={(n) => edits.onRenameMachine(m.name, n)}
+              />
+            )}
           </Row>
-          <Row label="Post-processor">
-            <ChoiceField<PostProcessor>
-              value={m.post}
-              choices={[["Generic", "Generic"]]}
-              onSave={(post) => void edits.onSetMachinePost(m.name, post)}
-            />
-          </Row>
-          <MachineRows machine={m} onSave={(s) => edits.onSetMachineSettings(m.name, s)} />
+          {builtIn && <Row label="Built in">Read-only. Right-click → New from to make an editable copy.</Row>}
+          <MachineRows settings={settingsOf(m)} readOnly={builtIn} onSave={(st) => edits.onSetMachineSettings(m.name, st)} />
         </Grid>
-      ) : (
-        nothing
       );
     }
     case "template": {
       const t = edits.templates?.templates.find((x) => x.name === selection.name);
+      const builtIn = t?.name === BUILT_IN;
       return t ? (
         <Grid>
           <Row label="Name">
-            <TextField
-              shown={t.name}
-              parse={(v) => (v.trim() ? v : null)}
-              onSave={(n) => edits.onRenameTemplate(t.name, n)}
-            />
+            {builtIn ? (
+              t.name
+            ) : (
+              <TextField
+                shown={t.name}
+                parse={(v) => (v.trim() ? v : null)}
+                onSave={(n) => edits.onRenameTemplate(t.name, n)}
+              />
+            )}
           </Row>
-          <Row label="New projects">
-            {edits.templates?.for_new_projects === t.name ? "Used for new projects" : "No (right-click to use)"}
-          </Row>
+          {builtIn && <Row label="Built in">Read-only. Right-click → New from to make an editable copy.</Row>}
           <GridRows
             spacing={t.grid_spacing}
             major={t.major_grid_spacing}
@@ -1285,6 +1384,7 @@ function Content({
             onMajor={(mm) => edits.onSetTemplateMajorGridSpacing(t.name, mm)}
             onArea={(area) => edits.onSetTemplateGridArea(t.name, area)}
             onSnap={(snap) => void edits.onSetTemplateSnap(t.name, snap)}
+            readOnly={builtIn}
           />
         </Grid>
       ) : (
