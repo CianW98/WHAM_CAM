@@ -2,7 +2,6 @@
 
 ## Road to 1.0.0
 
-- **More hover descriptions**: add them to the small buttons and icons (layer eye, colour square, snaps, 2D/3D, playback bar, tree markers) and to menu items, like the toolbar and Properties settings.
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
 
 ## Release themes after 1.0.0
