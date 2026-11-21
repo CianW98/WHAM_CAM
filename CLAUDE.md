@@ -58,6 +58,7 @@ feature that is in neither. Note new ideas in `docs/roadmap.md` and ask first.
 - The engine is its own Rust crate/library with its own tests. It must build and pass its tests without the UI.
 - The interface only displays things and passes settings to the engine. No toolpath maths, geometry calculations or G-code generation in the front-end code.
 - UI changes must never change G-code output. If a UI change needs an engine change, stop and explain it before doing it.
+- Project files are complete on their own (spec 5.8): anything a project uses from Setup (templates, machines, libraries, or anything new) is copied into the project file.
 - Point and arc maths (bulge ↔ arc, arc sweep across 0°, angle normalising, point helpers) lives
   once in `engine/src/geometry.rs` with its own tests (`engine/tests/arc_maths.rs`). Use those
   helpers; don't write another copy (copies drifting apart caused the arc-across-0° display bug).
