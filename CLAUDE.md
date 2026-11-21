@@ -1,13 +1,13 @@
 # CLAUDE.md
 
 ## Project
-A modern, simple 2.5D CAM program in the spirit of the classic simple 2.5D CAM programs. Draw or import 2D geometry,
+A modern, simple 2.5D CAM program with its own look and feel. Draw or import 2D geometry,
 apply machining operations, preview the toolpaths, output G-code.
 
 Project name: WHAM_CAM
 
 ## Design principle: simple
-The best simple CAM programs are still worth using because they are not overcomplicated. This project keeps that.
+WHAM_CAM stays simple and is not overcomplicated.
 - Geometry first, operations second: select shapes, then apply profile / pocket / drill etc.
 - One main screen: drawing area, object/operation tree, properties panel.
 - Every setting visible and editable. No hidden wizards, no 3D modelling, no parametric history.
@@ -23,10 +23,9 @@ The best simple CAM programs are still worth using because they are not overcomp
   machining behaviour, and ask them when CAM behaviour is unclear rather than guessing.
 
 ## Reference material
-- An established simple 2.5D CAM program is the behavioural reference; the user supplies example
-  output from it. Study how it behaves and what it outputs.
-  Do NOT decompile, disassemble or read any other CAM program's code or binaries (clean room only).
-- Published user documentation of such programs is the main source for features and settings.
+- The user supplies reference examples (`tests/reference/local/`) to check toolpaths against.
+- Published documentation (controllers, G-code, CAM programs) may be studied.
+  Do NOT decompile, disassemble or read any other CAM program's code or binaries.
 - Open-source CAM projects (FreeCAD CAM, Kiri:Moto, FabexCNC, OpenCAMLib) may be studied
   and used, respecting their licences. Check a licence before copying or linking code. Ask before
   committing anything from other open-source projects, to verify the licence matches our requirements.
@@ -65,7 +64,7 @@ feature that is in neither. Note new ideas in `docs/roadmap.md` and ask first.
 
 ## Keep the engine WebAssembly-compatible
 The engine must keep building for WebAssembly (`wasm32-unknown-unknown`). To keep that possible:
-- The engine must stay WebAssembly-compatible. No direct file system access, OS-specific code or native-only threading inside the engine: it takes data in and returns data. File opening/saving and machine communication live in the app layer (Tauri), not the engine.
+- No direct file system access, OS-specific code or native-only threading inside the engine: it takes data in and returns data. File opening/saving and machine communication live in the app layer (Tauri), not the engine.
 - The interface talks to the engine through one thin connection layer (`app/src/engine/index.ts`), not calls scattered through the UI.
 - Before adding a Rust library to the engine, check it compiles for wasm32-unknown-unknown. Ask before adding one that doesn't.
 - CI builds the engine for WebAssembly on every push, so a break is caught straight away.
@@ -177,7 +176,7 @@ interface file that talks to the engine.
   separate "G-code output changed" section, saying what changed and reminding the user to
   re-check in a simulator and with an air cut. Every release is checked against the
   checked reference G-code (`engine/tests/reference_gcode/`) before tagging.
-- **Traceability:** once G-code output exists, every G-code file's header comment includes the
+- **Traceability:** every G-code file's header comment includes the
   WHAM_CAM version that produced it, e.g. `( WHAM_CAM 0.4.0 )`.
 
 ## Where things are
@@ -185,15 +184,19 @@ interface file that talks to the engine.
   (known limitations).
 - The current version is the one in `engine/Cargo.toml` (see Releases for the four files that carry it).
 - Engine (`engine/src/`):
+  - Project and document: `project.rs` (the open project, undo/redo, selection), `document.rs`
+    (layers, shapes and machining parts), `display.rs` (what the interface draws).
+  - Import: `dxf.rs`, `svg.rs`, `curve.rs` (splines and ellipses to arcs).
   - Geometry and editing: `geometry.rs` (shared point and arc maths), `draw.rs`, `edit.rs`,
-    `transform.rs`, `dimension.rs`, `curve.rs` (splines and ellipses to arcs), `svg.rs`.
+    `transform.rs`, `dimension.rs`.
   - Toolpaths: `operation.rs`, `toolpath.rs`, `path.rs`, `offset.rs` (the only file that calls
     cavalier_contours), `pocket.rs`, `profile.rs`, `drill.rs`, `safety.rs` (safety checker).
-  - Tools and projects: `tooling.rs` (master tool list and libraries), `project_file.rs`
-    (`.whamcam` files). `Project::resolve` works out which tool each operation uses.
+  - Tools, machines and files: `tooling.rs` (master tool list and libraries), `machine.rs`
+    (machine list), `project_file.rs` (`.whamcam` files). `Project::resolve` works out which
+    tool each operation uses.
   - G-code: `post.rs` (generic post-processor), `gcode_read.rs` (read-back check).
-- Engine tests are in `engine/tests/`: `pocket.rs`, `profile.rs`, `drill.rs`, `arc_maths.rs`, and
-  `reference_gcode.rs` (compares output with the checked files in `engine/tests/reference_gcode/`).
+- Engine tests are in `engine/tests/`, one file per area (e.g. `pocket.rs`, `dxf.rs`).
+  `reference_gcode.rs` compares output with the checked files in `engine/tests/reference_gcode/`.
 - The reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole
   top-level `tests/` folder is git-ignored (this machine only), so the expected moves from the
   references are written into the engine tests.

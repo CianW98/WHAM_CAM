@@ -17,8 +17,7 @@ Design principles (from CLAUDE.md):
   history.
 - **Simple wins.** If a feature makes the common workflow slower or more confusing, it doesn't go
   in.
-- **An established simple CAM program is the behaviour reference** (clean room: we study its
-  behaviour and output, never its code).
+- **Its own look and feel.**
 
 ## 2. Stack
 
@@ -481,9 +480,9 @@ Names follow common CAM terminology.
 Behaviour (the cut loop matches the reference Profile example move for move):
 - **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
   can only be cut **On line** (only that choice is offered). Point lists are refused.
-- **Corners:** outside corners get an arc of tool radius (G2/G3), as in the reference output.
+- **Corners:** outside corners get an arc of tool radius (G2/G3).
 - **Milling direction** (spindle CW): Conventional cuts outside walls anticlockwise and inside
-  walls clockwise; Climb is the reverse (as in the reference output).
+  walls clockwise; Climb is the reverse.
 - **On line direction:** closed shapes are cut like Outside (Conventional = anticlockwise, Climb
   = clockwise); open shapes follow their drawn direction from the first point.
 - **Each shape is cut on its own** with the chosen side; nesting is not used (a hole inside an
@@ -538,7 +537,7 @@ Behaviour (matches the reference Pocket example move for move):
 | Depth per turn | Helical only: the common Depth increment, shown under this name | 1 |
 
 Behaviour (matches the reference Drill example written out in full, move for
-move; the reference itself uses a canned cycle G81 with G98):
+move):
 - **Hole order:** the first listed hole, then always the nearest hole not yet drilled.
 - **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
 - **Standard:** rapid over the hole at clearance, rapid down to the retract height (if lower),
@@ -590,7 +589,7 @@ Principles:
 - **File**: one file for the whole job: every enabled operation, in tree order. Extension `.nc`.
 - **Numbers**: coordinates to 3 decimals with trailing zeros trimmed (e.g. `X12.5`); feeds and
   spindle speeds as whole numbers.
-- **Layout** (as in the reference output): the motion code (`G0`/`G1`/`G2`/`G3`) on every line,
+- **Layout**: the motion code (`G0`/`G1`/`G2`/`G3`) on every line,
   only the axis words that change, `F` only when the feed changes.
 - **Start**: header comments (the WHAM_CAM version, e.g. `( WHAM_CAM 0.4.0 )`, project name and
   date, post-processor and machine, and one line per tool used: `( T1: <name>, D6 )`), then
@@ -633,9 +632,9 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 - The engine has its own unit tests (`cargo test`) that run without the UI.
 - **Reference toolpath comparison**: the reference examples in `tests/reference/local/`
   (git-ignored, kept on this machine only) are used to check toolpath **shape**: offsets,
-  stepovers, depth levels and cut order. They are not compared as exact text, because WHAM_CAM's
-  G-code format differs from the reference program's.
-- **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
+  stepovers, depth levels and cut order. They are not compared as exact text, because their G-code
+  format differs from WHAM_CAM's.
+- **WHAM_CAM reference outputs**: once WHAM_CAM's output has been checked in a simulator and
   with an air cut, it is kept in `engine/tests/reference_gcode/` and later output is compared to it
   exactly, on GitHub too. A README there says the files are test data, not
   programs for cutting. Fresh files for checking go to its git-ignored `pending/` folder.

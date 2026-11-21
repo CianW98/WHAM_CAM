@@ -4,7 +4,6 @@
 
 - **Machine configuration dialog**, kept limited for now: adding a machine does no post-processing yet. It holds rapid rates (used by playback), tool changer yes/no, travel limits (unused for now, built on later in this roadmap) and other machine settings that operations already have and that may need to be global. The exact settings list and how the dialog works are still to be designed.
 - **Project setup and defaults**. The settings a user can change per project, saved in the project file: grid spacing, snap on/off by type (grid, end, mid, centre), tool library, tool and machine, default operation values (stock surface, clearance plane, fast plunge height, depth increment, feeds, spindle speed). Decision needed: whether this is a tab (like Setup) or part of the Project tab.
-- **Project-file compatibility rule**, written down before tagging: from 1.0.0 a newer WHAM_CAM opens every older `.whamcam`; older format versions are upgraded on open (spec 5.8); format version bumps are listed in the release notes.
 - **UI improvements**: replace the text-based actions at the top with icons; highlight the active layer instead of marking it with the small pencil icon; add hotkeys for showing and hiding toolpaths and cut widths.
 - **Rename Spiral drilling to Helical**: the spec already says Helical. The code, interface and tests still say Spiral and need renaming to match. A name change only; toolpath output stays the same.
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project setup are what remain.
@@ -53,7 +52,7 @@ Everything here changes output, so batch it and re-verify once per release.
 - **Pocket cutting types**: so far only offset rings (cavalier_contours). Other material-removal strategies could be added, such as horizontal, vertical and hatch.
 - **Nesting**: automatic arrangement of several copies of the same object, with automatic or manual placement.
 - **Helical drilling**: rapid to the fast plunge height above the stock and start the helical entry from there, as Pocket and Profile approach their cuts, instead of feeding from the retract height to the stock surface. Checked against the spec only, so confirm in the code before building.
-- **Lead-ins and lead-outs**: spiral, ramp and tangent. The reference Profile uses a 15° spiral (ramp) lead-in. Needs helical G2/G3, which the safety checker already allows going down.
+- **Lead-ins and lead-outs**: spiral, ramp and tangent. Needs helical G2/G3, which the safety checker already allows going down.
 - **Holding tabs** for Profile.
 - **Smarter moves between depth levels**: e.g. stay down when the next level starts where the last one ended.
 - **Other operation settings**: Profile cut width (multi-pass wall width), corner overcut (dog-bone relief), other Pocket region fill styles, per-operation custom header/footer G-code.
