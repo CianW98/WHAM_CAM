@@ -1,8 +1,8 @@
 # WHAM_CAM v1 Specification
 
-What WHAM_CAM v1 does and how it behaves. Points marked **(?)** still need a decision from the
-user; they are listed in section 9. Ideas beyond v1 are in `docs/roadmap.md`. Build progress is
-tracked in the Status section of `CLAUDE.md`, not here.
+What WHAM_CAM v1 does and how it behaves. Planned features are in `docs/roadmap.md` and known
+limitations in `docs/limitations.md`. What has been built is tracked in the release notes
+and the git history, not here.
 
 ## 1. Purpose
 
@@ -39,7 +39,7 @@ Design principles (from CLAUDE.md):
 │   Displays things, collects settings. No CAM maths.      │
 └───────────────────────┬──────────────────────────────────┘
                         │  one thin connection layer
-                        │  (Tauri commands now, WebAssembly later)
+                        │  (Tauri commands)
 ┌───────────────────────┴──────────────────────────────────┐
 │ App layer (Tauri, Rust)                                  │
 │   open/save dialogs, reading & writing files             │
@@ -110,10 +110,9 @@ A classic CAD/CAM layout, with a toolbar:
     right-click a library → Rename, Delete library. Selecting a library shows its numbered tools
     in Properties, where tools are added from the master list, renumbered or taken out. Machines
     are added, renamed and deleted the same way.
-- **The Setup tab is global, not project-specific** (decided 2026-11-19). It holds what belongs to
-  the computer and is shared by every project: the master tool list, tool libraries and machines;
-  later, for example, the materials library. It is only for configuring things at
-  that level:
+- **The Setup tab is global, not project-specific.** It holds what belongs to
+  the computer and is shared by every project: the master tool list, tool libraries and machines.
+  It is only for configuring things at that level:
   - Nothing in it changes the open project, and it shows no project information.
   - Project choices, such as which library a project uses, are made in the Project tab (5.4).
   - Renaming or deleting a library doesn't change any project: a project using the old name
@@ -153,14 +152,9 @@ A classic CAD/CAM layout, with a toolbar:
   | ELLIPSE | Polyline of arcs and lines (converted on import) |
   | INSERT (blocks) | Block contents placed with position, rotation, scale and arrays |
 
-  Everything else (TEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and the
-  import message lists what was skipped. Binary DXF and broken files give a clear error.
-- **TEXT and MTEXT** entities are skipped in v1 and listed in the import message. Importing
-  them as letter outlines moved to the roadmap (user's decision, 2026-11-20).
-- **DIMENSION** entities are skipped in v1 and listed in the import message. Importing them as
-  WHAM_CAM dimensions moved to the roadmap (user's decision, 2026-11-20).
-- HATCH is skipped (its outline isn't imported).
-- **Splines and ellipses are converted on import** (decided 2026-11-20) into polylines of arcs
+  Everything else (TEXT, MTEXT, HATCH, DIMENSION, 3D entities, paper space, etc.) is skipped, and
+  the import message lists what was skipped. Binary DXF and broken files give a clear error.
+- **Splines and ellipses are converted on import** into polylines of arcs
   and lines (biarcs: smooth, no faceting), so everything imported can be machined and edited like
   any polyline. When the file has any, import asks for the tolerance: "Stay within (mm) of the
   curve", default 0.01 mm, remembered. It is measured in mm after any unit scaling, both ways
@@ -168,7 +162,7 @@ A classic CAD/CAM layout, with a toolbar:
 - **Units**: if a DXF says it is in inches (or other non-mm units), import asks whether to
   convert to mm or treat the numbers as mm.
 - Import adds to the current drawing as one undo step.
-- **SVG** (decided 2026-11-20): File → Import DXF or SVG… (one Import for both, by extension).
+- **SVG**: File → Import DXF or SVG… (one Import for both, by extension).
   Read with roxmltree + svgtypes, only in `engine/src/svg.rs`. path, line, polyline, polygon,
   rect, circle, ellipse, with their transforms. Shapes stay exact where they can: circle →
   Circle, rect → PolyRectangle (rounded corners → true arcs), circular arcs in paths → arcs;
@@ -207,7 +201,6 @@ A classic CAD/CAM layout, with a toolbar:
 - Exact values are edited in the properties panel afterwards: line ends, arc centre/radius/angles,
   circle centre/radius, polyline closed and points, rectangle lower left/width/height/rotation,
   point-list points.
-  (A typed-coordinate box while drawing was tried and removed as unintuitive.)
 - Grid spacing: a project setting (default 10 mm), in the project's properties.
 
 ### 5.2a Selection
@@ -230,7 +223,7 @@ A classic CAD/CAM layout, with a toolbar:
 - Colour picker: 24 preset colours plus a box for an exact #rrggbb value.
 - Layer names must be unique and not empty. Renames and colour changes are undoable.
 - Deleting a layer deletes everything on it. An emptied layer stays until deleted.
-- **Show / hide** (decided 2026-11-20): an eye icon on each layer in the tree. A hidden layer's
+- **Show / hide**: an eye icon on each layer in the tree. A hidden layer's
   shapes aren't drawn, clicked, box-selected or snapped to, and Select All skips them; operations
   that use them still work and their toolpaths still show. It is a view setting only: not saved
   in the project, not an undo step. The current layer can't be hidden (its eye is greyed);
@@ -261,7 +254,7 @@ A classic CAD/CAM layout, with a toolbar:
   opens at the cut. A shape is not cut where it crosses itself.
 - **Close polyline**: closes open polylines; a last point on top of the first is dropped.
 - Each of these is one undo step, and the results become the selection.
-- **Dimensions** (v1 scope: "basic dimensioning"; decided 2026-11-19, reworked 2026-11-20):
+- **Dimensions**:
   - Kinds: **aligned** (the distance between two points, measured along the line between them),
     **radius** and **diameter** (an arc or circle), and **angle** (between two lines).
   - **Measure only**: a dimension shows a size; it never drives the geometry (keeping to "no
@@ -296,8 +289,7 @@ A classic CAD/CAM layout, with a toolbar:
     arrowheads keep the same size on screen at every zoom (text 12 px), redrawn live while
     zooming. Zoomed far out they stop shrinking: text is never taller than a fifth of what the
     dimension measures (length, diameter, or angle arc radius), so small features' dimensions
-    reach that limit sooner than big ones' (decided 2026-11-20).
-  - Project files: format version 2 (no compatibility with dimensions saved before 2026-11-20).
+    reach that limit sooner than big ones'.
 
 ### 5.4 Operations and the Machining tree
 The Machining branch of the Project tree holds the project's machining, in three levels: the
@@ -316,7 +308,6 @@ Properties show:
   (section 6), including how it gets its tool (5.5).
 
 ### 5.5 Tool library
-Decided with the user 2026-11-19.
 
 **Tools**
 - The **master tool list** belongs to the computer and is shared by every project (Setup tab,
@@ -340,8 +331,7 @@ Decided with the user 2026-11-19.
   engine's outline: flat, ball or V end (drills with a 118° point), flute edges by flute type and
   helix angle, with the diameters and the flute and overall lengths marked.
 - **Tools hold no feeds or speeds**: those depend on the material as well as the tool. Each
-  operation keeps its own feeds, speeds, depth increment and stepover; the materials library
-  (roadmap) will fill them in from tool + material.
+  operation keeps its own feeds, speeds, depth increment and stepover.
 
 **Tool libraries**
 - Named sets of master tools, each given a **tool number** (unique in the library, from 1), e.g.
@@ -404,12 +394,12 @@ Decided with the user 2026-11-19.
   shades the band the cutter sweeps along every cutting move (tool diameter wide, rounded at
   bends and ends), under the toolpath lines. Rapids and plunges aren't shaded. View state only.
   During playback it fades and brightens with the tool, like the toolpath lines.
-- **Tool playback** (decided 2026-11-16): a bar along the bottom of the drawing area whenever
+- **Tool playback**: a bar along the bottom of the drawing area whenever
   toolpaths are shown (View → Toolpath playback hides it).
   - Back to start, one move back, play/pause, one move forward, a slider across the whole run, and
     a speed of 1×, 2×, 5×, 10×, 50× or 100× real time.
   - Real time follows the feed rates (arcs by their true length). Rapids use an **assumed rapid
-    rate of 5000 mm/min** until machine settings exist, so the run time is shown as an estimate.
+    rate of 5000 mm/min**, so the run time is shown as an estimate.
   - The readout shows operation, move number (as in safety checker messages), kind, feed and X Y Z.
   - The tool is a circle of the tool diameter in 2D. In 3D it is the operation's real cutter
     (from the tool it was generated with: end shape, flute length, shank diameter, overall
@@ -417,26 +407,22 @@ Decided with the user 2026-11-19.
   - All shown operations play one after another in tree order. Once started, moves still to come
     are faded and moves done are in full colour. New or changed toolpaths start again from the
     beginning.
-  - Material removal simulation is not in v1 (see the roadmap).
 
 ### 5.7 G-code output
 Standard, widely compatible G-code through one generic post-processor (section 7). Toolpath moves
 become G-code text only through the post-processor, so a machine-specific one can replace it
-without touching the toolpaths. Machine-specific post-processors, each with its own settings panel
-per machine type, come after v1 (roadmap).
+without touching the toolpaths.
 - Machining menu (and toolbar) → **Produce G-code**: one `.nc` file for the whole job (section 7).
   It is written only from toolpaths as generated: if any enabled operation's toolpath is out of
   date, failed or was never generated, it refuses and names them ("Press Generate toolpaths and
-  check them first", decided 2026-11-20). After saving, a pop-up reminds the user to check the
+  check them first"). After saving, a pop-up reminds the user to check the
   file in a simulator and with an air cut.
 - The tool number of each operation comes from its tool (5.5): one number is one cutter.
-- **Machines** (decided 2026-11-20): a machine list in the Setup tab (global, like the tool
+- **Machines**: a machine list in the Setup tab (global, like the tool
   libraries). Each machine has a name and its post-processor; v1 has only the **Generic**
   post-processor. A project chooses its machine in the Machining item's Properties (saved in the
   project by name, like the tool library); with none chosen, Produce G-code uses Generic. That
   choice is shown as **Generic**, so no machine may be called "Generic" (in any capitals).
-  A **machine configuration dialog** with further machine settings comes before 1.0.0 (5.9);
-  machine-specific post-processors come later (roadmap).
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
@@ -445,7 +431,7 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - The file holds `"format": "WHAM_CAM project"`, `"format_version"` (2), `"saved_by"` (the
   WHAM_CAM version) and the document: project name, grid spacing, layers (name, colour, shapes),
   the project's tool library (by name) and Machining tool, and parts with their tool and
-  operations (settings and tool). Post-processor settings are added with G-code output.
+  operations (settings and tool).
 - Numbers are written so they read back exactly. Files are written to a temporary file and then
   renamed, so a failed save never leaves a half-written project.
 - Opening checks the file (format, unique ids and layer names, valid colours and shapes) and gives
@@ -457,61 +443,42 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
 - Opening starts a fresh undo history, zooms to fit and resets the current layer to the first.
   The copy/paste clipboard is kept, so shapes can be copied between projects.
-- Not saved: current layer, view position, snap settings (see 5.10).
-
-### 5.9 Machine configuration (before 1.0.0; added 2026-11-20)
-Machines are already added, renamed and deleted in the Setup tab, with a name and the Generic
-post-processor. Before 1.0.0 each machine gets a **configuration dialog** with its settings.
-**(?)** Which settings, and how the dialog works, are decided when it is built. Candidates
-noted earlier: the real rapid rate (so playback run times are accurate; v1 assumes 5000 mm/min),
-tool changer yes/no (a machine without one could get one file per tool), travel limits.
-
-### 5.10 Project setup and defaults (before 1.0.0; added 2026-11-20)
-A place for project settings and defaults, e.g. **grid spacing** (now in the project's
-Properties). **(?)** Decided when it is built: whether it is a tab (like Setup) or part of the
-Project tab; which settings it holds (candidates: grid spacing, snap settings, current layer,
-view position); and whether they are defaults for new projects (on this computer) or saved in
-each project.
+- Not saved: current layer, view position, snap settings.
 
 ## 6. Operation settings
 
-Names follow common CAM terminology. "v1" = editable in v1; "later" = shown greyed out or left out.
+Names follow common CAM terminology.
 
 ### 6.1 Common to all operations
 
-| Setting | Meaning | Default | v1 |
-|---|---|---|---|
-| Name | Operation name, written as a G-code comment | Profile1, Pocket1… | v1 |
-| Enabled | Include in G-code output | true | v1 |
-| Tool | Use part/Machining tool, Custom tool, or a library tool (5.5) | use part/Machining tool | v1 |
-| Tool number | From the tool (editable for a Custom tool) | from tool | v1 |
-| Tool diameter | mm, from the tool (editable for a Custom tool) | from tool | v1 |
-| Stock surface | Z of top of material | 0 | v1 |
-| Target depth | Final Z (negative = into material) | — (must be set) | v1 |
-| Depth increment | Max depth per pass | 1 | v1 |
-| Final depth increment | Size of the last pass (0 = equal passes) | 0 | v1 |
-| Clearance plane | Z for rapids between cuts | 3 | v1 |
-| Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down | 1 | v1 |
-| Cut feedrate | mm/min (later from tool + material, see roadmap) | 800 | v1 |
-| Plunge feedrate | mm/min | 300 | v1 |
-| Spindle speed | RPM | 10000 | v1 |
-| Spindle direction | CW / CCW / Off | CW | v1 |
-| Roughing clearance | Stock left on the wall (negative = overcut) | 0 | v1 |
-| Custom header/footer | Extra G-code before/after this operation | empty | later |
-| Lead-in / lead-out | Spiral, ramp, tangent | none (straight plunge) | later |
+| Setting | Meaning | Default |
+|---|---|---|
+| Name | Operation name, written as a G-code comment | Profile1, Pocket1… |
+| Enabled | Include in G-code output | true |
+| Tool | Use part/Machining tool, Custom tool, or a library tool (5.5) | use part/Machining tool |
+| Tool number | From the tool (editable for a Custom tool) | from tool |
+| Tool diameter | mm, from the tool (editable for a Custom tool) | from tool |
+| Stock surface | Z of top of material | 0 |
+| Target depth | Final Z (negative = into material) | — (must be set) |
+| Depth increment | Max depth per pass | 1 |
+| Final depth increment | Size of the last pass (0 = equal passes) | 0 |
+| Clearance plane | Z for rapids between cuts | 3 |
+| Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down | 1 |
+| Cut feedrate | mm/min | 800 |
+| Plunge feedrate | mm/min | 300 |
+| Spindle speed | RPM | 10000 |
+| Spindle direction | CW / CCW / Off | CW |
+| Roughing clearance | Stock left on the wall (negative = overcut) | 0 |
 
 ### 6.2 Profile
 
-| Setting | Meaning | Default | v1 |
-|---|---|---|---|
-| Inside/Outside | Inside, Outside, or On line (no offset). Open shapes: On line only | Outside (On line if any shape is open) | v1 |
-| Milling direction | Conventional / Climb | Conventional | v1 |
-| Cut ordering | Depth first / Level first (across multiple shapes) | Depth first | v1 |
-| Cut width | Total wall width; extra passes stepped by Stepover | 0 (= one tool width) | later |
-| Corner overcut | Dog-bone style corner relief | false | later |
-| Holding tabs | | none | later |
+| Setting | Meaning | Default |
+|---|---|---|
+| Inside/Outside | Inside, Outside, or On line (no offset). Open shapes: On line only | Outside (On line if any shape is open) |
+| Milling direction | Conventional / Climb | Conventional |
+| Cut ordering | Depth first / Level first (across multiple shapes) | Depth first |
 
-Behaviour (decided 2026-11-16; the cut loop matches the reference Profile example move for move):
+Behaviour (the cut loop matches the reference Profile example move for move):
 - **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
   can only be cut **On line** (only that choice is offered). Point lists are refused.
 - **Corners:** outside corners get an arc of tool radius (G2/G3), as in the reference output.
@@ -527,22 +494,19 @@ Behaviour (decided 2026-11-16; the cut loop matches the reference Profile exampl
   outside corner arc).
 - **Several shapes:** the first listed, then always the nearest shape not yet cut (to its start).
 - **Entry:** straight plunge at the start point, as for Pocket (retract, rapid, rapid down to fast
-  plunge height above the last level, feed down). The reference Profile example uses a 15° spiral
-  lead-in that was set on purpose; its cut loop is matched, the entry is not (lead-ins are on the
-  roadmap).
+  plunge height above the last level, feed down).
 
 ### 6.3 Pocket
 
-| Setting | Meaning | Default | v1 |
-|---|---|---|---|
-| Stepover | Fraction of tool diameter | 0.4 | v1 |
-| Stepover feedrate | Use Cut or Plunge feedrate for stepover moves | Plunge feedrate | v1 |
-| Milling direction | Conventional / Climb | Conventional | v1 |
-| Region fill style | Inside→outside offsets | Inside→outside offsets | v1 (only style) |
-| Cut ordering | Depth first / Level first | Depth first | v1 |
-| Finish stepover | Light final wall pass | 0 | later |
+| Setting | Meaning | Default |
+|---|---|---|
+| Stepover | Fraction of tool diameter | 0.4 |
+| Stepover feedrate | Use Cut or Plunge feedrate for stepover moves | Plunge feedrate |
+| Milling direction | Conventional / Climb | Conventional |
+| Region fill style | Inside→outside offsets (the only style) | Inside→outside offsets |
+| Cut ordering | Depth first / Level first | Depth first |
 
-Behaviour (decided 2026-11-16; matches the reference Pocket example move for move):
+Behaviour (matches the reference Pocket example move for move):
 - Select closed shapes (polylines, PolyRectangles, circles), then Pocket. The operation's
   **Shapes** in Properties lists their ids (e.g. `1, 2, 3`, as shown in the tree) and can be
   edited; ids that don't exist or can't be pocketed are refused. Nesting decides the
@@ -553,12 +517,6 @@ Behaviour (decided 2026-11-16; matches the reference Pocket example move for mov
   outward round islands, with tool-radius arcs on corners); then every stepover × tool diameter
   until nothing is left. If a stepover over half the tool would leave a spot uncut in the middle,
   an extra ring is added.
-- **Known limitation (stepover over 0.5):** the rings are then further apart than the tool
-  reaches from one ring alone, so where the pocket narrows (lobes, tips, thin branches) and the
-  next ring doesn't fit, a sliver down the middle can be left uncut. The extra-ring check above
-  works on whole rings, so it misses a branch of a larger ring. At 0.5 or less everything is
-  cleared (checked by the user 2026-11-16 on a complex pocket). Left as is for v1 and documented
-  (decided 2026-11-16); the fix is on the roadmap.
 - Rings are cut from the **inside out**, each starting at its point nearest to where the last
   ended. Conventional cuts the rings clockwise (and round islands anticlockwise); Climb reverses.
 - The move to the next ring is fed at the stepover feed rate when it is short (up to 2 ×
@@ -569,32 +527,31 @@ Behaviour (decided 2026-11-16; matches the reference Pocket example move for mov
 
 ### 6.4 Drill
 
-| Setting | Meaning | Default | v1 |
-|---|---|---|---|
-| Points | Point lists (every point), circle centres and arc centres | — | v1 |
-| Method | Standard (straight plunge), Peck, or Spiral | Standard | v1 |
-| Retract height | Z the tool rapids down to before feeding in, and goes back to between pecks. Above the stock surface, not above the clearance plane | 3 | v1 |
-| Peck distance | Depth of each peck (Peck only) | 1 | v1 |
-| Hole diameter | Spiral only, for point lists and arcs; must be bigger than the tool. Circles are cut to their own diameter | 10 | v1 |
-| Milling direction | Spiral only: Conventional (clockwise round the hole) / Climb | Conventional | v1 |
-| Depth per turn | Spiral only: the common Depth increment, shown under this name | 1 | v1 |
-| Dwell | Seconds at the bottom | 0 | later (needs a pause move; with G-code) |
+| Setting | Meaning | Default |
+|---|---|---|
+| Points | Point lists (every point), circle centres and arc centres | — |
+| Method | Standard (straight plunge), Peck, or Helical | Standard |
+| Retract height | Z the tool rapids down to before feeding in, and goes back to between pecks. Above the stock surface, not above the clearance plane | 3 |
+| Peck distance | Depth of each peck (Peck only) | 1 |
+| Hole diameter | Helical only, for point lists and arcs; must be bigger than the tool. Circles are cut to their own diameter | 10 |
+| Milling direction | Helical only: Conventional (clockwise round the hole) / Climb | Conventional |
+| Depth per turn | Helical only: the common Depth increment, shown under this name | 1 |
 
-Behaviour (decided 2026-11-16; matches the reference Drill example written out in full, move for
+Behaviour (matches the reference Drill example written out in full, move for
 move; the reference itself uses a canned cycle G81 with G98):
 - **Hole order:** the first listed hole, then always the nearest hole not yet drilled.
 - **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
 - **Standard:** rapid over the hole at clearance, rapid down to the retract height (if lower),
   feed to the target depth at the plunge feed rate, rapid back up to clearance.
 - **Peck:** as Standard, but feed down one peck distance at a time, **counted from the retract
-  height** (the R plane), as a controller runs `G83` (decided 2026-11-20). With the retract height
+  height** (the R plane), as a controller runs `G83`. With the retract height
   above the stock, the first pecks cut air, and the preview shows them; a low retract height
   avoids them. After each peck: rapid up to the retract height to clear chips, rapid back down to
   fast plunge height above the last depth, and feed on.
 - Standard and Peck holes are kept as canned cycles (one per hole); their moves are made from the
   cycle by one shared function, so the preview, playback, safety check and G-code agree.
-- **Spiral:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
-  centre. A circle is cut to its own diameter (decided 2026-11-17); point lists and arcs use the
+- **Helical:** the tool centre goes round at (hole diameter − tool diameter) / 2 from the hole
+  centre. A circle is cut to its own diameter; point lists and arcs use the
   Hole diameter setting. A circle no bigger than the tool is refused with a message.
   Rapid over the wall position, down to the retract height, feed to the stock surface, then a
   helix down in equal turns no deeper than the depth per turn (at the cut feed rate), and one flat
@@ -602,9 +559,9 @@ move; the reference itself uses a canned cycle G81 with G98):
   - hole no more than twice the tool diameter (the centre is cleared): feed to the hole centre,
     off the wall, and rapid straight up;
   - bigger hole: a core of material is left in the middle, so the tool must not move inward at
-    the bottom (it would run into the core). It rapids straight up from the wall (decided
-    2026-11-17). Clearing the core is not done; use a Pocket for that.
-- Depth increment (except as Spiral's depth per turn), final depth increment and roughing
+    the bottom (it would run into the core). It rapids straight up from the wall.
+    Clearing the core is not done; use a Pocket for that.
+- Depth increment (except as Helical's depth per turn), final depth increment and roughing
   clearance don't apply to drilling and are hidden for Drill.
 
 In G-code, Standard and Peck are written as canned cycles (`G81`/`G83`) by the generic
@@ -613,15 +570,13 @@ post-processor (section 7).
 ## 7. G-code output
 
 v1 writes G-code through one generic post-processor that follows standard, structured G-code
-conventions (decided 2026-11-20). Machine-specific post-processors, each with its own settings
-panel, come later; some controllers (e.g. ones without canned cycles or `M6`) need one of those.
+conventions.
 
 **How it fits together** (all in the engine):
 1. Each operation's toolpath moves, as previewed and already safety-checked.
 2. The post-processor turns the moves into G-code text. It decides only *how* the program is
    written (codes, number format, tool changes, start and end), never where the tool goes. A
-   post-processor is a set of format choices; machine-specific ones are other sets of the same
-   choices.
+   post-processor is a set of format choices.
 3. The G-code text is read back and checked again by the safety checker.
 4. The app layer saves the file.
 
@@ -631,7 +586,7 @@ Principles:
 - Millimetres, absolute coordinates.
 - Arcs are output as arcs, not broken into many short lines.
 
-**Generic post-processor** (decided 2026-11-20):
+**Generic post-processor**:
 - **File**: one file for the whole job: every enabled operation, in tree order. Extension `.nc`.
 - **Numbers**: coordinates to 3 decimals with trailing zeros trimmed (e.g. `X12.5`); feeds and
   spindle speeds as whole numbers.
@@ -646,14 +601,14 @@ Principles:
   the spindle is on, a comment naming the tool, then `T3 M6`. When the spindle starts or its speed changes: `S10000 M3` (`M4`
   for CCW, `M5` for Off), then `G4 P2` (2 s for the spindle to come up to speed).
 - **Moves**: `G0` rapids, `G1` feeds, `G2`/`G3` arcs with `I J` centre offsets (relative to the
-  arc's start); a helix (e.g. spiral drilling) is an arc with a `Z` end.
+  arc's start); a helix (e.g. helical drilling) is an arc with a `Z` end.
 - **Drilling** (Standard and Peck): canned cycles, `G98 G81` (Standard) and `G98 G83` (Peck, `Q`
   = peck distance), with `R` = retract height, `Z` = target depth and `F` = plunge feed rate,
   then `G80`. The cycle is modal: only the first hole's line names it (`G98 G81 X34 Y22 Z-12 R3
-  F300`); each further hole is just the coordinates that change (`Y8`), until `G80`. `G98` returns to the clearance plane between holes, as in the preview. Spiral
-  drilling is written out (there is no cycle for it). The engine keeps each hole as a cycle
+  F300`); each further hole is just the coordinates that change (`Y8`), until `G80`. `G98` returns to the clearance plane between holes, as in the preview.
+  Helical drilling is written out (there is no cycle for it). The engine keeps each hole as a cycle
   (position, R, depth, peck, feed) and makes the previewed moves from it with one shared function,
-  so a later post-processor can write the moves out in full for controllers without cycles.
+  so the preview, playback, safety check and G-code agree.
   With `G83` the controller sets how far above the last depth it stops before feeding on; the
   preview uses the fast plunge height for this, so the machine can differ slightly there.
 - **End**: at the clearance plane (where every toolpath ends), `M5`, `M30`. No park move.
@@ -671,8 +626,7 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 - No horizontal rapid below the clearance plane.
 - The program starts and ends at the clearance plane.
 - Nothing goes below the target depth.
-- Arcs never go up. They may go down as they turn (a helix, e.g. spiral drilling); changed from
-  "arcs stay flat" when spiral drilling was added (decided 2026-11-16).
+- Arcs never go up. They may go down as they turn (a helix, e.g. helical drilling).
 
 ## 8. Testing
 
@@ -683,25 +637,15 @@ Safety rules (from CLAUDE.md; tests check these on every output):
   G-code format differs from the reference program's.
 - **WHAM_CAM reference outputs**: once WHAM_CAM's own output has been checked in a simulator and
   with an air cut, it is kept in `engine/tests/reference_gcode/` and later output is compared to it
-  exactly, on GitHub too (decided 2026-11-20). A README there says the files are test data, not
+  exactly, on GitHub too. A README there says the files are test data, not
   programs for cutting. Fresh files for checking go to its git-ignored `pending/` folder.
 - **Safety checker**: reads any toolpath or G-code output and fails if it breaks the section 7
   safety rules. Reading G-code, it follows canned cycles (`G81`/`G83` with `G98`) as the
   controller would.
 - The engine is also built for `wasm32-unknown-unknown` in CI.
 - Whenever toolpath or post-processor logic changes, the user re-checks output in a simulator
-  (CAMotics or NC Viewer) and with an air cut.
+  and with an air cut.
 
-## 9. Open questions
+## 9. Out of scope for v1
 
-- **(?) Machine configuration** (5.9): which machine settings, and the dialog.
-- **(?) Project setup and defaults** (5.10): where it lives, which settings, and whether they are
-  defaults for new projects or saved per project.
-
-Answered: fast plunge height is a setting, default 1 mm (6.1); Profile has no overlap setting
-(both decided 2026-11-16). Dimensions (5.3), decided 2026-11-19. DXF TEXT/MTEXT and DIMENSION import
-(5.1) moved to the roadmap, 2026-11-20 (with the font question for text). The generic post-processor and machines (5.7, 7), decided 2026-11-20.
-
-## 10. Out of scope for v1
-
-Ideas for after v1 are kept in `docs/roadmap.md`.
+Planned features are kept in `docs/roadmap.md`.

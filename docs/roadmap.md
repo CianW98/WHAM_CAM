@@ -1,113 +1,81 @@
-# WHAM_CAM roadmap (after v1)
+# WHAM_CAM roadmap
 
-Ideas for after v1, with the reasoning and any decisions made so far. Nothing here is being built
-yet: v1 (see `docs/spec.md`) comes first. The order within each group is rough and can change.
+## Road to 1.0.0
 
-## Soon after v1
+- **Machine configuration dialog**, kept limited for now: adding a machine does no post-processing yet. It holds rapid rates (used by playback), tool changer yes/no, travel limits (unused for now, built on later in this roadmap) and other machine settings that operations already have and that may need to be global. The exact settings list and how the dialog works are still to be designed.
+- **Project setup and defaults**. The settings a user can change per project, saved in the project file: grid spacing, snap on/off by type (grid, end, mid, centre), tool library, tool and machine, default operation values (stock surface, clearance plane, fast plunge height, depth increment, feeds, spindle speed). Decision needed: whether this is a tab (like Setup) or part of the Project tab.
+- **Project-file compatibility rule**, written down before tagging: from 1.0.0 a newer WHAM_CAM opens every older `.whamcam`; older format versions are upgraded on open (spec 5.8); format version bumps are listed in the release notes.
+- **UI improvements**: replace the text-based actions at the top with icons; highlight the active layer instead of marking it with the small pencil icon; add hotkeys for showing and hiding toolpaths and cut widths.
+- **Rename Spiral drilling to Helical**: the spec already says Helical. The code, interface and tests still say Spiral and need renaming to match. A name change only; toolpath output stays the same.
+- **Full end-to-end check by Cian**: vastly done already; the machine dialog and project setup are what remain.
 
-(Machine settings and project preferences moved into v1 on 2026-11-20: spec 5.9 and 5.10.)
+## Release themes after 1.0.0
 
-- **DXF text as outlines** (moved out of v1, 2026-11-20): TEXT and MTEXT become closed outline
-  shapes for each letter, on the entity's layer, to engrave, profile or pocket like any shape
-  (as decided 2026-11-19). Needs a font bundled with WHAM_CAM (its licence must allow that) and
-  a font reader that builds for WebAssembly: both chosen with the user when this is built. v1
-  skips TEXT and MTEXT.
-- **DXF dimensions** (moved out of v1, 2026-11-20): aligned, radius, diameter and angular DXF
-  DIMENSION entities become WHAM_CAM dimensions on their layer, keeping the DXF's measured value
-  (as decided 2026-11-19); other kinds (horizontal/vertical "rotated", ordinate) skipped and
-  listed. v1 skips all DIMENSION entities.
-- **Machine-specific post-processors**: RepRapFirmware/WorkBee, Grbl, LinuxCNC, Mach3, each with its
-  own settings panel per machine type. v1 has one generic post-processor only, in a machine list
-  in the Setup tab (decided 2026-11-20). Each is a different set of the same format choices, e.g.
-  a pause (`M0`) instead of `M6`.
-  - **Drill cycles as G0/G1** (a post-processor setting): write Standard/Peck holes as plain
-    G0/G1 moves instead of `G81`/`G83`, for controllers and simulators without canned cycles.
-    The engine keeps each hole as a cycle, so the post-processor expands it, using the same moves
-    as the preview (decided 2026-11-19/20). Found 2026-11-20: CAMotics 1.3.0 doesn't simulate
-    `G83` ("Not implemented: G83 (Peck Drilling)"); `G81` is fine.
-- **Inches**, together with CAM styles/templates and workspaces. v1 is mm only.
-- **Lead-ins / lead-outs.** v1 uses a straight plunge at the plunge feed rate. The reference
-  Profile example uses a spiral (ramp) lead-in at 15°: plunge to the stock surface, then ramp down
-  along the profile to the cut depth. It needs sloped arcs (helical G2/G3), which the safety checker
-  now allows going down (added for spiral drilling, 2026-11-16).
-- **Holding tabs.**
-- **PolyRectangle corner radius** (rounded corners as true arcs, at most half the shorter side).
-  Left out of v1 (decided 2026-11-16); the PolyRectangle has Lower Left, Width, Height, Rotation.
-- **Recent files** list in the File menu (not wanted yet, 2026-11-16).
-- **Smarter moves between depth levels.** v1 retracts to clearance, rapids to the start, rapids
-  down to fast plunge height and feeds down, as in the reference. The user wants to work on this
-  later (2026-11-16), e.g. staying down when the next level starts where the last ended.
-- **Pocket: full clearing at stepovers over 0.5.** Above 0.5 × tool diameter, narrow parts of a
-  pocket can keep an uncut sliver down the middle (spec 6.3, found 2026-11-16 at 0.7 on a complex
-  pocket; 0.5 clears it). Fix idea: after each ring, work out what is still uncut area by area
-  (with the offsetting library) and add a ring or a centre-line cut only there, instead of the
-  current whole-ring check. Maybe also a warning in Properties for stepovers over 0.5. Changes
-  toolpath output, so it needs tests and a simulator re-check.
-- **Drill dwell** (seconds at the bottom of a hole), written as the **G82** canned cycle (G81 with
-  a dwell, `P` = seconds). Needs a pause move through the safety checker, preview and playback,
-  and G82 in the read-back check. v1 has G81 and G83 only (noted 2026-11-20).
-- **Chip-break peck (G73)**: a Drill method that pecks like G83 but backs off only a little
-  after each peck (chip breaking) instead of returning to the R plane; quicker in deep holes. The
-  back-off is set in the controller, so the preview would use an assumed amount, as the G83
-  re-entry does with the fast plunge height (noted 2026-11-20).
-- **Spiral drilling: feed rate of the plunge to the stock surface.** Spiral drilling feeds from
-  the retract height down to the stock surface at the plunge rate (decided 2026-11-16), which can
-  be a slow feed through air when the retract height is well above the stock. To revisit, e.g.
-  rapid to fast plunge height above the stock, then feed, as Pocket and Profile do (user's
-  request, 2026-11-20). A toolpath change: tests and a simulator re-check.
+Each release has one purpose. The order is proposed.
 
-## Later
+### 1.1: Other cutters
 
-- **Browser version.** The same interface, with the engine compiled to WebAssembly and served as
-  static files. All CAM work runs on the user's own computer; nothing is processed on a server.
-  Open a web address and it runs, no install.
-  - Hosting (discussed 2026-11-15, decide when this is built): the repo is public (Apache 2.0), so
-    **GitHub Pages** hosts it for free and is the simplest option. **Cloudflare** (Workers static
-    hosting, also free) is the better choice if we want WebAssembly to use several processor cores
-    (this needs server settings GitHub Pages can't set) or small online features later, such as an
-    update check or sharing a project by link.
-- **Material removal simulation**: a block of stock carved away as the tool plays back, showing
-  the finished part, gouges and leftover material (like CAMotics). v1 has tool playback only;
-  until then use CAMotics or NC Viewer on the G-code (discussed 2026-11-16).
-- **Libraries: tools, styles and materials** (noted 2026-11-17).
-  - **Tool library** beyond the v1 basics (spec 5.5): holders/lengths, sharing and importing
-    tool sets (e.g. export/import of the tooling file).
-  - **Feeds and speeds are not on tools** (decided 2026-11-19): they depend on the tool *and* the
-    material, so they come with the material library (tool + material → feeds and speeds).
-  - **Style library**: saved sets of operation settings ("CAM styles") to apply to an operation
-    in one go, e.g. "6 mm slot in plywood". Ties in with the CAM styles noted under Inches.
-  - **Material library**: materials (e.g. plywood, MDF, aluminium, acrylic) with suggested feeds,
-    speeds and depths per tool, so picking a tool and a material fills in sensible values.
-  - To be worked out together, keeping the "every setting visible" rule: a library only fills
-    in values, which stay editable on the operation.
-- **Horizontal / vertical dimensions and HATCH import**, if needed later: not chosen for v1
-  (2026-11-19), which has aligned, radius/diameter and angle dimensions.
-- **Predefined styles in the library** for common kinds of CNC work, e.g. PCB cutting, V-carving
-  and other common uses. List to be filled in.
+Ball nose, V-bit and drill tools are already recorded in the tool list. This release makes them usable in operations. Each cutter needs tests, safety checker work and a simulator check.
 
-## Other cutters (noted 2026-11-19)
+- **V-bit**: V-carving, chamfering (depth follows width), engraving on a line. A new operation type whose cut width depends on depth. Pairs with the text outlines in 1.3.
+- **Real drill bits**: Standard and Peck only, point length counted for through holes, new point angle setting (the picture draws 118° for now).
+- **Ball nose**: depths mean the tip; 3D preview and cut width show the round end. Mainly useful with 3D work, also fillets and grooves.
+- **More flute types**, e.g. compression (upcut tip, downcut above) for sheet goods.
 
-v1 records ball nose, V-bit and drill tools in the master tool list and libraries, but only end
-mills (flat end) can be picked for an operation: the toolpaths assume a flat cutter. Getting the
-others working:
-- **Ball nose**: profile and pocket depths mean the tip; the 3D preview and cut width should
-  show the round end. Mostly useful with 3D work (see below), or for fillets and grooves.
-- **V-bit**: V-carving and chamfering (depth follows the width), and engraving on a line. A new
-  operation type with its own settings; the cut width depends on depth.
-- **Drill**: drilling holes with a real drill (Standard and Peck only, no spiral/helix), with the
-  point length taken into account for through holes. Drills would then get a **point angle**
-  setting (the tool picture draws 118° for now); they have no flute type or helix angle in v1
-  (user's decision, 2026-11-19).
-- **More flute types**, e.g. compression (upcut at the tip, downcut above) for sheet goods.
-- Each one changes toolpath output: tests, the safety checker and a simulator/air-cut check.
+### 1.2: Libraries, materials and stock
 
-## Maybe / needs thought
+A library only fills in values, which stay editable on the operation.
 
-These may clash with the "keep it simple" principle. Ask before pursuing.
+- **Material library**: plywood, MDF, aluminium, acrylic, etc. Initially it drives feed rates and speeds. Feeds and speeds are not stored on tools. A project's material is assigned in the stock's preferences.
+- **Template library**: saved sets of operation settings. This covers predefined templates for common work such as V-carving. Proposal:
+  - A template holds one operation: its type and all its settings, with no geometry. Applying it to the selected shapes creates the operation in one go, and every value stays editable.
+  - A template can also hold a group of operations, e.g. a profile and a drill for the same part, applied together to the selection.
+  - Templates are saved from an existing operation or configured with a dialog, and live on the computer like tool libraries, in named libraries that export and import as files.
+  - Feeds and speeds are not stored in a template. They fill in from the material library, so one template works across different materials.
+  - Predefined templates ship for common work such as V-carving.
+- **Tool library additions**: add a working length to each tool, meaning how much of the tool is held. Also export and import of tool sets (the tooling file).
+- **More machine library and Setup features**, building on the 1.0.0 machine dialog.
+- **UI stock**: a wireframe of the raw material you will cut into, shown in the drawing area as a 3D box in X, Y and Z, so it shows the depth of the material and not only a flat outline. Stock has its own place in the project tree. Its preferences are where the material is assigned, picked from the material library.
 
-- **3D operations.**
+### 1.3: Import and drawing completeness
+
+- **DXF text as outlines**: TEXT and MTEXT become closed outline shapes per letter on the entity's layer, to engrave, profile or pocket. Decision needed: which font to bundle and which font reader.
+- **DXF dimensions**: more research is needed first, using DXFs exported from other programs, to see how their dimensions come through and how WHAM_CAM should handle them. The starting plan is to turn aligned, radius, diameter and angular DIMENSION entities into WHAM_CAM dimensions keeping the DXF's measured value, and to skip and list the other kinds.
+- **PolyRectangle corner radius**: a corner radius property on the PolyRectangle itself, next to Lower Left, Width, Height and Rotation. Rounded corners are true arcs, at most half the shorter side.
+- **Recent files** in the File menu.
+
+### 1.4: Toolpath quality
+
+Everything here changes output, so batch it and re-verify once per release.
+
+- **Roughing and finishing passes**, with the logic for each. Includes the Pocket finish stepover (a light final wall pass).
+- **Pocket: full clearing above 0.5 stepover.** After each ring, work out what is still uncut area by area and add a ring or centre-line cut only there. A warning in Properties above 0.5 could come first.
+- **Pocket cutting types**: so far only offset rings (cavalier_contours). Other material-removal strategies could be added, such as horizontal, vertical and hatch.
+- **Nesting**: automatic arrangement of several copies of the same object, with automatic or manual placement.
+- **Helical drilling**: rapid to the fast plunge height above the stock and start the helical entry from there, as Pocket and Profile approach their cuts, instead of feeding from the retract height to the stock surface. Checked against the spec only, so confirm in the code before building.
+- **Lead-ins and lead-outs**: spiral, ramp and tangent. The reference Profile uses a 15° spiral (ramp) lead-in. Needs helical G2/G3, which the safety checker already allows going down.
+- **Holding tabs** for Profile.
+- **Smarter moves between depth levels**: e.g. stay down when the next level starts where the last one ended.
+- **Other operation settings**: Profile cut width (multi-pass wall width), corner overcut (dog-bone relief), other Pocket region fill styles, per-operation custom header/footer G-code.
+
+### 1.5: Controllers and post-processors
+
+- **Machine-specific post-processors**: Grbl, LinuxCNC, Mach3, RepRapFirmware. The post-processor is assigned in the machine dialog. This is a substantial feature and needs a thorough analysis of exactly what changes per controller before it is built. No machine-specific G-code outside a post-processor.
+- **Drill cycles as G0/G1**: a post-processor setting that writes Standard and Peck holes as plain moves instead of G81/G83, for controllers without canned cycles. The engine keeps holes as cycles; the post-processor expands them with the same moves as the preview.
+- **Drill dwell** via G82: needs a pause move through the safety checker, preview and playback, and G82 in the read-back check.
+- **Chip-break peck (G73)**: pecks like G83 but backs off only a little. For G73 the back-off is set in the controller, so it may be better to handle this with custom G1/G0 moves for maximum control.
+
+## Later (no release assigned)
+
+- **Inches**, together with templates and workspaces.
+- **Material removal simulation**: a stock block carved away during playback, showing gouges and leftover material.
+- **Full 3D operations**: they will come at some stage.
+- **Chip-load calculations**: feeds and speeds worked out from tool size, tool type and material type, building on the material library (1.2).
+- **Collision detection**, using the tool working length added in 1.2.
+- **Browser version**: same interface, engine compiled to WebAssembly, served as static files, all work on the user's own computer, nothing on a server. CI already builds the engine for `wasm32-unknown-unknown`. Decision when built: hosting on GitHub Pages (free, simplest) or Cloudflare Workers static hosting (free; allows WebAssembly multi-core and small online features such as an update check or share-by-link). The repo is public under Apache 2.0.
 
 ## Decided against
 
-- Importing other CAM programs' project files: never wanted.
-- Machine control: far out of scope.
+- Importing other CAM programs' project files.
+- Physical machine control.
+- Signing the installers.
