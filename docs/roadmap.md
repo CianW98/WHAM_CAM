@@ -3,6 +3,7 @@
 ## Road to 1.0.0
 
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
+- **Shorter project file extension**: change `.whamcam` to `.wc` (save/open dialogs, file association, docs). Must be done before 1.0.0, when the project file format is locked.
 
 ## Release themes after 1.0.0
 
