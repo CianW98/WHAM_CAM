@@ -164,19 +164,7 @@ button:hover {
   color: var(--accent);
   font-size: 0.8em;
 }
-.tree-item.selected .props th.prop-own {
-  font-weight: 700;
-}
-.prop-reset {
-  margin-left: 4px;
-  padding: 0 3px;
-  border: none;
-  background: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: inherit;
-}
-.tree-star {
+.tree-item.selected .tree-star {
   color: var(--select-text);
 }
 
