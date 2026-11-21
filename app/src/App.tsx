@@ -418,7 +418,7 @@ export default function App() {
         title: "Settings don't match",
         message: `This project's values from ${differ.join(" and ")} don't match ${
           differ.length === 1 ? "it" : "them"
-        } on this computer. Keep the project's values (they then count as changed in this project), or use the new values from Setup?`,
+        } on this computer. Keep the project's values, or use the new values from Setup?`,
         options: [keep, "Use new values"],
       });
       await engine.resolveSetupMismatches(answer === keep || answer === null);
@@ -1555,8 +1555,6 @@ export default function App() {
             onRenameMachine={renameMachine}
             onSetMachineSettings={(name, settings) => toolingTry(() => engine.setMachineSettings(name, settings))}
             onSetProjectMachine={(name) => tryEdit(() => engine.setProjectMachine(name))}
-            onSetProjectMachineSettings={(settings) => tryEdit(() => engine.setProjectMachineSettings(settings))}
-            onResetMachineSetting={(setting) => tryEdit(() => engine.resetProjectMachineSetting(setting))}
             onResetTemplateSetting={(setting) => tryEdit(() => engine.resetProjectTemplateSetting(setting))}
             onSetActiveLibrary={setActiveLibrary}
             onRenameLibrary={renameLibrary}

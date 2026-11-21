@@ -1,6 +1,6 @@
 //! Machines (spec 5.7): the machines G-code is written for, with their settings. Like the
 //! tooling, the machine list belongs to the computer: a project keeps a copy of its machine's
-//! settings, which follow the machine except the ones changed in the project. The engine turns the list into text and back; the app reads and writes
+//! settings (so the file is complete on its own), which follows the machine. The engine turns the list into text and back; the app reads and writes
 //! the file.
 
 use std::collections::HashSet;
@@ -100,36 +100,6 @@ impl Default for MachineSettings {
     }
 }
 
-/// One machine setting, to say which ones a project has changed for itself.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum MachineSetting {
-    Post,
-    RapidXy,
-    RapidZ,
-    ToolChanger,
-    TravelX,
-    TravelY,
-    TravelZ,
-    SpindleControl,
-    MaxSpindleRpm,
-    MaxFeed,
-}
-
-impl MachineSetting {
-    pub const ALL: [MachineSetting; 10] = [
-        MachineSetting::Post,
-        MachineSetting::RapidXy,
-        MachineSetting::RapidZ,
-        MachineSetting::ToolChanger,
-        MachineSetting::TravelX,
-        MachineSetting::TravelY,
-        MachineSetting::TravelZ,
-        MachineSetting::SpindleControl,
-        MachineSetting::MaxSpindleRpm,
-        MachineSetting::MaxFeed,
-    ];
-}
-
 impl MachineSettings {
     /// Checks the settings, saying in plain English what is wrong.
     pub fn check(&self) -> Result<(), String> {
@@ -157,40 +127,6 @@ impl MachineSettings {
             return Err("Max feed must be more than 0 mm/min (or left blank).".into());
         }
         Ok(())
-    }
-
-    /// True if `setting` has a different value in `other`.
-    pub fn differs(&self, other: &MachineSettings, setting: MachineSetting) -> bool {
-        use MachineSetting as S;
-        match setting {
-            S::Post => self.post != other.post,
-            S::RapidXy => self.rapid.xy != other.rapid.xy,
-            S::RapidZ => self.rapid.z != other.rapid.z,
-            S::ToolChanger => self.tool_changer != other.tool_changer,
-            S::TravelX => self.travel_x != other.travel_x,
-            S::TravelY => self.travel_y != other.travel_y,
-            S::TravelZ => self.travel_z != other.travel_z,
-            S::SpindleControl => self.spindle_control != other.spindle_control,
-            S::MaxSpindleRpm => self.max_spindle_rpm != other.max_spindle_rpm,
-            S::MaxFeed => self.max_feed != other.max_feed,
-        }
-    }
-
-    /// Copies one setting from `from`.
-    pub fn copy(&mut self, from: &MachineSettings, setting: MachineSetting) {
-        use MachineSetting as S;
-        match setting {
-            S::Post => self.post = from.post,
-            S::RapidXy => self.rapid.xy = from.rapid.xy,
-            S::RapidZ => self.rapid.z = from.rapid.z,
-            S::ToolChanger => self.tool_changer = from.tool_changer,
-            S::TravelX => self.travel_x = from.travel_x,
-            S::TravelY => self.travel_y = from.travel_y,
-            S::TravelZ => self.travel_z = from.travel_z,
-            S::SpindleControl => self.spindle_control = from.spindle_control,
-            S::MaxSpindleRpm => self.max_spindle_rpm = from.max_spindle_rpm,
-            S::MaxFeed => self.max_feed = from.max_feed,
-        }
     }
 }
 

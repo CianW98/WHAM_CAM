@@ -23,7 +23,6 @@ import type {
   ProfileSide,
   Shape,
   Machine,
-  MachineSetting,
   MachineSettings,
   Machines,
   SpindleControl,
@@ -813,8 +812,6 @@ interface Edits {
   onSetMachineSettings: (name: string, settings: MachineSettings) => Promise<boolean>;
   /** Copies a machine's settings into the project. */
   onSetProjectMachine: (name: string) => Promise<boolean>;
-  onSetProjectMachineSettings: (settings: MachineSettings) => Promise<boolean>;
-  onResetMachineSetting: (setting: MachineSetting) => Promise<boolean>;
   onResetTemplateSetting: (setting: TemplateSetting) => Promise<boolean>;
   onSetActiveLibrary: (name: string | null) => Promise<boolean>;
   /** Resolves false if the rename was rejected. */
@@ -973,24 +970,18 @@ function TravelField({ value, onSave }: { value: Travel | null; onSave: (t: Trav
   );
 }
 
-/** A machine's settings (spec 5.7), for a machine in Setup or the project's copy. Only the
- * rapid rates are used for now (playback). */
+/** A machine's settings in Setup (spec 5.7); read-only for the built-in Default. Only the rapid
+ * rates are used for now (playback). */
 function MachineRows({
   settings: m,
   onSave,
   readOnly = false,
-  own = () => false,
-  onReset,
 }: {
   settings: MachineSettings;
   onSave: (s: MachineSettings) => Promise<boolean>;
   readOnly?: boolean;
-  /** True for a setting changed in this project. */
-  own?: (s: MachineSetting) => boolean;
-  onReset?: (s: MachineSetting) => void;
 }) {
   const set = (change: Partial<MachineSettings>) => onSave({ ...m, ...change });
-  const mark = (s: MachineSetting) => ({ own: own(s), onReset: onReset && (() => onReset(s)) });
   const blank = (v: number | null) => (v === null ? "not set" : num(v));
   const travel = (t: Travel | null) => (t === null ? "not set" : `${num(t.min)}, ${num(t.max)}`);
   const spindleChoices: [SpindleControl, string][] = [
@@ -999,7 +990,7 @@ function MachineRows({
   ];
   return (
     <>
-      <Row label="Post-processor" {...mark("Post")}>
+      <Row label="Post-processor">
         {shownAs(
           readOnly,
           "Generic",
@@ -1007,14 +998,14 @@ function MachineRows({
         )}
       </Row>
       <GroupRow label="Rapids" />
-      <Row label="Rapid rate XY (mm/min)" {...mark("RapidXy")}>
+      <Row label="Rapid rate XY (mm/min)">
         {shownAs(readOnly, num(m.rapid.xy), <NumberField value={m.rapid.xy} onSave={(xy) => set({ rapid: { ...m.rapid, xy } })} />)}
       </Row>
-      <Row label="Rapid rate Z (mm/min)" {...mark("RapidZ")}>
+      <Row label="Rapid rate Z (mm/min)">
         {shownAs(readOnly, num(m.rapid.z), <NumberField value={m.rapid.z} onSave={(z) => set({ rapid: { ...m.rapid, z } })} />)}
       </Row>
       <GroupRow label="Spindle and feed" />
-      <Row label="Spindle control" {...mark("SpindleControl")}>
+      <Row label="Spindle control">
         {shownAs(
           readOnly,
           spindleChoices.find(([v]) => v === m.spindle_control)?.[1] ?? m.spindle_control,
@@ -1025,18 +1016,18 @@ function MachineRows({
           />,
         )}
       </Row>
-      <Row label="Max spindle speed (RPM)" {...mark("MaxSpindleRpm")}>
+      <Row label="Max spindle speed (RPM)">
         {shownAs(
           readOnly,
           blank(m.max_spindle_rpm),
           <OptionalNumberField value={m.max_spindle_rpm} onSave={(max_spindle_rpm) => set({ max_spindle_rpm })} />,
         )}
       </Row>
-      <Row label="Max feed (mm/min)" {...mark("MaxFeed")}>
+      <Row label="Max feed (mm/min)">
         {shownAs(readOnly, blank(m.max_feed), <OptionalNumberField value={m.max_feed} onSave={(max_feed) => set({ max_feed })} />)}
       </Row>
       <GroupRow label="Tool changer" />
-      <Row label="Tool changer" {...mark("ToolChanger")}>
+      <Row label="Tool changer">
         {shownAs(
           readOnly,
           m.tool_changer ? "Yes" : "No",
@@ -1044,13 +1035,13 @@ function MachineRows({
         )}
       </Row>
       <GroupRow label="Travel limits (min, max)" />
-      <Row label="X travel (mm)" {...mark("TravelX")}>
+      <Row label="X travel (mm)">
         {shownAs(readOnly, travel(m.travel_x), <TravelField value={m.travel_x} onSave={(travel_x) => set({ travel_x })} />)}
       </Row>
-      <Row label="Y travel (mm)" {...mark("TravelY")}>
+      <Row label="Y travel (mm)">
         {shownAs(readOnly, travel(m.travel_y), <TravelField value={m.travel_y} onSave={(travel_y) => set({ travel_y })} />)}
       </Row>
-      <Row label="Z travel (mm)" {...mark("TravelZ")}>
+      <Row label="Z travel (mm)">
         {shownAs(readOnly, travel(m.travel_z), <TravelField value={m.travel_z} onSave={(travel_z) => set({ travel_z })} />)}
       </Row>
     </>
@@ -1280,16 +1271,6 @@ function Content({
           <Row label="Machine">
             <MachineChoice doc={doc} machines={edits.machines} onSet={(n) => void edits.onSetProjectMachine(n)} />
           </Row>
-          <MachineRows
-            settings={doc.machine_settings}
-            onSave={edits.onSetProjectMachineSettings}
-            own={(st) => doc.machine_overrides.includes(st)}
-            onReset={
-              edits.machines.machines.some((m) => m.name === doc.machine)
-                ? (st) => void edits.onResetMachineSetting(st)
-                : undefined
-            }
-          />
         </Grid>
       );
     case "part": {

@@ -247,10 +247,10 @@ export interface Document {
   machining_tool: PickedTool | null;
   /** The machine the G-code is for (by name). */
   machine: string;
-  /** The project's copy of its machine's settings. */
+  /** The project's copy of its machine's settings (edited only in Setup). */
   machine_settings: MachineSettings;
-  /** Machine settings changed in this project (they don't follow the machine). */
-  machine_overrides: MachineSetting[];
+  /** The project's machine settings were kept on open, so they don't follow the machine. */
+  machine_kept: boolean;
   /** Dimensions (not on any layer; see `View.dimensions` for their values). */
   dimensions: DimensionObject[];
   /** The area the grid is drawn over (display only). */
@@ -360,18 +360,6 @@ export interface Travel {
   min: number;
   max: number;
 }
-
-export type MachineSetting =
-  | "Post"
-  | "RapidXy"
-  | "RapidZ"
-  | "ToolChanger"
-  | "TravelX"
-  | "TravelY"
-  | "TravelZ"
-  | "SpindleControl"
-  | "MaxSpindleRpm"
-  | "MaxFeed";
 
 export interface MachineSettings {
   post: PostProcessor;
@@ -695,23 +683,13 @@ export function setMachineForNewProjects(name: string): Promise<void> {
   return invoke<void>("set_machine_for_new_projects", { name });
 }
 
-/** The project's own machine settings. Not an undo step. */
-export function setProjectMachineSettings(settings: MachineSettings): Promise<void> {
-  return invoke<void>("set_project_machine_settings", { settings });
-}
-
-/** Puts one of the project's machine settings back to the machine's value. */
-export function resetProjectMachineSetting(setting: MachineSetting): Promise<void> {
-  return invoke<void>("reset_project_machine_setting", { setting });
-}
-
 /** After opening: the project's template / machine whose Setup values differ from the
  * project's, e.g. `machine "Shop"`. */
 export function setupMismatches(): Promise<string[]> {
   return invoke<string[]>("setup_mismatches");
 }
 
-/** Keep the project's values (true; they then count as changed in the project) or use Setup's. */
+/** Keep the project's values (true) or use Setup's. */
 export function resolveSetupMismatches(keep: boolean): Promise<void> {
   return invoke<void>("resolve_setup_mismatches", { keep });
 }

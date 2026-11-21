@@ -307,7 +307,7 @@ Properties show:
     (the Setup tab never changes a project).
   - **Tool**: a tool from that library, used by every part and operation that doesn't pick its
     own.
-  - **Machine**: the machine the G-code is for, then the project's copy of its settings (5.7).
+  - **Machine**: the machine the G-code is for (5.7). Its settings are not shown or edited here.
 - **Part**: **Tool**: "Use Machining tool" (default), or a tool from the library to use for the
   part's operations instead. A part has no library choice of its own.
 - **Operation**: Profile (inside / outside / on line), Pocket or Drill, with its settings
@@ -437,17 +437,15 @@ without touching the toolpaths.
     new projects"); File ▸ New and startup use it. Deleting it goes back to Default.
   - Selecting a machine shows its settings in Properties. Changes are saved straight away and are
     not undo steps; an invalid value is refused with a message and the old value kept.
-- **The project's machine**: the Machining item's Properties choose the machine, then show the
-  project's own copy of its settings, editable. The project file keeps the copy.
-  - Choosing a machine copies all its settings into the project.
-  - A setting changed in the project shows its label in **bold** with a ↺ button that puts it
-    back to the machine's value. Changed settings stay as they are; the others follow the machine:
-    editing the machine in Setup changes them in the open project, and renaming it is followed.
-  - Opening a project whose machine (or template, 5.9) has values in Setup that differ from the
-    project's, in settings not changed in the project, asks: **Keep project values** (they then
-    count as changed in the project) or **Use new values**.
-  - A machine not on this computer shows as "not on this computer"; the project keeps its values.
-  - Changing the project's machine or its settings marks it unsaved but is not an undo step.
+- **The project's machine**: chosen in the Machining item's Properties. Machine settings are only
+  edited on the machine in Setup.
+  - The project keeps a copy of the machine's settings (5.8), made when the machine is chosen.
+    The copy follows the machine: editing the machine in Setup changes it in the open project, and
+    renaming the machine is followed.
+  - After **Keep project values** on open (5.8), the copy stops following the machine until the
+    machine is chosen again or **Use new values** is picked on a later open.
+  - A machine not on this computer shows as "not on this computer"; the project keeps its copy.
+  - Changing the project's machine marks it unsaved but is not an undo step.
 
   | Setting | Meaning | Default |
   |---|---|---|
@@ -469,16 +467,23 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - The file holds `"format": "WHAM_CAM project"`, `"format_version"` (3), `"saved_by"` (the
   WHAM_CAM version) and the document: project name, minor and major grid spacing, grid area, snap
   settings, the
-  project template's name, the machine's name and the project's machine settings, which template
-  and machine settings were changed in the project, layers (name, colour, shapes),
+  project template's name and which template settings were changed in the project, the
+  machine's name and the project's copy of its settings, layers (name, colour, shapes),
   the project's tool library (by name) and Machining tool, and parts with their tool and
   operations (settings and tool).
+- **A project file is complete on its own.** Everything it uses from this computer's Setup is
+  copied into it: the template's values (5.9), the machine's settings (5.7) and every picked tool
+  (5.5). Opened on a new install with none of those templates, machines or libraries, it has the
+  same values; only the names show as "not on this computer".
 - Numbers are written so they read back exactly. Files are written to a temporary file and then
   renamed, so a failed save never leaves a half-written project.
 - Opening checks the file (format, unique ids and layer names, valid colours and shapes) and gives
   a plain-English message on a damaged or non-WHAM_CAM file, leaving the current project as it
   was. A file from a newer format version is refused, naming the WHAM_CAM version that made it.
   Older format versions will be upgraded on open.
+- Opening a project whose template or machine has values in Setup that differ from the project's
+  (for the template, in settings not changed in the project) asks: **Keep project values** or
+  **Use new values**. Kept template settings then count as changed in the project (5.9).
 - The project name (top of the tree) follows the file name. The window title shows the file name
   and `*` while there are unsaved changes (undoing back to the saved state clears it).
 - New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
@@ -494,10 +499,12 @@ spacing, grid area and snap to grid / snap to objects. They have no effect on to
   the built-in read-only **Default** (grid 10 mm, major 50 mm, area -1000 to 1000, both snaps
   on), New / New from, Rename, Use for new projects (the dot), Delete template.
 - The **Project** item's Properties: **Template**, then the project's own grid spacing, grid area
-  and snaps. They follow the template as the project's machine settings follow the machine
-  (5.7): changed settings in bold with ↺, editing or renaming the template in Setup followed,
-  the question on open, and a missing template shows "not on this computer". The four grid area
-  values count as one setting.
+  and snaps, editable. Picking a template copies all its values into the project.
+  - A setting changed in the project shows its label in **bold** with a ↺ button that puts it
+    back to the template's value. Changed settings stay as they are; the others follow the
+    template: editing it in Setup changes them in the open project, and renaming it is followed.
+  - The four grid area values count as one setting.
+  - A template not on this computer shows as "not on this computer"; the project keeps its values.
 - Changing a project's grid, snap or template settings marks it unsaved but is not an undo step.
 
 ## 6. Operation settings

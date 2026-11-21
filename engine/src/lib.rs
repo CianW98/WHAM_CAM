@@ -43,8 +43,7 @@ pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfOptions, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Transform, Vertex};
 pub use machine::{
-    Machine, MachineSetting, MachineSettings, Machines, PostProcessor, RapidRates, SpindleControl,
-    Travel,
+    Machine, MachineSettings, Machines, PostProcessor, RapidRates, SpindleControl, Travel,
 };
 pub use operation::Operation;
 pub use project::{

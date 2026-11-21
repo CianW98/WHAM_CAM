@@ -236,24 +236,11 @@ fn a_new_project_takes_the_machine_for_new_projects() {
 }
 
 #[test]
-fn project_changes_win_over_setup_changes() {
+fn the_projects_machine_settings_follow_the_machine() {
     let mut m = shop();
     let templates = ProjectTemplates::default();
     let mut p = Project::new();
     p.apply_machine(m.machine("Shop").unwrap());
-    // Changed in the project: rapid Z only.
-    let mut own = p.document().machine_settings.clone();
-    own.rapid.z = 2000.0;
-    p.set_machine_settings(&own).unwrap();
-    assert_eq!(
-        p.document()
-            .machine_overrides
-            .iter()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![MachineSetting::RapidZ]
-    );
-    // Setup changes both rapid rates: only XY follows.
     let mut s = shop_settings();
     s.rapid = RapidRates {
         xy: 12000.0,
@@ -261,25 +248,31 @@ fn project_changes_win_over_setup_changes() {
     };
     m.set_settings("Shop", &s).unwrap();
     p.follow_setup(&templates, &m);
-    assert_eq!(
-        p.document().machine_settings.rapid,
-        RapidRates {
-            xy: 12000.0,
-            z: 2000.0
-        }
-    );
-    // Reset puts it back to the machine's value, and it follows again.
-    p.reset_machine_setting(m.machine("Shop").unwrap(), MachineSetting::RapidZ);
-    assert_eq!(p.document().machine_settings.rapid.z, 4000.0);
-    assert!(p.document().machine_overrides.is_empty());
-    // Picking a machine again starts fresh: nothing counts as changed in the project.
-    p.set_machine_settings(&own).unwrap();
+    assert_eq!(p.document().machine_settings, s);
+    // Another machine's edits don't touch it.
+    let other = m.add_machine();
+    m.set_settings(&other, &shop_settings()).unwrap();
+    p.follow_setup(&templates, &m);
+    assert_eq!(p.document().machine_settings, s);
+}
+
+#[test]
+fn a_project_file_opens_with_its_machine_settings_on_a_fresh_install() {
+    // Saved with "Shop"; opened where there is no such machine (only Default).
+    let m = shop();
+    let mut p = Project::new();
     p.apply_machine(m.machine("Shop").unwrap());
-    assert!(p.document().machine_overrides.is_empty());
-    // Invalid project settings are refused.
-    let mut bad = own.clone();
-    bad.rapid.xy = 0.0;
-    assert!(p.set_machine_settings(&bad).is_err());
+    let text = p.save_text("job");
+    let fresh = Machines::default();
+    let templates = ProjectTemplates::default();
+    let mut q = Project::new();
+    q.open(&text, "job").unwrap();
+    assert_eq!(q.document().machine, "Shop");
+    assert_eq!(q.document().machine_settings, shop_settings());
+    assert!(q.setup_mismatches(&templates, &fresh).is_empty());
+    q.follow_setup(&templates, &fresh);
+    assert_eq!(q.document().machine_settings, shop_settings());
+    assert_eq!(q.playback().total_s, 0.0);
 }
 
 #[test]
@@ -313,7 +306,7 @@ fn opening_a_project_whose_machine_changed_since() {
     s.max_feed = Some(9000.0);
     m.set_settings("Shop", &s).unwrap();
 
-    // Keep: the project's value stays and counts as changed in the project.
+    // Keep: the project's values stay, and later Setup edits don't change them...
     let mut keep = Project::new();
     keep.open(&text, "job").unwrap();
     assert_eq!(
@@ -321,18 +314,24 @@ fn opening_a_project_whose_machine_changed_since() {
         vec!["machine \"Shop\""]
     );
     keep.keep_project_values(&templates, &m);
-    assert_eq!(keep.document().machine_settings.max_feed, Some(6000.0));
-    assert!(
-        keep.document()
-            .machine_overrides
-            .contains(&MachineSetting::MaxFeed)
-    );
-    assert!(keep.setup_mismatches(&templates, &m).is_empty());
+    assert!(keep.document().machine_kept);
+    s.rapid.z = 1500.0;
+    m.set_settings("Shop", &s).unwrap();
+    keep.follow_setup(&templates, &m);
+    assert_eq!(keep.document().machine_settings, shop_settings());
+    // ...and saved like that, the question comes again on the next open.
+    let kept = keep.save_text("job");
+    let mut again = Project::new();
+    again.open(&kept, "job").unwrap();
+    assert_eq!(again.setup_mismatches(&templates, &m).len(), 1);
+    // Use new values: follows the machine again.
+    again.use_setup_values(&templates, &m);
+    assert_eq!(again.document().machine_settings, s);
+    assert!(!again.document().machine_kept);
+    assert!(again.setup_mismatches(&templates, &m).is_empty());
 
-    // Use the machine's values.
-    let mut follow = Project::new();
-    follow.open(&text, "job").unwrap();
-    follow.follow_setup(&templates, &m);
-    assert_eq!(follow.document().machine_settings.max_feed, Some(9000.0));
-    assert!(follow.is_modified());
+    // Choosing the machine again also follows it.
+    keep.apply_machine(m.machine("Shop").unwrap());
+    assert_eq!(keep.document().machine_settings, s);
+    assert!(!keep.document().machine_kept);
 }

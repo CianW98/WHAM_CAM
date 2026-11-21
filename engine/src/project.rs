@@ -21,7 +21,7 @@ use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
 use crate::gcode_read::check_program;
 use crate::geometry::{Point, Shape, Transform};
-use crate::machine::{Machine, MachineSetting, MachineSettings, Machines};
+use crate::machine::{Machine, Machines};
 use crate::operation::{
     DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
     ToolSource,
@@ -937,25 +937,10 @@ impl Project {
         self.set_setting(|doc| copy_template(doc, template));
     }
 
-    /// Copies a machine's settings into the project and remembers its name; none of them count
-    /// as changed in the project any more. Not an undo step.
+    /// Copies a machine's settings into the project and remembers its name; from then on they
+    /// follow the machine. Not an undo step. Machine settings are only edited in Setup.
     pub fn apply_machine(&mut self, machine: &Machine) {
         self.set_setting(|doc| copy_machine(doc, machine));
-    }
-
-    /// Sets the project's machine settings. Each one that changes counts as changed in the
-    /// project, so it no longer follows the machine. Not an undo step.
-    pub fn set_machine_settings(&mut self, settings: &MachineSettings) -> Result<(), String> {
-        settings.check()?;
-        self.set_setting(|doc| {
-            for s in MachineSetting::ALL {
-                if doc.machine_settings.differs(settings, s) {
-                    doc.machine_overrides.insert(s);
-                }
-            }
-            doc.machine_settings = settings.clone();
-        });
-        Ok(())
     }
 
     /// Puts one template setting back to the template's value, so it follows the template again.
@@ -963,14 +948,6 @@ impl Project {
         self.set_setting(|doc| {
             doc.template_overrides.remove(&setting);
             copy_template_setting(doc, template, setting);
-        });
-    }
-
-    /// Puts one machine setting back to the machine's value, so it follows the machine again.
-    pub fn reset_machine_setting(&mut self, machine: &Machine, setting: MachineSetting) {
-        self.set_setting(|doc| {
-            doc.machine_overrides.remove(&setting);
-            doc.machine_settings.copy(&machine.settings, setting);
         });
     }
 
@@ -988,8 +965,9 @@ impl Project {
         }
     }
 
-    /// After a change in the Setup tab: the project's template and machine settings that weren't
-    /// changed in the project take the values from Setup. Not an undo step.
+    /// After a change in the Setup tab: the project's template settings that weren't changed in
+    /// the project take the template's values, and its machine settings the machine's (unless the
+    /// project's were kept on open). Not an undo step.
     pub fn follow_setup(&mut self, templates: &ProjectTemplates, machines: &Machines) {
         let template = templates.template(&self.doc.template).cloned();
         let machine = machines.machine(&self.doc.machine).cloned();
@@ -1001,19 +979,17 @@ impl Project {
                     }
                 }
             }
-            if let Some(m) = &machine {
-                for s in MachineSetting::ALL {
-                    if !doc.machine_overrides.contains(&s) {
-                        doc.machine_settings.copy(&m.settings, s);
-                    }
-                }
+            if let Some(m) = &machine
+                && !doc.machine_kept
+            {
+                doc.machine_settings = m.settings.clone();
             }
         });
     }
 
-    /// The project's template and machine (as named) whose values differ from the project's in
-    /// settings not changed in the project: e.g. after opening a file saved before the template
-    /// or machine was edited. Each is described as `template "Name"` / `machine "Name"`.
+    /// The project's template and machine (as named) whose values differ from the project's
+    /// (for the template, in settings not changed in the project): e.g. after opening a file saved
+    /// before the template or machine was edited. Each is described as `template "Name"` / `machine "Name"`.
     pub fn setup_mismatches(
         &self,
         templates: &ProjectTemplates,
@@ -1026,28 +1002,37 @@ impl Project {
             out.push(format!("template \"{}\"", t.name));
         }
         if let Some(m) = machines.machine(&self.doc.machine)
-            && !self.machine_differences(m).is_empty()
+            && self.doc.machine_settings != m.settings
         {
             out.push(format!("machine \"{}\"", m.name));
         }
         out
     }
 
-    /// After [`Project::setup_mismatches`]: keep the project's values, which then count as
-    /// changed in the project (they no longer follow Setup). Not an undo step.
+    /// After [`Project::setup_mismatches`]: keep the project's values. Template settings then
+    /// count as changed in the project; the machine settings stop following the machine until
+    /// [`Project::use_setup_values`] or the machine is chosen again. Not an undo step.
     pub fn keep_project_values(&mut self, templates: &ProjectTemplates, machines: &Machines) {
         let t = templates
             .template(&self.doc.template)
             .map(|t| self.template_differences(t))
             .unwrap_or_default();
-        let m = machines
+        let keep_machine = machines
             .machine(&self.doc.machine)
-            .map(|m| self.machine_differences(m))
-            .unwrap_or_default();
+            .is_some_and(|m| self.doc.machine_settings != m.settings);
         self.set_setting(|doc| {
             doc.template_overrides.extend(t.iter().copied());
-            doc.machine_overrides.extend(m.iter().copied());
+            if keep_machine {
+                doc.machine_kept = true;
+            }
         });
+    }
+
+    /// After [`Project::setup_mismatches`]: use the values from Setup. Template settings changed
+    /// in the project stay; the machine settings follow the machine again. Not an undo step.
+    pub fn use_setup_values(&mut self, templates: &ProjectTemplates, machines: &Machines) {
+        self.set_setting(|doc| doc.machine_kept = false);
+        self.follow_setup(templates, machines);
     }
 
     /// Template settings not changed in the project whose values differ from the template's.
@@ -1060,15 +1045,6 @@ impl Project {
                 copy_template_setting(&mut copy, t, s);
                 copy != self.doc
             })
-            .collect()
-    }
-
-    /// Machine settings not changed in the project whose values differ from the machine's.
-    fn machine_differences(&self, m: &Machine) -> Vec<MachineSetting> {
-        MachineSetting::ALL
-            .into_iter()
-            .filter(|s| !self.doc.machine_overrides.contains(s))
-            .filter(|&s| self.doc.machine_settings.differs(&m.settings, s))
             .collect()
     }
 
@@ -2327,5 +2303,5 @@ fn copy_template_setting(doc: &mut Document, template: &ProjectTemplate, setting
 fn copy_machine(doc: &mut Document, machine: &Machine) {
     doc.machine = machine.name.clone();
     doc.machine_settings = machine.settings.clone();
-    doc.machine_overrides.clear();
+    doc.machine_kept = false;
 }

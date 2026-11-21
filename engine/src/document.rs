@@ -27,12 +27,14 @@ pub struct Document {
     /// The machine the G-code is for (by name; machines belong to the computer).
     #[serde(default = "default_source")]
     pub machine: String,
-    /// The project's copy of its machine's settings (spec 5.7).
+    /// The project's copy of its machine's settings, so the file is complete on its own (spec
+    /// 5.8). Only edited in Setup.
     #[serde(default)]
     pub machine_settings: crate::machine::MachineSettings,
-    /// The machine settings changed in this project: they don't follow the machine.
+    /// The project's machine settings were kept when opened (they differed from the machine on
+    /// this computer), so they don't follow the machine until chosen again.
     #[serde(default)]
-    pub machine_overrides: std::collections::BTreeSet<crate::machine::MachineSetting>,
+    pub machine_kept: bool,
     /// Dimensions (measure only; not on any layer, never machined or exported).
     #[serde(default)]
     pub dimensions: Vec<crate::dimension::DimensionObject>,
@@ -196,7 +198,7 @@ impl Document {
             machining_tool: None,
             machine: default_source(),
             machine_settings: crate::machine::MachineSettings::default(),
-            machine_overrides: Default::default(),
+            machine_kept: false,
             dimensions: Vec::new(),
             grid_area: GridArea::default(),
             snap: crate::draw::SnapOptions::default(),

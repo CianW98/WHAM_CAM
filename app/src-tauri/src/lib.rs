@@ -9,10 +9,10 @@ use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DimensionClick, DimensionInfo, DisplayData, DisplayShape,
-    Document, Draft, DxfInfo, GenerateReport, GridArea, ImportReport, JoinReport, MachineSetting,
-    MachineSettings, Machines, Operation, OperationState, PickedTool, Playback, Point, Project,
-    ProjectTemplates, Shape, Snap, SnapOptions, SvgInfo, TemplateSetting, Tool, ToolDrawing,
-    ToolSetting, Tooling, ToolpathDisplay, TransformOp,
+    Document, Draft, DxfInfo, GenerateReport, GridArea, ImportReport, JoinReport, MachineSettings,
+    Machines, Operation, OperationState, PickedTool, Playback, Point, Project, ProjectTemplates,
+    Shape, Snap, SnapOptions, SvgInfo, TemplateSetting, Tool, ToolDrawing, ToolSetting, Tooling,
+    ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -424,7 +424,8 @@ fn set_machine_settings(
     })
 }
 
-/// Copies a machine's settings into the open project. Not an undo step.
+/// Copies a machine's settings into the open project. Not an undo step. The project's machine
+/// settings are only edited through the machine in Setup.
 #[tauri::command]
 fn set_project_machine(
     name: String,
@@ -437,33 +438,6 @@ fn set_project_machine(
         .machine(&name)
         .ok_or_else(|| format!("There is no machine called \"{name}\"."))?;
     state.0.lock().unwrap().apply_machine(machine);
-    Ok(())
-}
-
-/// Sets the project's own machine settings. Not an undo step.
-#[tauri::command]
-fn set_project_machine_settings(
-    settings: MachineSettings,
-    state: State<AppState>,
-) -> Result<(), String> {
-    state.0.lock().unwrap().set_machine_settings(&settings)
-}
-
-/// Puts one of the project's machine settings back to the machine's value.
-#[tauri::command]
-fn reset_project_machine_setting(
-    setting: MachineSetting,
-    state: State<AppState>,
-    machines: State<MachinesState>,
-) -> Result<(), String> {
-    let mut project = state.0.lock().unwrap();
-    let machines = machines.0.lock().unwrap();
-    let name = project.document().machine.clone();
-    let machine = machines
-        .value
-        .machine(&name)
-        .ok_or_else(|| format!("The machine \"{name}\" isn't on this computer."))?;
-    project.reset_machine_setting(machine, setting);
     Ok(())
 }
 
@@ -495,7 +469,10 @@ fn resolve_setup_mismatches(
             &machines.0.lock().unwrap().value,
         );
     } else {
-        follow_setup(&state, &templates, &machines);
+        state.0.lock().unwrap().use_setup_values(
+            &templates.0.lock().unwrap().value,
+            &machines.0.lock().unwrap().value,
+        );
     }
 }
 
@@ -1211,8 +1188,6 @@ pub fn run() {
             set_machine_for_new_projects,
             set_machine_settings,
             set_project_machine,
-            set_project_machine_settings,
-            reset_project_machine_setting,
             reset_project_template_setting,
             new_template_from,
             setup_mismatches,
