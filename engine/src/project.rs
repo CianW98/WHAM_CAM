@@ -21,6 +21,7 @@ use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
 use crate::edit;
 use crate::gcode_read::check_program;
 use crate::geometry::{Point, Shape, Transform};
+use crate::machine::RapidRates;
 use crate::operation::{
     DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
     ToolSource,
@@ -1932,9 +1933,9 @@ impl Project {
     }
 
     /// The tool playback of the drawn toolpaths: the same operations as `toolpaths_display`, in
-    /// tree order.
-    pub fn playback(&self) -> Playback {
-        let mut pb = playback(&self.shown_toolpaths());
+    /// tree order, timing rapids at the machine's `rapid` rates.
+    pub fn playback(&self, rapid: RapidRates) -> Playback {
+        let mut pb = playback(&self.shown_toolpaths(), rapid);
         // The cutter of each shown operation, as it was when generated.
         pb.tools = self
             .doc
@@ -1959,7 +1960,8 @@ impl Project {
     /// The width the cutter sweeps along each step of `playback()` (same steps, same order), so
     /// it can be revealed as the tool plays back.
     pub fn cut_widths(&self) -> Vec<CutWidthStep> {
-        cut_width_steps(&self.playback())
+        // Same steps whatever the timing.
+        cut_width_steps(&self.playback(RapidRates::default()))
     }
 
     /// Generated toolpaths of enabled, shown operations in tree order, each with the tool

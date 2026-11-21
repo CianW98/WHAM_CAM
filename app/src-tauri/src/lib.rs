@@ -9,8 +9,8 @@ use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DimensionClick, DimensionInfo, DisplayData, DisplayShape,
-    Document, Draft, DxfInfo, GenerateReport, GridArea, ImportReport, JoinReport, Machines,
-    Operation, OperationState, PickedTool, Playback, Point, PostProcessor, Project,
+    Document, Draft, DxfInfo, GenerateReport, GridArea, ImportReport, JoinReport, Machine,
+    Machines, Operation, OperationState, PickedTool, Playback, Point, PostProcessor, Project,
     ProjectTemplates, Shape, Snap, SnapOptions, SvgInfo, Tool, ToolDrawing, ToolSetting, Tooling,
     ToolpathDisplay, TransformOp,
 };
@@ -325,6 +325,16 @@ fn set_machine_post(
     machines: State<MachinesState>,
 ) -> Result<(), String> {
     change_settings(&machines.0, |m| m.set_post(&name, post))
+}
+
+/// Sets every setting of a machine except its name.
+#[tauri::command]
+fn set_machine_settings(
+    name: String,
+    settings: Machine,
+    machines: State<MachinesState>,
+) -> Result<(), String> {
+    change_settings(&machines.0, |m| m.set_settings(&name, &settings))
 }
 
 /// Sets the project's machine (None = the generic post-processor). An undo step.
@@ -940,8 +950,15 @@ fn cut_widths(state: State<AppState>) -> Vec<CutWidthStep> {
 }
 
 #[tauri::command]
-fn toolpath_playback(state: State<AppState>) -> Playback {
-    state.0.lock().unwrap().playback()
+fn toolpath_playback(state: State<AppState>, machines: State<MachinesState>) -> Playback {
+    let project = state.0.lock().unwrap();
+    let rapid = machines
+        .0
+        .lock()
+        .unwrap()
+        .value
+        .rapid_rates(project.document().machine.as_deref());
+    project.playback(rapid)
 }
 
 #[tauri::command]
@@ -1034,6 +1051,7 @@ pub fn run() {
             rename_machine,
             delete_machine,
             set_machine_post,
+            set_machine_settings,
             set_project_machine,
             add_template,
             rename_template,

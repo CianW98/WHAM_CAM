@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Playback } from "../engine";
+import type { Playback, RapidRates } from "../engine";
 import { formatTime, stepAt, toolAt } from "../playback";
 
 const SPEEDS = [1, 2, 5, 10, 50, 100];
@@ -16,10 +16,12 @@ interface Props {
   onSpeed: (s: number) => void;
   /** Operation names by id, for the readout. */
   names: Map<number, string>;
+  /** The project's machine's rapid rates; null = no machine chosen (the default rates). */
+  rapid: RapidRates | null;
 }
 
 /** Tool playback controls and readout, along the bottom of the drawing area. */
-export default function PlaybackBar({ playback, time, onTime, playing, onPlaying, speed, onSpeed, names }: Props) {
+export default function PlaybackBar({ playback, time, onTime, playing, onPlaying, speed, onSpeed, names, rapid }: Props) {
   const total = playback.total_s;
   const live = useRef({ time, speed, total, onTime, onPlaying });
   live.current = { time, speed, total, onTime, onPlaying };
@@ -97,7 +99,11 @@ export default function PlaybackBar({ playback, time, onTime, playing, onPlaying
         }}
       />
       <SpeedPicker speed={speed} onSpeed={onSpeed} />
-      <span className="playback-time" title="Estimated: rapids assumed at 5000 mm/min">
+      <span className="playback-time" title={
+          rapid
+            ? `Estimated: rapids at the machine's rates (XY ${rapid.xy}, Z ${rapid.z} mm/min)`
+            : "Estimated: no machine chosen, rapids assumed at 5000 mm/min"
+        }>
         {formatTime(time)} / {formatTime(total)} (est.)
       </span>
       {step && at && (

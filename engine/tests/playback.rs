@@ -4,6 +4,7 @@
 use std::f64::consts::PI;
 
 use wham_engine::display::{MoveKind, playback, toolpath_display};
+use wham_engine::machine::DEFAULT_RAPID_RATE;
 use wham_engine::toolpath::{Limits, Move, Point3, Toolpath};
 use wham_engine::*;
 
@@ -58,13 +59,13 @@ fn sample(id: u32) -> Toolpath {
 #[test]
 fn durations_follow_the_feed_rates() {
     let tp = sample(1);
-    let pb = playback(&[(&tp, 6.0)]);
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
     let s = &pb.steps;
     assert_eq!(s.len(), 6);
     // The first move is where the tool starts: no time.
     assert!(close(s[0].duration_s, 0.0));
     // Rapid 2 mm down at the assumed rapid rate.
-    assert!(close(s[1].duration_s, 2.0 / ASSUMED_RAPID_RATE * 60.0));
+    assert!(close(s[1].duration_s, 2.0 / DEFAULT_RAPID_RATE * 60.0));
     assert_eq!(s[1].feed, None);
     assert_eq!(s[1].kind, MoveKind::Rapid);
     // Plunge 2 mm at 300 mm/min = 0.4 s.
@@ -88,7 +89,7 @@ fn durations_follow_the_feed_rates() {
 #[test]
 fn clockwise_arc_goes_the_right_way_round() {
     let tp = sample(1);
-    let pb = playback(&[(&tp, 6.0)]);
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
     // Clockwise from (10,0) to (20,0) around (15,0) passes over the top (y > 0).
     let arc = &pb.steps[4];
     let top = arc.points.iter().map(|p| p[1]).fold(f64::MIN, f64::max);
@@ -98,7 +99,7 @@ fn clockwise_arc_goes_the_right_way_round() {
 #[test]
 fn move_numbers_and_end_points_match_the_toolpath() {
     let tp = sample(1);
-    let pb = playback(&[(&tp, 6.0)]);
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
     for (i, (step, m)) in pb.steps.iter().zip(&tp.moves).enumerate() {
         assert_eq!(step.move_number, i + 1);
         let end = step.points.last().unwrap();
@@ -121,7 +122,7 @@ fn second_operation_starts_where_the_first_ended() {
             *center_x += 50.0;
         }
     }
-    let pb = playback(&[(&a, 6.0), (&b, 3.0)]);
+    let pb = playback(&[(&a, 6.0), (&b, 3.0)], RapidRates::default());
     assert_eq!(pb.steps.len(), 12);
     let first_of_b = &pb.steps[6];
     assert_eq!(first_of_b.operation_id, 2);
@@ -131,14 +132,14 @@ fn second_operation_starts_where_the_first_ended() {
     assert_eq!(first_of_b.points[0], [20.0, 0.0, 3.0]);
     assert!(close(
         first_of_b.duration_s,
-        30.0 / ASSUMED_RAPID_RATE * 60.0
+        30.0 / DEFAULT_RAPID_RATE * 60.0
     ));
 }
 
 #[test]
 fn playback_points_are_the_drawn_points() {
     let tp = sample(1);
-    let pb = playback(&[(&tp, 6.0)]);
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
     let drawn: Vec<[f64; 3]> = toolpath_display(&tp)
         .runs
         .iter()
@@ -175,7 +176,7 @@ fn project_plays_shown_toolpaths_with_their_tool() {
     o.common.target_depth = Some(-2.0);
     proj.set_operation(o.clone()).unwrap();
     proj.generate(&[]);
-    let pb = proj.playback();
+    let pb = proj.playback(RapidRates::default());
     let tp = proj.toolpath(op).unwrap();
     assert_eq!(pb.steps.len(), tp.moves.len());
     assert!(pb.total_s > 0.0);
@@ -184,7 +185,7 @@ fn project_plays_shown_toolpaths_with_their_tool() {
     // Hidden toolpaths are not played.
     o.show_toolpath = false;
     proj.set_operation(o).unwrap();
-    assert!(proj.playback().steps.is_empty());
+    assert!(proj.playback(RapidRates::default()).steps.is_empty());
 }
 
 // --- Cut width (display of the band the cutter sweeps) ---
@@ -237,7 +238,7 @@ fn cut_width_covers_the_cutter_band_and_nothing_else() {
         limits: limits(),
         cycles: Vec::new(),
     };
-    let pb = playback(&[(&tp, 6.0)]);
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
     let widths = cut_width_steps(&pb);
     assert_eq!(widths.len(), pb.steps.len());
     // Each step has a strip start for each of its segments, in order.
@@ -294,7 +295,7 @@ fn rapids_and_plunges_have_no_cut_width() {
         limits: limits(),
         cycles: Vec::new(),
     };
-    let widths = cut_width_steps(&playback(&[(&tp, 6.0)]));
+    let widths = cut_width_steps(&playback(&[(&tp, 6.0)], RapidRates::default()));
     assert!(widths.iter().all(|w| w.triangles.is_empty()));
 }
 
@@ -318,7 +319,7 @@ fn a_helix_descends_evenly_and_takes_its_true_length() {
         limits: limits(),
         cycles: Vec::new(),
     };
-    let pb = playback(&[(&tp, 6.0)]);
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
     let helix = &pb.steps[2];
     let zs: Vec<f64> = helix.points.iter().map(|p| p[2]).collect();
     assert!(
@@ -328,4 +329,47 @@ fn a_helix_descends_evenly_and_takes_its_true_length() {
     assert!(close(*zs.last().unwrap(), -2.0));
     let length = (5.0 * PI).hypot(2.0);
     assert!(close(helix.duration_s, length / 600.0 * 60.0));
+}
+
+#[test]
+fn rapids_take_as_long_as_their_slowest_axis() {
+    let tp = Toolpath {
+        operation_id: 1,
+        moves: vec![
+            rapid(0.0, 0.0, 3.0),
+            // Straight down 2 mm: Z only.
+            rapid(0.0, 0.0, 1.0),
+            // Up 2 mm: Z only.
+            rapid(0.0, 0.0, 3.0),
+            // Across 30 in X and 40 in Y: X and Y each at the XY rate, so Y (40) sets the time.
+            rapid(30.0, 40.0, 3.0),
+            // Diagonal with Z: whichever axis is slowest.
+            rapid(31.0, 40.0, 13.0),
+        ],
+        limits: limits(),
+        cycles: Vec::new(),
+    };
+    let rates = RapidRates {
+        xy: 6000.0,
+        z: 1200.0,
+    };
+    let s = playback(&[(&tp, 6.0)], rates).steps;
+    assert!(close(s[0].duration_s, 0.0));
+    assert!(close(s[1].duration_s, 2.0 / 1200.0 * 60.0));
+    assert!(close(s[2].duration_s, 2.0 / 1200.0 * 60.0));
+    assert!(close(s[3].duration_s, 40.0 / 6000.0 * 60.0));
+    assert!(close(s[4].duration_s, 10.0 / 1200.0 * 60.0));
+    // Feed moves don't depend on the rapid rates.
+    let fast = playback(&[(&sample(1), 6.0)], RapidRates { xy: 1e6, z: 1e6 }).steps;
+    let slow = playback(
+        &[(&sample(1), 6.0)],
+        RapidRates {
+            xy: 100.0,
+            z: 100.0,
+        },
+    )
+    .steps;
+    for i in [2, 3, 4] {
+        assert!(close(fast[i].duration_s, slow[i].duration_s));
+    }
 }

@@ -21,7 +21,10 @@ import type {
   ProfileSettings,
   ProfileSide,
   Shape,
+  Machine,
   Machines,
+  SpindleControl,
+  Travel,
   OperationTool,
   PickedTool,
   PostProcessor,
@@ -785,6 +788,7 @@ interface Edits {
   /** Resolves false if the rename was rejected. */
   onRenameMachine: (oldName: string, newName: string) => Promise<boolean>;
   onSetMachinePost: (name: string, post: PostProcessor) => Promise<boolean>;
+  onSetMachineSettings: (name: string, settings: Machine) => Promise<boolean>;
   /** Sets the project's machine (null = generic post-processor). */
   onSetProjectMachine: (name: string | null) => Promise<boolean>;
   onSetActiveLibrary: (name: string | null) => Promise<boolean>;
@@ -886,6 +890,91 @@ function GridRows({
       </Row>
       <Row label="Snap to objects">
         <BoolField value={snap.objects} onSave={(objects) => onSnap({ ...snap, objects })} />
+      </Row>
+    </>
+  );
+}
+
+/** A number box that may be left blank (null = not set). */
+function OptionalNumberField({
+  value,
+  onSave,
+}: {
+  value: number | null;
+  onSave: (v: number | null) => Promise<boolean>;
+}) {
+  return (
+    <TextField<{ v: number | null }>
+      shown={value === null ? "" : num(value)}
+      parse={(t) => {
+        if (t.trim() === "") return { v: null };
+        const v = Number(t);
+        return Number.isFinite(v) ? { v } : null;
+      }}
+      onSave={({ v }) => onSave(v)}
+    />
+  );
+}
+
+/** An axis travel as one "min, max" box; blank = not set. */
+function TravelField({ value, onSave }: { value: Travel | null; onSave: (t: Travel | null) => Promise<boolean> }) {
+  return (
+    <TextField<{ t: Travel | null }>
+      shown={value === null ? "" : `${num(value.min)}, ${num(value.max)}`}
+      parse={(text) => {
+        if (text.trim() === "") return { t: null };
+        const parts = text.split(/[\s,;]+/).filter((p) => p !== "");
+        if (parts.length !== 2) return null;
+        const [min, max] = parts.map(Number);
+        return Number.isFinite(min) && Number.isFinite(max) ? { t: { min, max } } : null;
+      }}
+      onSave={({ t }) => onSave(t)}
+    />
+  );
+}
+
+/** A machine's settings (spec 5.7). Only the rapid rates are used for now (playback). */
+function MachineRows({ machine: m, onSave }: { machine: Machine; onSave: (s: Machine) => Promise<boolean> }) {
+  const set = (change: Partial<Machine>) => onSave({ ...m, ...change });
+  return (
+    <>
+      <GroupRow label="Rapids" />
+      <Row label="Rapid rate XY (mm/min)">
+        <NumberField value={m.rapid.xy} onSave={(xy) => set({ rapid: { ...m.rapid, xy } })} />
+      </Row>
+      <Row label="Rapid rate Z (mm/min)">
+        <NumberField value={m.rapid.z} onSave={(z) => set({ rapid: { ...m.rapid, z } })} />
+      </Row>
+      <GroupRow label="Spindle and feed" />
+      <Row label="Spindle control">
+        <ChoiceField<SpindleControl>
+          value={m.spindle_control}
+          choices={[
+            ["VariableRpm", "Variable RPM"],
+            ["OnOff", "On/off only"],
+          ]}
+          onSave={(spindle_control) => void set({ spindle_control })}
+        />
+      </Row>
+      <Row label="Max spindle speed (RPM)">
+        <OptionalNumberField value={m.max_spindle_rpm} onSave={(max_spindle_rpm) => set({ max_spindle_rpm })} />
+      </Row>
+      <Row label="Max feed (mm/min)">
+        <OptionalNumberField value={m.max_feed} onSave={(max_feed) => set({ max_feed })} />
+      </Row>
+      <GroupRow label="Tool changer" />
+      <Row label="Tool changer">
+        <BoolField value={m.tool_changer} onSave={(tool_changer) => void set({ tool_changer })} />
+      </Row>
+      <GroupRow label="Travel limits (min, max)" />
+      <Row label="X travel (mm)">
+        <TravelField value={m.travel_x} onSave={(travel_x) => set({ travel_x })} />
+      </Row>
+      <Row label="Y travel (mm)">
+        <TravelField value={m.travel_y} onSave={(travel_y) => set({ travel_y })} />
+      </Row>
+      <Row label="Z travel (mm)">
+        <TravelField value={m.travel_z} onSave={(travel_z) => set({ travel_z })} />
       </Row>
     </>
   );
@@ -1167,6 +1256,7 @@ function Content({
               onSave={(post) => void edits.onSetMachinePost(m.name, post)}
             />
           </Row>
+          <MachineRows machine={m} onSave={(s) => edits.onSetMachineSettings(m.name, s)} />
         </Grid>
       ) : (
         nothing

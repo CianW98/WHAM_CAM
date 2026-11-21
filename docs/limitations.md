@@ -68,6 +68,12 @@ A dimension shows a size and never drives the geometry. It is not machined and n
 
 Windows warns "unknown publisher" when you run the installer.
 
+### Most machine settings are stored only
+
+A machine's spindle control, max spindle speed, max feed, tool changer and travel limits are saved but not used: nothing is checked against them and the G-code doesn't change. Only the rapid rates are used, for the playback time.
+
+- Spec: 5.7 G-code output (Machines).
+
 ### No machine control
 
 WHAM_CAM produces G-code files. It does not send them to or control a machine.

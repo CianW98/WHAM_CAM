@@ -32,8 +32,8 @@ pub mod transform;
 
 pub use dimension::{Dimension, DimensionDef, DimensionKind, DimensionObject, Target};
 pub use display::{
-    ASSUMED_RAPID_RATE, CutWidthStep, DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape,
-    Playback, PlaybackStep, PlaybackTool, ToolpathDisplay, display_data,
+    CutWidthStep, DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape, Playback, PlaybackStep,
+    PlaybackTool, ToolpathDisplay, display_data,
 };
 pub use document::{
     DEFAULT_GRID_SPACING, DEFAULT_MAJOR_GRID_SPACING, Document, DrawingObject, GridArea,
@@ -42,7 +42,7 @@ pub use document::{
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfOptions, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Transform, Vertex};
-pub use machine::{Machine, Machines, PostProcessor};
+pub use machine::{Machine, Machines, PostProcessor, RapidRates, SpindleControl, Travel};
 pub use operation::Operation;
 pub use project::{
     BoxMode, BreakReport, DimensionClick, DimensionInfo, DxfInfo, GenerateReport, ImportReport,

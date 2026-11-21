@@ -325,9 +325,35 @@ export function applyProjectTemplate(name: string): Promise<void> {
 
 export type PostProcessor = "Generic";
 
+/** VariableRpm = speed set by the G-code; OnOff = switched on and off only. */
+export type SpindleControl = "VariableRpm" | "OnOff";
+
+/** mm/min. */
+export interface RapidRates {
+  xy: number;
+  z: number;
+}
+
+/** How far an axis can travel (mm). */
+export interface Travel {
+  min: number;
+  max: number;
+}
+
 export interface Machine {
   name: string;
   post: PostProcessor;
+  /** Used to time rapids in the tool playback. */
+  rapid: RapidRates;
+  /** The rest are stored only for now. null = not set. */
+  tool_changer: boolean;
+  travel_x: Travel | null;
+  travel_y: Travel | null;
+  travel_z: Travel | null;
+  spindle_control: SpindleControl;
+  max_spindle_rpm: number | null;
+  /** mm/min. */
+  max_feed: number | null;
 }
 
 /** This computer's machines. */
@@ -638,6 +664,11 @@ export function deleteMachine(name: string): Promise<boolean> {
 
 export function setMachinePost(name: string, post: PostProcessor): Promise<void> {
   return invoke<void>("set_machine_post", { name, post });
+}
+
+/** Sets every setting of a machine except its name (the engine checks them). */
+export function setMachineSettings(name: string, settings: Machine): Promise<void> {
+  return invoke<void>("set_machine_settings", { name, settings });
 }
 
 /** Sets the project's machine (null = the generic post-processor). An undo step. */

@@ -403,8 +403,10 @@ Properties show:
   toolpaths are shown (View → Toolpath playback hides it).
   - Back to start, one move back, play/pause, one move forward, a slider across the whole run, and
     a speed of 1×, 2×, 5×, 10×, 50× or 100× real time.
-  - Real time follows the feed rates (arcs by their true length). Rapids use an **assumed rapid
-    rate of 5000 mm/min**, so the run time is shown as an estimate.
+  - Real time follows the feed rates (arcs by their true length). Rapids use the project's
+    machine's **rapid rates** (5.7): X and Y each at the XY rate, Z at the Z rate, the slowest
+    axis setting the time. With no machine chosen they are 5000 mm/min. The run time is shown as
+    an estimate.
   - The readout shows operation, move number (as in safety checker messages), kind, feed and X Y Z.
   - The tool is a circle of the tool diameter in 2D. In 3D it is the operation's real cutter
     (from the tool it was generated with: end shape, flute length, shank diameter, overall
@@ -428,6 +430,21 @@ without touching the toolpaths.
   post-processor. A project chooses its machine in the Machining item's Properties (saved in the
   project by name, like the tool library); with none chosen, Produce G-code uses Generic. That
   choice is shown as **Generic**, so no machine may be called "Generic" (in any capitals).
+- Selecting a machine shows its settings in Properties. Changes are saved straight away and are
+  not undo steps; an invalid value is refused with a message and the old value kept.
+
+  | Setting | Meaning | New machine |
+  |---|---|---|
+  | Name, Post-processor | As above | Machine 1…, Generic |
+  | Rapid rate XY, Rapid rate Z | mm/min, more than 0. Used by the tool playback (5.6) | 5000, 5000 |
+  | Spindle control | Variable RPM or On/off only | Variable RPM |
+  | Max spindle speed | RPM, blank = not set | blank |
+  | Max feed | mm/min, blank = not set | blank |
+  | Tool changer | Yes / no | no |
+  | X, Y, Z travel | One `min, max` box per axis (mm), min less than max, blank = not set | blank |
+
+  Only the rapid rates are used; the other settings change nothing yet, including the G-code
+  (see `docs/limitations.md`).
 
 ### 5.8 Project files
 Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.

@@ -1412,6 +1412,9 @@ export default function App() {
     return on;
   }, [showToolpaths, showCutWidth]);
 
+  // The project's machine's rapid rates, for the playback's time note (the engine times the moves).
+  const projectRapid =
+    view?.machines.machines.find((m) => m.name === view.document.machine)?.rapid ?? null;
   const playbackShown = showToolpaths && showPlaybackBar && playback && playback.steps.length > 0 ? playback : null;
 
   return (
@@ -1530,6 +1533,7 @@ export default function App() {
             machines={view?.machines ?? EMPTY_MACHINES}
             onRenameMachine={renameMachine}
             onSetMachinePost={(name, post) => toolingTry(() => engine.setMachinePost(name, post))}
+            onSetMachineSettings={(name, settings) => toolingTry(() => engine.setMachineSettings(name, settings))}
             onSetProjectMachine={(name) => tryEdit(() => engine.setProjectMachine(name))}
             onSetActiveLibrary={setActiveLibrary}
             onRenameLibrary={renameLibrary}
@@ -1586,6 +1590,7 @@ export default function App() {
             speed={speed}
             onSpeed={setSpeed}
             names={operationNames}
+            rapid={projectRapid}
           />
         )}
       </Viewport>

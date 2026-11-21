@@ -13,6 +13,7 @@ use crate::document::{Document, LAYER_PALETTE};
 use crate::geometry::{
     BulgeArc, Point, Polyline, Shape, angle_deg, arc_sweep_deg, bulge_arc, rectangle_corners,
 };
+use crate::machine::RapidRates;
 use crate::toolpath::{Move, Point3, Toolpath};
 
 /// Maximum distance between a true arc and its on-screen approximation, in mm.
@@ -472,9 +473,6 @@ fn sweep_step(pts: &[[f64; 3]], r: f64) -> CutWidthStep {
 
 // --- Toolpath playback -------------------------------------------------------------------------
 
-/// Rapid rate used to estimate playback time until machine settings exist (mm/min).
-pub const ASSUMED_RAPID_RATE: f64 = 5000.0;
-
 /// One move of the playback: where the tool goes and how long it takes at its feed rate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaybackStep {
@@ -514,9 +512,10 @@ pub struct PlaybackTool {
 
 /// Builds the playback of `toolpaths` (each with its tool diameter), in order. Each operation's
 /// first move starts where the previous one ended; the very first move is placed directly (0 s).
-/// Times use the true move lengths (arc length for arcs) at their feed rates, and
-/// `ASSUMED_RAPID_RATE` for rapids.
-pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
+/// Times use the true move lengths (arc length for arcs) at their feed rates. A rapid takes as
+/// long as its slowest axis: X and Y each at `rapid.xy`, Z at `rapid.z` (axes move together,
+/// each no faster than its own rate).
+pub fn playback(toolpaths: &[(&Toolpath, f64)], rapid: RapidRates) -> Playback {
     let mut steps = Vec::new();
     let mut t = 0.0;
     let mut at: Option<Point3> = None;
@@ -545,11 +544,10 @@ pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
                     (length, Some(feed))
                 }
             };
-            let rate = feed.unwrap_or(ASSUMED_RAPID_RATE);
-            let duration_s = if rate > 0.0 {
-                length / rate * 60.0
-            } else {
-                0.0
+            let duration_s = match feed {
+                Some(rate) if rate > 0.0 => length / rate * 60.0,
+                Some(_) => 0.0,
+                None => rapid_seconds(from, to, rapid),
             };
             let mut points = vec![[from.x, from.y, from.z]];
             points.append(&mut pts);
@@ -572,6 +570,20 @@ pub fn playback(toolpaths: &[(&Toolpath, f64)]) -> Playback {
         total_s: t,
         tools: Vec::new(),
     }
+}
+
+/// Time of a rapid from `a` to `b`: the slowest axis at its own rate.
+fn rapid_seconds(a: Point3, b: Point3, rapid: RapidRates) -> f64 {
+    let axis = |d: f64, rate: f64| {
+        if rate > 0.0 {
+            d.abs() / rate * 60.0
+        } else {
+            0.0
+        }
+    };
+    axis(b.x - a.x, rapid.xy)
+        .max(axis(b.y - a.y, rapid.xy))
+        .max(axis(b.z - a.z, rapid.z))
 }
 
 fn dist3(a: Point3, b: Point3) -> f64 {
