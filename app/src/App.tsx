@@ -22,6 +22,8 @@ import {
 } from "./engine";
 import { useNotify } from "./components/Notifications";
 import Toolbar from "./components/Toolbar";
+import Tooltip from "./components/Tooltip";
+import { TOOLBAR_TIPS } from "./tips";
 import Tree from "./components/Tree";
 import Properties from "./components/Properties";
 import Viewport, { type Placing, type ViewMode } from "./components/Viewport";
@@ -67,15 +69,6 @@ const TOOL_KEYS: Record<string, DrawTool> = {
   p: "Polyline",
   ".": "Points",
   d: "Dimension",
-};
-const TOOL_KEY_LABELS: Record<string, string> = {
-  Line: "L",
-  Arc: "A",
-  Circle: "C",
-  Rectangle: "R",
-  Polyline: "P",
-  Point: ".",
-  Dimension: "D",
 };
 
 const buttonForTool = (tool: DrawTool) => Object.keys(TOOL_BUTTONS).find((b) => TOOL_BUTTONS[b] === tool) ?? null;
@@ -1267,7 +1260,7 @@ export default function App() {
     const none = ids.length === 0;
     const later = (label: string): MenuItem => ({ label, disabled: true });
     const sep = (item: MenuItem): MenuItem => ({ ...item, separatorBefore: true });
-    const draw = (label: string): MenuItem => ({ label, shortcut: TOOL_KEY_LABELS[label], action: () => onAction(label) });
+    const draw = (label: string): MenuItem => ({ label, shortcut: TOOLBAR_TIPS[label]?.key, action: () => onAction(label) });
     return {
       later,
       sep,
@@ -1437,6 +1430,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Tooltip />
       <MenuBar menus={menuBarItems()} open={barMenu} onOpen={setBarMenu} />
       <Toolbar
         onAction={onAction}

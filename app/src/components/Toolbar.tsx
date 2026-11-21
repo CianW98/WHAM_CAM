@@ -1,4 +1,6 @@
+import { TOOLBAR_TIPS } from "../tips";
 import { ActionIcon } from "./Icons";
+import { tipProps } from "./Tooltip";
 
 /** The toolbar's groups of actions, each shown under its heading. */
 const GROUPS: { heading: string; actions: string[] }[] = [
@@ -28,15 +30,17 @@ export default function Toolbar({ onAction, disabled, active, on }: Props) {
           <div className="tool-group-heading">{heading}</div>
           <div className="tool-group-buttons">
             {actions.map((name) => (
-              <button
-                key={name}
-                aria-label={name}
-                className={`tool-button${active === name || on.has(name) ? " active" : ""}`}
-                disabled={disabled.has(name)}
-                onClick={() => onAction(name)}
-              >
-                <ActionIcon name={name} />
-              </button>
+              // The description sits on a wrapper so it also shows for a greyed-out button.
+              <span key={name} className="tool-tip" {...tipProps(name, TOOLBAR_TIPS[name]?.text, TOOLBAR_TIPS[name]?.key)}>
+                <button
+                  aria-label={name}
+                  className={`tool-button${active === name || on.has(name) ? " active" : ""}`}
+                  disabled={disabled.has(name)}
+                  onClick={() => onAction(name)}
+                >
+                  <ActionIcon name={name} />
+                </button>
+              </span>
             ))}
           </div>
         </div>

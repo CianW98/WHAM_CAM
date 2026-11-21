@@ -38,6 +38,8 @@ import type {
   SnapOptions,
 } from "../engine";
 import type { Selection } from "../selection";
+import { SETTING_TIPS } from "../tips";
+import { tipProps } from "./Tooltip";
 import { shapeLabel } from "./Tree";
 import ColorSwatch from "./ColorSwatch";
 import PointsDialog, { type PointsEdit } from "./PointsDialog";
@@ -75,15 +77,21 @@ function Row({
   children,
   own = false,
   onReset,
+  tipKey,
 }: {
   label: string;
   children: ReactNode;
   own?: boolean;
   onReset?: () => void;
+  /** Which hover description to show, when the label alone is ambiguous (see SETTING_TIPS). */
+  tipKey?: string;
 }) {
+  const text = SETTING_TIPS[tipKey ?? label];
+  const note = own ? "Changed in this project" : undefined;
+  const tip = text || note ? tipProps(label, text, undefined, note) : {};
   return (
     <tr>
-      <th className={own ? "prop-own" : undefined} title={own ? "Changed in this project" : undefined}>
+      <th className={own ? "prop-own" : undefined} {...tip}>
         {label}
         {own && onReset && (
           <button className="prop-reset" title="Back to the template's or machine's value" onClick={onReset}>
@@ -570,10 +578,10 @@ function OperationRows({
   const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
   return (
     <>
-      <Row label="Name">
+      <Row label="Name" tipKey="Name (operation)">
         <TextField shown={op.name} parse={(t) => (t.trim() ? t.trim() : null)} onSave={(name) => onSet({ ...op, name })} />
       </Row>
-      <Row label="Type">{op.kind.type}</Row>
+      <Row label="Type" tipKey="Type (operation)">{op.kind.type}</Row>
       <Row label="Enabled">
         <BoolField value={op.enabled} onSave={(enabled) => void onSet({ ...op, enabled })} />
       </Row>
@@ -593,7 +601,7 @@ function OperationRows({
         </Row>
       )}
       <GroupRow label="Common" />
-      <Row label="Tool">
+      <Row label="Tool" tipKey="Tool (operation)">
         <OperationToolSelect op={op} doc={doc} tooling={tooling} onPick={onPickTool} />
       </Row>
       {c.tool_source === "Custom" ? (
@@ -1088,7 +1096,7 @@ function LibraryRows({ name, edits }: { name: string; edits: Edits }) {
   return (
     <>
       <Grid>
-        <Row label="Name">
+        <Row label="Name" tipKey="Name (library)">
           <TextField
             shown={lib.name}
             parse={(t) => (t.trim() ? t : null)}
@@ -1179,7 +1187,7 @@ function LibraryRows({ name, edits }: { name: string; edits: Edits }) {
 function LayerRows({ layer, onRenameLayer, onSetLayerColor }: { layer: Layer } & Edits) {
   return (
     <>
-      <Row label="Name">
+      <Row label="Name" tipKey="Name (layer)">
         <TextField
           shown={layer.name}
           parse={(t) => t}
@@ -1226,7 +1234,7 @@ function Content({
       return (
         <Grid>
           <>
-            <Row label="Name">
+            <Row label="Name" tipKey="Name (project)">
               {doc.name}
             </Row>
           </>
@@ -1259,7 +1267,7 @@ function Content({
           <Row label="Tool library">
             <LibraryChoice doc={doc} tooling={edits.tooling} onSet={(n) => void edits.onSetActiveLibrary(n)} />
           </Row>
-          <Row label="Tool">
+          <Row label="Tool" tipKey="Tool (machining)">
             <LevelToolSelect
               doc={doc}
               tooling={edits.tooling}
@@ -1278,10 +1286,10 @@ function Content({
       return part ? (
         <Grid>
           <>
-            <Row label="Name">
+            <Row label="Name" tipKey="Name (part)">
               {part.name}
             </Row>
-            <Row label="Tool">
+            <Row label="Tool" tipKey="Tool (part)">
               <LevelToolSelect
                 doc={doc}
                 tooling={edits.tooling}
@@ -1323,7 +1331,7 @@ function Content({
       const builtIn = m.name === BUILT_IN;
       return (
         <Grid>
-          <Row label="Name">
+          <Row label="Name" tipKey="Name (machine)">
             {builtIn ? (
               m.name
             ) : (
@@ -1344,7 +1352,7 @@ function Content({
       const builtIn = t?.name === BUILT_IN;
       return t ? (
         <Grid>
-          <Row label="Name">
+          <Row label="Name" tipKey="Name (template)">
             {builtIn ? (
               t.name
             ) : (
@@ -1379,8 +1387,8 @@ function Content({
       if (dim)
         return (
           <Grid>
-            <Row label="ID">{dim.id}</Row>
-            <Row label="Type">{`${dim.kind} dimension`}</Row>
+            <Row label="ID" tipKey="ID (dimension)">{dim.id}</Row>
+            <Row label="Type" tipKey="Type (dimension)">{`${dim.kind} dimension`}</Row>
             <Row label="Value">{`${num(dim.value)}${dim.kind === "Angle" ? "°" : " mm"}`}</Row>
           </Grid>
         );
@@ -1397,7 +1405,7 @@ function Content({
               <Row label="Layer">
                 {layer.name}
               </Row>
-              <Row label="Type">
+              <Row label="Type" tipKey="Type (shape)">
                 {shapeLabel(obj.shape)}
               </Row>
             </>

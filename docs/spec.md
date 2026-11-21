@@ -101,6 +101,9 @@ A classic CAD/CAM layout, with a toolbar:
   Show cut width, Produce G-code). Pressed buttons (the drawing tool in use,
   Show toolpaths/cut width when on) are light blue. Everything on the toolbar is also in the menus; Zoom to fit is in the View
   and right-click menus only.
+- **Hover descriptions**: resting the mouse on a toolbar button, or on a setting's name in
+  Properties, shows a small box with its name, shortcut key (toolbar) and a one-line description.
+  A setting changed in the project also says so there.
 - **Left panel tabs**: *Project* and *Setup*, above the tree. The Properties panel stays below
   both.
   - **Project** is the tree: Layers → drawing objects; Machining → Parts → operations. Click to

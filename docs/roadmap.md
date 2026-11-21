@@ -2,7 +2,7 @@
 
 ## Road to 1.0.0
 
-- **Hover descriptions**: show a short description, and the shortcut key, when hovering over buttons and settings across the whole program.
+- **More hover descriptions**: add them to the small buttons and icons (layer eye, colour square, snaps, 2D/3D, playback bar, tree markers) and to menu items, like the toolbar and Properties settings.
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
 
 ## Release themes after 1.0.0

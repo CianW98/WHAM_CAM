@@ -57,6 +57,7 @@ feature that is in neither. Note new ideas in `docs/roadmap.md` and ask first.
 - The engine (Rust) owns everything that affects the machine: DXF/SVG import, geometry, toolpath generation, tool library, post-processors and G-code output.
 - The engine is its own Rust crate/library with its own tests. It must build and pass its tests without the UI.
 - The interface only displays things and passes settings to the engine. No toolpath maths, geometry calculations or G-code generation in the front-end code.
+- Every toolbar button and Properties setting has a hover description. Adding a button or setting means adding its description.
 - UI changes must never change G-code output. If a UI change needs an engine change, stop and explain it before doing it.
 - Project files are complete on their own (spec 5.8): anything a project uses from Setup (templates, machines, libraries, or anything new) is copied into the project file.
 - Point and arc maths (bulge ↔ arc, arc sweep across 0°, angle normalising, point helpers) lives
@@ -103,8 +104,7 @@ toolpaths or G-code. Example: cavalier_contours does the offsetting, in `engine/
 
 ## Commands
 Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeScript interface),
-`app/src-tauri/` (Tauri app layer, crate `wham_cam_app`). `app/src/engine/index.ts` is the only
-interface file that talks to the engine.
+`app/src-tauri/` (Tauri app layer, crate `wham_cam_app`).
 
 - First-time setup: `cd app && npm install`
 - Run the app (dev mode, reloads on change): `cd app && npm run tauri dev`
@@ -196,6 +196,16 @@ interface file that talks to the engine.
     (machine list), `project_template.rs` (project templates), `project_file.rs` (`.whamcam`
     files). `Project::resolve` works out which tool each operation uses.
   - G-code: `post.rs` (generic post-processor), `gcode_read.rs` (read-back check).
+- Interface (`app/src/`):
+  - Main screen: `App.tsx` (state, menus, keyboard shortcuts), `engine/index.ts` (the link to the
+    engine), `selection.ts`, `playback.ts` (tool position during playback), `styles.css`.
+  - Components (`components/`): `Viewport.tsx` (drawing area, three.js), `Tree.tsx` (Project tree),
+    `SetupTree.tsx`, `Properties.tsx`, `Toolbar.tsx`, `Icons.tsx`, `MenuBar.tsx`, `ContextMenu.tsx`,
+    `PlaybackBar.tsx`, `Notifications.tsx`, `ColorSwatch.tsx`; dialogs `ToolListDialog.tsx`,
+    `PointsDialog.tsx`, `NumberDialog.tsx`, `ChoiceDialog.tsx`.
+  - Hover descriptions: `tips.ts` (the text), `components/Tooltip.tsx` (the box).
+- App layer: `app/src-tauri/src/lib.rs` (Tauri commands, opening and saving files, the Setup
+  settings kept on this computer).
 - Engine tests are in `engine/tests/`, one file per area (e.g. `pocket.rs`, `dxf.rs`).
   `reference_gcode.rs` compares output with the checked files in `engine/tests/reference_gcode/`.
 - The reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole

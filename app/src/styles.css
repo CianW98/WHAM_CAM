@@ -96,6 +96,13 @@ body,
   display: flex;
   gap: 2px;
 }
+.tool-tip {
+  display: inline-flex;
+}
+/* Lets a greyed-out button's wrapper still show its hover description. */
+.toolbar button.tool-button:disabled {
+  pointer-events: none;
+}
 .toolbar button.tool-button {
   display: inline-flex;
   align-items: center;
@@ -893,4 +900,40 @@ button.primary {
 .library-add .number {
   width: 4em;
   flex: none;
+}
+
+/* Hover description box */
+.tooltip {
+  position: fixed;
+  z-index: 100;
+  max-width: 300px;
+  padding: 5px 8px;
+  background: #fff;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.tooltip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.tooltip-title {
+  font-weight: 700;
+}
+.tooltip-key {
+  color: var(--muted);
+  font-family: ui-monospace, Consolas, monospace;
+}
+.tooltip-text {
+  margin-top: 2px;
+}
+.tooltip-note {
+  margin-top: 2px;
+  color: var(--muted);
+  font-style: italic;
 }
