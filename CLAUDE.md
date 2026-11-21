@@ -192,8 +192,8 @@ interface file that talks to the engine.
   - Toolpaths: `operation.rs`, `toolpath.rs`, `path.rs`, `offset.rs` (the only file that calls
     cavalier_contours), `pocket.rs`, `profile.rs`, `drill.rs`, `safety.rs` (safety checker).
   - Tools, machines and files: `tooling.rs` (master tool list and libraries), `machine.rs`
-    (machine list), `project_file.rs` (`.whamcam` files). `Project::resolve` works out which
-    tool each operation uses.
+    (machine list), `project_template.rs` (project templates), `project_file.rs` (`.whamcam`
+    files). `Project::resolve` works out which tool each operation uses.
   - G-code: `post.rs` (generic post-processor), `gcode_read.rs` (read-back check).
 - Engine tests are in `engine/tests/`, one file per area (e.g. `pocket.rs`, `dxf.rs`).
   `reference_gcode.rs` compares output with the checked files in `engine/tests/reference_gcode/`.

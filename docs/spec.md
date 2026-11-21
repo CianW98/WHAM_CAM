@@ -104,13 +104,15 @@ A classic CAD/CAM layout, with a toolbar:
   - **Project** is the tree: Layers → drawing objects; Machining → Parts → operations. Click to
     select (Machining and parts too: their Properties are in 5.4), right-click for actions
     (rename, delete, enable/disable, generate toolpath).
-  - **Setup** holds the Master tool list, the Tool libraries (5.5) and the Machines (5.7).
+  - **Setup** holds the Master tool list, the Tool libraries (5.5), the Machines (5.7) and the
+    Project templates (5.9).
     Clicking Master tool list opens its window. Right-click Tool libraries → New library;
     right-click a library → Rename, Delete library. Selecting a library shows its numbered tools
     in Properties, where tools are added from the master list, renumbered or taken out. Machines
-    are added, renamed and deleted the same way.
+    are added, renamed and deleted the same way, and so are Project templates.
 - **The Setup tab is global, not project-specific.** It holds what belongs to
-  the computer and is shared by every project: the master tool list, tool libraries and machines.
+  the computer and is shared by every project: the master tool list, tool libraries, machines and
+  project templates.
   It is only for configuring things at that level:
   - Nothing in it changes the open project, and it shows no project information.
   - Project choices, such as which library a project uses, are made in the Project tab (5.4).
@@ -196,11 +198,14 @@ A classic CAD/CAM layout, with a toolbar:
 - New shapes go onto the **current layer**, marked ✎ in the tree. Clicking a layer makes it current.
 - Points are set by clicking. Clicks snap to end points, mid points and centres of shapes
   (within a few pixels) or else to the grid; **Grid** and **Objects** snap toggles sit in the
-  drawing area, and a marker shows what was snapped to. A finished shape becomes the selection.
+  drawing area (saved with the project), and a marker shows what was snapped to. A finished shape
+  becomes the selection.
 - Exact values are edited in the properties panel afterwards: line ends, arc centre/radius/angles,
   circle centre/radius, polyline closed and points, rectangle lower left/width/height/rotation,
   point-list points.
-- Grid spacing: a project setting (default 10 mm), in the project's properties.
+- Grid spacing (default 10 mm) and grid area (X min/max, Y min/max; default -1000 to 1000) are
+  project settings, in the project's properties. The grid is drawn only inside its area, with the
+  X/Y axes through 0,0; grid snapping works everywhere.
 
 ### 5.2a Selection
 - Click selects a shape; Shift/Ctrl-click adds or removes. Esc clears.
@@ -428,7 +433,8 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
 - The file holds `"format": "WHAM_CAM project"`, `"format_version"` (2), `"saved_by"` (the
-  WHAM_CAM version) and the document: project name, grid spacing, layers (name, colour, shapes),
+  WHAM_CAM version) and the document: project name, grid spacing, grid area, snap settings, the
+  project template's name, layers (name, colour, shapes),
   the project's tool library (by name) and Machining tool, and parts with their tool and
   operations (settings and tool).
 - Numbers are written so they read back exactly. Files are written to a temporary file and then
@@ -442,7 +448,23 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
 - Opening starts a fresh undo history, zooms to fit and resets the current layer to the first.
   The copy/paste clipboard is kept, so shapes can be copied between projects.
-- Not saved: current layer, view position, snap settings.
+- Not saved: current layer, view position.
+
+### 5.9 Project templates
+A project template is a saved set of a project's interface settings: grid spacing, grid area and
+snap to grid / snap to objects. They have no effect on toolpaths or G-code.
+- The templates are a list in the Setup tab (global, like the machines), kept in
+  `project_templates.json` in WHAM_CAM's settings folder. Right-click → New template; on a template
+  → Rename, Use for new projects, Delete template. Selecting a template shows its settings in
+  Properties. Changes are saved straight away and are not undo steps.
+- WHAM_CAM starts with one template, **Default** (grid 10 mm, area -1000 to 1000, both snaps on).
+  One template is marked "new projects": File ▸ New and startup use it. It can't be deleted until
+  another is marked.
+- The **Project** item's Properties: **Template**, then the project's own grid spacing, grid area
+  and snaps. Picking a template copies its values into the project, which keeps them; changing
+  or deleting the template later never changes the project (a missing one shows "not on this
+  computer").
+- Changing a project's grid, snap or template settings marks it unsaved but is not an undo step.
 
 ## 6. Operation settings
 

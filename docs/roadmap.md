@@ -2,10 +2,9 @@
 
 ## Road to 1.0.0
 
-- **Machine configuration dialog**, kept limited for now: adding a machine does no post-processing yet. It holds rapid rates (used by playback), tool changer yes/no, travel limits (unused for now, built on later in this roadmap) and other machine settings that operations already have and that may need to be global. The exact settings list and how the dialog works are still to be designed.
-- **Project setup and defaults**. The settings a user can change per project, saved in the project file: grid spacing, snap on/off by type (grid, end, mid, centre), tool library, tool and machine, default operation values (stock surface, clearance plane, fast plunge height, depth increment, feeds, spindle speed). Decision needed: whether this is a tab (like Setup) or part of the Project tab.
+- **Machine configuration dialog**, kept limited for now: adding a machine does no post-processing yet. It holds rapid rates (used by playback), tool changer yes/no, travel limits (unused for now, built on later in this roadmap) and other machine settings that operations already have and that may need to be global. The exact settings list and how the dialog works are still to be designed. Decide whether the project tool library, tool and machine, and default operation values (stock surface, clearance plane, fast plunge height, depth increment, feeds, spindle speed), live in the machine properties.
 - **UI improvements**: replace the text-based actions at the top with icons; highlight the active layer instead of marking it with the small pencil icon; add hotkeys for showing and hiding toolpaths and cut widths.
-- **Full end-to-end check by Cian**: vastly done already; the machine dialog and project setup are what remain.
+- **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
 
 ## Release themes after 1.0.0
 
