@@ -373,7 +373,10 @@ fn arc_of(from: Point3, to: Point3, c: Point, ccw: bool) -> (f64, f64, f64) {
 pub struct CutWidthStep {
     /// Triangles, three corners each: [x0, y0, z0, x1, y1, z1, x2, y2, z2, ...]. In order: a disc
     /// at the start, then for each segment of the step's points its strip (2 triangles) and the
-    /// rounded join at its end, then a disc at the end.
+    /// rounded join at its end, then a disc at the end. Where one cut step carries straight on into
+    /// the next (same point, same cutter), the end disc is replaced by the rounded join into the
+    /// next step and the next step has no start disc: stacked discs at every move made the band
+    /// far too heavy to draw.
     pub triangles: Vec<f64>,
     /// For each segment of the step's points (points[k] → points[k + 1]), the index of the
     /// triangle its strip starts at. A segment with no length has no strip (its index is where
@@ -383,11 +386,28 @@ pub struct CutWidthStep {
 
 /// The cut width of every step of `pb` (the same steps, in the same order).
 pub fn cut_width_steps(pb: &Playback) -> Vec<CutWidthStep> {
+    let cuts = |st: &PlaybackStep| st.kind == MoveKind::Cut && st.tool_diameter > 0.0;
+    // Whether step i carries on into step i + 1: both cut with the same cutter, i + 1 starts
+    // where i ends, and both have some length.
+    let carries_on = |i: usize| {
+        let (Some(a), Some(b)) = (pb.steps.get(i), pb.steps.get(i + 1)) else {
+            return false;
+        };
+        cuts(a)
+            && cuts(b)
+            && a.tool_diameter == b.tool_diameter
+            && a.points.last() == b.points.first()
+            && first_long_segment(&a.points).is_some()
+            && first_long_segment(&b.points).is_some()
+    };
     pb.steps
         .iter()
-        .map(|st| {
-            if st.kind == MoveKind::Cut && st.tool_diameter > 0.0 {
-                sweep_step(&st.points, st.tool_diameter / 2.0)
+        .enumerate()
+        .map(|(i, st)| {
+            if cuts(st) {
+                let joined_before = i > 0 && carries_on(i - 1);
+                let next = carries_on(i).then(|| pb.steps[i + 1].points.as_slice());
+                sweep_step(&st.points, st.tool_diameter / 2.0, joined_before, next)
             } else {
                 CutWidthStep {
                     triangles: Vec::new(),
@@ -415,16 +435,36 @@ fn push_fan(tris: &mut Vec<f64>, c: [f64; 3], r: f64, start: f64, sweep: f64) {
     }
 }
 
+fn long_segment(a: [f64; 3], b: [f64; 3]) -> bool {
+    (b[0] - a[0]).hypot(b[1] - a[1]) > 1e-9
+}
+
+/// Index of the first segment of `pts` with some length (seen from above).
+fn first_long_segment(pts: &[[f64; 3]]) -> Option<usize> {
+    (0..pts.len().saturating_sub(1)).find(|&m| long_segment(pts[m], pts[m + 1]))
+}
+
 /// The swept band along `pts` for a cutter of radius `r`: strips either side of the path, rounded
-/// joins on the outside of bends, and round ends.
-fn sweep_step(pts: &[[f64; 3]], r: f64) -> CutWidthStep {
+/// joins on the outside of bends, and round ends. `joined_before`: the previous step carries on
+/// into this one, so there is no start disc. `next`: the points of the next step when this one
+/// carries on into it, so the end is the rounded join into it instead of a disc.
+fn sweep_step(
+    pts: &[[f64; 3]],
+    r: f64,
+    joined_before: bool,
+    next: Option<&[[f64; 3]]>,
+) -> CutWidthStep {
     use std::f64::consts::{FRAC_PI_2, PI};
     let mut tris: Vec<f64> = Vec::new();
     let mut segment_starts = Vec::with_capacity(pts.len().saturating_sub(1));
     let count = |t: &Vec<f64>| t.len() / 9;
-    let long = |a: [f64; 3], b: [f64; 3]| (b[0] - a[0]).hypot(b[1] - a[1]) > 1e-9;
+    let long = long_segment;
     let dir = |a: [f64; 3], b: [f64; 3]| (b[1] - a[1]).atan2(b[0] - a[0]);
-    if let Some(&first) = pts.first() {
+    // Direction the next step sets off in (when this one carries on into it).
+    let next_dir = next.and_then(|n| first_long_segment(n).map(|m| dir(n[m], n[m + 1])));
+    if let Some(&first) = pts.first()
+        && !joined_before
+    {
         push_fan(&mut tris, first, r, 0.0, TAU);
     }
     for k in 0..pts.len().saturating_sub(1) {
@@ -448,8 +488,12 @@ fn sweep_step(pts: &[[f64; 3]], r: f64) -> CutWidthStep {
             [b[0] - nx, b[1] - ny, b[2]],
         );
         // Rounded join on the outside of the bend at b, towards the next segment with length.
-        if let Some(next) = (k + 1..pts.len() - 1).find(|&m| long(pts[m], pts[m + 1])) {
-            let d2 = dir(pts[next], pts[next + 1]);
+        // After the last segment with length, that is the next step's first.
+        let d2 = (k + 1..pts.len() - 1)
+            .find(|&m| long(pts[m], pts[m + 1]))
+            .map(|m| dir(pts[m], pts[m + 1]))
+            .or(next_dir);
+        if let Some(d2) = d2 {
             let turn = (d2 - d + PI).rem_euclid(TAU) - PI;
             if turn.abs() > 1e-9 {
                 // Turning left the outside is on the right, and the other way round.
@@ -462,7 +506,7 @@ fn sweep_step(pts: &[[f64; 3]], r: f64) -> CutWidthStep {
             }
         }
     }
-    if pts.len() > 1 {
+    if pts.len() > 1 && next_dir.is_none() {
         push_fan(&mut tris, pts[pts.len() - 1], r, 0.0, TAU);
     }
     CutWidthStep {

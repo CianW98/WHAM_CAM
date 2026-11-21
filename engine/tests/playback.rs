@@ -284,6 +284,41 @@ fn cut_width_covers_the_cutter_band_and_nothing_else() {
 }
 
 #[test]
+fn cuts_that_carry_on_share_one_join_not_two_discs() {
+    // Two cuts in a row, then a separate cut after a rapid: only the ends of each run get a disc.
+    let tp = Toolpath {
+        operation_id: 1,
+        moves: vec![
+            rapid(0.0, 0.0, 3.0),
+            feed(0.0, 0.0, -1.0, 300.0),
+            feed(20.0, 0.0, -1.0, 600.0),
+            feed(20.0, 15.0, -1.0, 600.0),
+            rapid(20.0, 15.0, 3.0),
+            rapid(40.0, 0.0, 3.0),
+            feed(40.0, 0.0, -1.0, 300.0),
+            feed(50.0, 0.0, -1.0, 600.0),
+            rapid(50.0, 0.0, 3.0),
+        ],
+        limits: limits(),
+        cycles: Vec::new(),
+    };
+    let pb = playback(&[(&tp, 6.0)], RapidRates::default());
+    let widths = cut_width_steps(&pb);
+    let tris = |i: usize| widths[i].triangles.len() / 9;
+    // Steps: 0 rapid, 1 plunge, 2 cut, 3 cut, 4 rapid, 5 rapid, 6 plunge, 7 cut, 8 rapid.
+    let lone = &widths[7];
+    let disc_tris = lone.segment_starts[0]; // the start disc comes before the strip
+    assert!(disc_tris > 8);
+    assert_eq!(tris(7), 2 * disc_tris + 2, "a lone cut: disc, strip, disc");
+    // The first of the pair starts with a disc and ends with a quarter-turn join, no disc.
+    assert_eq!(widths[2].segment_starts[0], disc_tris);
+    assert!(tris(2) < 2 * disc_tris + 2);
+    // The second has no start disc (its strip is first) and ends with a disc.
+    assert_eq!(widths[3].segment_starts[0], 0);
+    assert_eq!(tris(3), 2 + disc_tris);
+}
+
+#[test]
 fn rapids_and_plunges_have_no_cut_width() {
     let tp = Toolpath {
         operation_id: 1,

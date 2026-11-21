@@ -432,6 +432,8 @@ function lathe(points: [number, number][], opacity: number): THREE.Mesh {
     transparent: true,
     opacity,
     depthWrite: false,
+    // Drawn over everything, as before the cut width used the depth buffer.
+    depthTest: false,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geom, mat);
@@ -536,18 +538,29 @@ function buildCutWidths(s: Scene3, steps: CutWidthStep[]) {
     k += st.triangles.length;
   }
   const attr = new THREE.BufferAttribute(data, 3);
-  const mesh = (geom: THREE.BufferGeometry, color: number, order: number) => {
-    const m = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: false }));
+  // The band is depth tested (the only thing that is): the depth passes of an operation lie on top
+  // of each other, and drawing every one in full made moving the view very slow. With the depth
+  // test the graphics card skips what the band nearest the eye already hides. The band done so
+  // far is pulled very slightly towards the eye, so it shows over the same band drawn faded.
+  const mesh = (geom: THREE.BufferGeometry, color: number, order: number, overFaded: boolean) => {
+    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+    if (overFaded) {
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -1;
+      mat.polygonOffsetUnits = -1;
+    }
+    const m = new THREE.Mesh(geom, mat);
     m.renderOrder = order; // under the toolpath lines and the drawing
     s.cutWidths.add(m);
     return m;
   };
-  const all = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 3);
-  const done = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 4);
+  const all = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 3, false);
+  const done = mesh(new THREE.BufferGeometry().setAttribute("position", attr), CUT_WIDTH_COLOR, 4, true);
   const partial = mesh(
     new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(18), 3)),
     CUT_WIDTH_COLOR,
     4,
+    true,
   );
   done.visible = false;
   partial.visible = false;
