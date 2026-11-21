@@ -161,11 +161,7 @@ button:hover {
 .tree-star {
   display: inline-block;
   width: 1em;
-  color: var(--accent);
   font-size: 0.8em;
-}
-.tree-item.selected .tree-star {
-  color: var(--select-text);
 }
 
 
