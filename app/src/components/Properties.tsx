@@ -589,9 +589,9 @@ function OperationRows({
           onSave={(target_depth) => common({ target_depth })}
         />
       </Row>
-      {/* Drilling has no depth passes: Standard and Peck don't use these; Spiral uses the depth
+      {/* Drilling has no depth passes: Standard and Peck don't use these; Helical uses the depth
           increment as its depth per turn. */}
-      {(op.kind.type !== "Drill" || op.kind.method === "Spiral") && (
+      {(op.kind.type !== "Drill" || op.kind.method === "Helical") && (
         <Row label={drill ? "Depth per turn" : "Depth increment"}>
           {num(c.depth_increment, (depth_increment) => common({ depth_increment }))}
         </Row>
@@ -699,7 +699,7 @@ function KindRows({
               choices={[
                 ["Standard", "Standard (straight plunge)"],
                 ["Peck", "Peck"],
-                ["Spiral", "Spiral"],
+                ["Helical", "Helical"],
               ]}
               onSave={(method) => void kind({ method })}
             />
@@ -708,7 +708,7 @@ function KindRows({
           {k.method === "Peck" && (
             <Row label="Peck distance">{num(k.peck_distance, (peck_distance) => kind({ peck_distance }))}</Row>
           )}
-          {k.method === "Spiral" && (
+          {k.method === "Helical" && (
             <>
               {/* Circles are cut to their own diameter; this is for point lists and arcs. */}
               <Row label="Hole diameter (points, arcs)">

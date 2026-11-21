@@ -136,7 +136,7 @@ export interface ProfileSettings {
   cut_ordering: CutOrdering;
 }
 
-export type DrillMethod = "Standard" | "Peck" | "Spiral";
+export type DrillMethod = "Standard" | "Peck" | "Helical";
 
 export interface DrillSettings {
   method: DrillMethod;
@@ -144,9 +144,9 @@ export interface DrillSettings {
   retract_height: number;
   /** Depth of each peck (Peck only). */
   peck_distance: number;
-  /** Hole diameter (Spiral only; bigger than the tool) for point lists and arcs. Circles use their own. */
+  /** Hole diameter (Helical only; bigger than the tool) for point lists and arcs. Circles use their own. */
   hole_diameter: number;
-  /** Direction round the hole (Spiral only). */
+  /** Direction round the hole (Helical only). */
   milling_direction: MillingDirection;
 }
 

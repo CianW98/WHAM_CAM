@@ -1,4 +1,4 @@
-//! Drill toolpaths (spec 6.4): Standard (straight down), Peck, or Spiral (a helix round a hole
+//! Drill toolpaths (spec 6.4): Standard (straight down), Peck, or Helical (a helix round a hole
 //! bigger than the tool), at every hole position, nearest hole next. Standard and Peck holes are
 //! canned cycles (G81 / G83), whose moves come from [`cycle_moves`].
 
@@ -12,7 +12,7 @@ use crate::toolpath::{CycleKind, DrillCycle, Limits, Move, Point3, Toolpath};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hole {
     pub at: Point,
-    /// The hole's own diameter, for a circle: spiral drilling cuts it to this size. `None` (point
+    /// The hole's own diameter, for a circle: helical drilling cuts it to this size. `None` (point
     /// lists, arcs) uses the operation's Hole diameter setting.
     pub diameter: Option<f64>,
 }
@@ -86,15 +86,15 @@ pub fn drill_toolpath(
         );
     }
     // The first listed hole, then always the nearest hole not yet drilled.
-    if d.method == DrillMethod::Spiral {
+    if d.method == DrillMethod::Helical {
         for (id, h) in &left {
             let dia = h.diameter.unwrap_or(d.hole_diameter);
             if dia <= c.tool_diameter {
                 return Err(match h.diameter {
                     Some(_) => format!(
-                        "Circle {id} ({dia} mm) is not bigger than the tool, so it can't be spiral drilled."
+                        "Circle {id} ({dia} mm) is not bigger than the tool, so it can't be helical drilled."
                     ),
-                    None => "For spiral drilling the hole diameter must be bigger than the tool diameter."
+                    None => "For helical drilling the hole diameter must be bigger than the tool diameter."
                         .into(),
                 });
             }
@@ -128,7 +128,7 @@ pub fn drill_toolpath(
         let kind = match d.method {
             DrillMethod::Standard => Some(CycleKind::Standard),
             DrillMethod::Peck => Some(CycleKind::Peck),
-            DrillMethod::Spiral => None,
+            DrillMethod::Helical => None,
         };
         match kind {
             Some(kind) => {
@@ -153,7 +153,7 @@ pub fn drill_toolpath(
             }
             None => {
                 let dia = hole.diameter.unwrap_or(d.hole_diameter);
-                spiral(&mut m, h, dia, target, c, d);
+                helical(&mut m, h, dia, target, c, d);
                 // Straight up out of the hole, from wherever the tool is (it may end at the wall).
                 let end = m.at.map_or(h, |a| Point::new(a.x, a.y));
                 m.rapid(end.x, end.y, clear);
@@ -221,13 +221,13 @@ pub fn cycle_moves(cycle: &DrillCycle, clearance: f64, back_off: f64) -> Vec<Mov
     m.moves
 }
 
-/// A spiral hole at `h`: from the wall position, feed down to the stock surface, helix down by
+/// A helical hole at `h`: from the wall position, feed down to the stock surface, helix down by
 /// at most the depth increment per turn to the target, then one flat circle at the bottom.
 /// If the tool has cleared the centre (hole no more than twice the tool diameter) it then feeds
 /// to the centre, off the wall, ready to go up. A bigger hole leaves an uncut core in the middle,
 /// so the tool stays at the wall and goes straight up from there (moving inward would run into
 /// the core).
-fn spiral(
+fn helical(
     m: &mut Moves,
     h: Point,
     hole_diameter: f64,

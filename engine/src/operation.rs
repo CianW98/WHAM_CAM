@@ -162,7 +162,7 @@ pub enum DrillMethod {
     Peck,
     /// A helix round the hole (hole bigger than the tool), `depth_increment` down per turn, then
     /// a flat circle at the bottom.
-    Spiral,
+    Helical,
 }
 
 /// Drill settings (spec 6.4).
@@ -174,10 +174,10 @@ pub struct DrillSettings {
     pub retract_height: f64,
     /// Depth of each peck (Peck only).
     pub peck_distance: f64,
-    /// Diameter of the hole (Spiral only) for point lists and arcs; more than the tool diameter.
+    /// Diameter of the hole (Helical only) for point lists and arcs; more than the tool diameter.
     /// Circles are cut to their own diameter.
     pub hole_diameter: f64,
-    /// Direction round the hole (Spiral only). Conventional = clockwise (an inside wall).
+    /// Direction round the hole (Helical only). Conventional = clockwise (an inside wall).
     pub milling_direction: MillingDirection,
 }
 
@@ -323,7 +323,7 @@ impl Operation {
                         "The peck distance must be more than 0.",
                     ),
                     // Checked per hole when generating: circles use their own diameter.
-                    DrillMethod::Spiral => ok(
+                    DrillMethod::Helical => ok(
                         d.hole_diameter > 0.0,
                         "The hole diameter must be more than 0.",
                     ),

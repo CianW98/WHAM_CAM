@@ -179,7 +179,7 @@ fn peck_with_a_low_r_plane_has_no_air_pecks() {
 }
 
 #[test]
-fn standard_and_peck_holes_are_canned_cycles_spiral_is_not() {
+fn standard_and_peck_holes_are_canned_cycles_helical_is_not() {
     let holes = [p(0.0, 0.0), p(10.0, 0.0)];
     let c = settings(3.0, -5.0);
     for (dm, kind) in [
@@ -203,26 +203,26 @@ fn standard_and_peck_holes_are_canned_cycles_spiral_is_not() {
             .collect();
         assert_eq!(made, tp.moves);
     }
-    let spiral = drill(
+    let helical = drill(
         &holes,
         &c,
         &DrillSettings {
             hole_diameter: 8.0,
-            ..method(DrillMethod::Spiral)
+            ..method(DrillMethod::Helical)
         },
     );
-    assert!(spiral.cycles.is_empty());
+    assert!(helical.cycles.is_empty());
 }
 
 #[test]
-fn spiral_helixes_down_cleans_the_floor_and_leaves_from_the_centre() {
+fn helical_helixes_down_cleans_the_floor_and_leaves_from_the_centre() {
     // 10 mm hole, 6 mm tool: the tool centre goes round at radius 2. Target −5, 2 mm per turn:
     // 3 equal turns of 5/3 mm.
     let c = CommonSettings {
         depth_increment: 2.0,
         ..settings(6.0, -5.0)
     };
-    let d = method(DrillMethod::Spiral);
+    let d = method(DrillMethod::Helical);
     let tp = drill(&[p(20.0, 10.0)], &c, &d);
     let m = &tp.moves;
     // Over the wall position, then feed down to the stock surface.
@@ -328,7 +328,7 @@ fn hole_positions_come_from_point_lists_circles_and_arcs() {
 }
 
 #[test]
-fn spiral_cuts_a_circle_to_its_own_diameter() {
+fn helical_cuts_a_circle_to_its_own_diameter() {
     // A 16 mm circle with a 6 mm tool: the tool centre goes round at radius 5, whatever the Hole
     // diameter setting says (it is for point lists and arcs).
     let circle = Shape::Circle {
@@ -339,7 +339,7 @@ fn spiral_cuts_a_circle_to_its_own_diameter() {
     let c = settings(6.0, -2.0);
     let d = DrillSettings {
         hole_diameter: 10.0,
-        ..method(DrillMethod::Spiral)
+        ..method(DrillMethod::Helical)
     };
     let tp = drill_toolpath(1, &[(1, holes)], &c, &d).unwrap();
     assert!(check(&tp.moves, &tp.limits).is_empty());
@@ -363,7 +363,7 @@ fn spiral_cuts_a_circle_to_its_own_diameter() {
             .all(|m| !matches!(m, Move::Feed { to, .. } if to.x.hypot(to.y) < 5.0 - 1e-9))
     );
 
-    // A circle no bigger than the tool can't be spiral drilled.
+    // A circle no bigger than the tool can't be helical drilled.
     let small = Shape::Circle {
         center: p(0.0, 0.0),
         radius: 3.0,

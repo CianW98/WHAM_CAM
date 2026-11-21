@@ -174,7 +174,7 @@ fn peck_drilling_uses_g83_with_q() {
 }
 
 #[test]
-fn spiral_drilling_is_written_out_as_a_helix() {
+fn helical_drilling_is_written_out_as_a_helix() {
     let mut p = project();
     let shape = p
         .add_shape(
@@ -188,7 +188,7 @@ fn spiral_drilling_is_written_out_as_a_helix() {
     let op = p.add_drill(&[shape]).unwrap();
     set_depth(&mut p, op, -3.0, |o| {
         if let OperationKind::Drill(d) = &mut o.kind {
-            d.method = DrillMethod::Spiral;
+            d.method = DrillMethod::Helical;
         }
     });
     p.generate(&[]);

@@ -300,7 +300,7 @@ fn rapids_and_plunges_have_no_cut_width() {
 
 #[test]
 fn a_helix_descends_evenly_and_takes_its_true_length() {
-    // Half a turn of radius 5 going down 2 mm (spiral drilling).
+    // Half a turn of radius 5 going down 2 mm (helical drilling).
     let tp = Toolpath {
         operation_id: 1,
         moves: vec![

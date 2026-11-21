@@ -313,9 +313,9 @@ fn add_drill_takes_points_circles_and_arcs_and_checks_its_settings() {
     assert_eq!(proj.generate(&[]).generated, 1);
     assert_eq!(status(&proj, op), "ok");
 
-    // Spiral with a hole no bigger than the tool is refused when generating.
+    // Helical with a hole no bigger than the tool is refused when generating.
     if let OperationKind::Drill(d) = &mut o.kind {
-        d.method = DrillMethod::Spiral;
+        d.method = DrillMethod::Helical;
         d.hole_diameter = 6.0;
     }
     proj.set_operation(o.clone()).unwrap();

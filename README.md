@@ -17,7 +17,7 @@ WHAM_CAM runs on Windows and Linux, works fully offline, and is not tied to any 
 - keep a **master tool list** and **tool libraries** on your computer (tool numbers per library,
   e.g. for a tool changer), and give tools to the whole job, a part or a single operation;
 - make **profile** (inside, outside, on line), **pocket** (with islands) and **drill**
-  (standard, peck, spiral) toolpaths with end mills, with every toolpath checked by a safety
+  (standard, peck, helical) toolpaths with end mills, with every toolpath checked by a safety
   checker;
 - preview toolpaths in 2D and 3D, show the cutter width, and play the real tool back along them.
 
