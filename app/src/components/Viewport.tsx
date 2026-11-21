@@ -12,6 +12,7 @@ import type {
   CutWidthStep,
   DisplayData,
   DisplayShape,
+  GridArea,
   Label,
   Draft,
   MoveKind,
@@ -77,8 +78,7 @@ const CUT_WIDTH_COLOR = 0x35506c;
 const CUT_WIDTH_FADED_COLOR = 0x2e353f;
 const RAPID_DASH_MM = 2;
 const RAPID_GAP_MM = 1.5;
-const GRID_EXTENT = 1000; // mm either side of the origin (less for very fine grids)
-const GRID_MAX_LINES = 500; // most grid lines either side of the origin
+const GRID_MAX_LINES = 500; // most grid lines either side of the origin (fine grids cover less)
 const GRID_MAJOR_EVERY = 5; // every 5th grid line is drawn brighter
 const ZOOM_STEP = 1.15;
 const PICK_RADIUS_PX = 6; // how close (in screen pixels) a click must be to a shape
@@ -188,6 +188,8 @@ interface Props {
   /** Changes whenever the view should zoom to fit the drawing. */
   fitRequest: number;
   gridSpacing: number;
+  /** The area the grid is drawn over (display only). */
+  gridArea: GridArea;
   mode: ViewMode;
   onMode: (m: ViewMode) => void;
   /** What is being placed by clicking, or null when selecting. */
@@ -226,23 +228,32 @@ function lineSegments(positions: number[], color: number, order: number): THREE.
 }
 
 /** Grid lines every `spacing` mm. Fine grids cover a smaller area so the line count stays sane. */
-function buildGrid(spacing: number): THREE.Group {
-  const n = Math.max(1, Math.min(GRID_MAX_LINES, Math.floor(GRID_EXTENT / spacing)));
-  const extent = n * spacing;
+/** The grid over the project's grid area (display only), with the X/Y axes through 0,0. Very fine
+ * grids are drawn at most GRID_MAX_LINES lines either side of the origin. */
+function buildGrid(spacing: number, area: GridArea): THREE.Group {
+  const reach = GRID_MAX_LINES * spacing;
+  const x0 = Math.max(area.x_min, -reach);
+  const x1 = Math.min(area.x_max, reach);
+  const y0 = Math.max(area.y_min, -reach);
+  const y1 = Math.min(area.y_max, reach);
   const minor: number[] = [];
   const major: number[] = [];
-  for (let i = -n; i <= n; i++) {
-    if (i === 0) continue; // the axes are drawn there
-    const v = i * spacing;
-    const target = i % GRID_MAJOR_EVERY === 0 ? major : minor;
-    target.push(v, -extent, 0, v, extent, 0);
-    target.push(-extent, v, 0, extent, v, 0);
+  // Lines at whole multiples of the spacing inside the area; 0 is left for the axes.
+  const lines = (from: number, to: number, line: (v: number, m: number[]) => void) => {
+    for (let i = Math.ceil(from / spacing); i <= Math.floor(to / spacing); i++) {
+      if (i === 0) continue;
+      line(i * spacing, i % GRID_MAJOR_EVERY === 0 ? major : minor);
+    }
+  };
+  if (x0 < x1 && y0 < y1) {
+    lines(x0, x1, (v, m) => m.push(v, y0, 0, v, y1, 0));
+    lines(y0, y1, (v, m) => m.push(x0, v, 0, x1, v, 0));
   }
   const group = new THREE.Group();
   group.add(lineSegments(minor, COLORS.gridMinor, 0));
   group.add(lineSegments(major, COLORS.gridMajor, 1));
-  group.add(lineSegments([-extent, 0, 0, extent, 0, 0], COLORS.axisX, 2));
-  group.add(lineSegments([0, -extent, 0, 0, extent, 0], COLORS.axisY, 2));
+  if (y0 <= 0 && 0 <= y1 && x0 < x1) group.add(lineSegments([x0, 0, 0, x1, 0, 0], COLORS.axisX, 2));
+  if (x0 <= 0 && 0 <= x1 && y0 < y1) group.add(lineSegments([0, y0, 0, 0, y1, 0], COLORS.axisY, 2));
   return group;
 }
 
@@ -716,6 +727,7 @@ export default function Viewport({
   selectedIds,
   fitRequest,
   gridSpacing,
+  gridArea,
   mode,
   onMode,
   placing,
@@ -774,7 +786,7 @@ export default function Viewport({
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const grid = buildGrid(10);
+    const grid = buildGrid(10, { x_min: -1000, x_max: 1000, y_min: -1000, y_max: 1000 }) // replaced once the project arrives;
     scene.add(grid);
     const cutWidthGroup = new THREE.Group();
     scene.add(cutWidthGroup);
@@ -1131,16 +1143,17 @@ export default function Viewport({
     };
   }, []);
 
-  // Rebuild the grid when its spacing changes.
+  // Rebuild the grid when its spacing or area changes.
+  const { x_min, x_max, y_min, y_max } = gridArea;
   useEffect(() => {
     const s = sceneRef.current;
     if (!s || !(gridSpacing > 0)) return;
     s.scene.remove(s.grid);
     clearGroup(s.grid);
-    s.grid = buildGrid(gridSpacing);
+    s.grid = buildGrid(gridSpacing, { x_min, x_max, y_min, y_max });
     s.scene.add(s.grid);
     s.render();
-  }, [gridSpacing]);
+  }, [gridSpacing, x_min, x_max, y_min, y_max]);
 
   // Update the preview and snap marker when what is being placed or the snap settings change
   // (also clears them when placing stops).

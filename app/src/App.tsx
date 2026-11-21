@@ -11,6 +11,7 @@ import {
   type Playback,
   type Point,
   type Shape,
+  type GridArea,
   type SnapOptions,
   type Tool,
   type Tooling,
@@ -153,13 +154,16 @@ function playbackSignature(pb: Playback): string {
 
 const samePoint = (a: Point | undefined, b: Point) => a !== undefined && a.x === b.x && a.y === b.y;
 
+/** Until the first view arrives (the engine's defaults). */
+const DEFAULT_SNAP: SnapOptions = { grid: true, objects: true };
+const DEFAULT_GRID_AREA: GridArea = { x_min: -1000, x_max: 1000, y_min: -1000, y_max: 1000 };
+
 export default function App() {
   const notify = useNotify();
   const [view, setView] = useState<View | null>(null);
   const [selection, setSelection] = useState<Selection>(NOTHING);
   const [fitRequest, setFitRequest] = useState(0);
   const [choice, setChoice] = useState<(Choice & { resolve: (a: string | null) => void }) | null>(null);
-  const [snapOptions, setSnapOptions] = useState<SnapOptions>({ grid: true, objects: true });
   const [currentLayer, setCurrentLayer] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("2D");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -734,6 +738,33 @@ export default function App() {
       return ok;
     },
     [toolingTry],
+  );
+
+  const renameTemplate = useCallback(
+    async (oldName: string, newName: string) => {
+      let stored = newName.trim();
+      const ok = await toolingTry(async () => {
+        stored = await engine.renameTemplate(oldName, newName);
+      });
+      if (ok)
+        setSelection((sel) => (sel.kind === "template" && sel.name === oldName ? { kind: "template", name: stored } : sel));
+      return ok;
+    },
+    [toolingTry],
+  );
+
+  const deleteTemplate = useCallback(
+    async (name: string) => {
+      const answer = await ask({
+        title: "Delete project template",
+        message: `Delete the project template "${name}"? Projects that used it keep their own grid and snap settings. This can't be undone.`,
+        options: ["Delete"],
+      });
+      if (answer !== "Delete") return;
+      if (await toolingTry(() => engine.deleteTemplate(name)))
+        setSelection((sel) => (sel.kind === "template" && sel.name === name ? NOTHING : sel));
+    },
+    [ask, toolingTry],
   );
 
   const deleteMachine = useCallback(
@@ -1431,6 +1462,15 @@ export default function App() {
               }}
               onRenameMachine={renameMachine}
               onDeleteMachine={(name) => void deleteMachine(name)}
+              templates={view?.templates ?? null}
+              onAddTemplate={async () => {
+                const name = await engine.addTemplate();
+                await refresh();
+                return name;
+              }}
+              onRenameTemplate={renameTemplate}
+              onDeleteTemplate={(name) => void deleteTemplate(name)}
+              onSetTemplateForNewProjects={(name) => void toolingTry(() => engine.setTemplateForNewProjects(name))}
             />
           ) : (
           <Tree
@@ -1470,6 +1510,14 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             onSetShape={setShape}
             onSetGridSpacing={setGridSpacing}
+            onSetGridArea={(area) => tryEdit(() => engine.setGridArea(area))}
+            onSetSnap={(snap) => tryEdit(() => engine.setSnap(snap))}
+            templates={view?.templates ?? null}
+            onApplyTemplate={(name) => tryEdit(() => engine.applyProjectTemplate(name))}
+            onRenameTemplate={renameTemplate}
+            onSetTemplateGridSpacing={(name, mm) => toolingTry(() => engine.setTemplateGridSpacing(name, mm))}
+            onSetTemplateGridArea={(name, area) => toolingTry(() => engine.setTemplateGridArea(name, area))}
+            onSetTemplateSnap={(name, snap) => toolingTry(() => engine.setTemplateSnap(name, snap))}
             onSetOperation={setOperation}
             onSetOperationShapes={setOperationShapes}
             operationStates={view?.operations ?? []}
@@ -1502,12 +1550,13 @@ export default function App() {
         selectedIds={selectedSet}
         fitRequest={fitRequest}
         gridSpacing={view?.document.grid_spacing ?? 10}
+        gridArea={view?.document.grid_area ?? DEFAULT_GRID_AREA}
         mode={viewMode}
         onMode={setViewMode}
         placing={placing}
         hint={draft ? drawHint(draft) : special ? specialHint(special) : null}
-        snapOptions={snapOptions}
-        onSnapOptions={setSnapOptions}
+        snapOptions={view?.document.snap ?? DEFAULT_SNAP}
+        onSnapOptions={(snap) => void tryEdit(() => engine.setSnap(snap))}
         onPick={onPick}
         onBox={onBox}
         onPlacePoint={placePoint}

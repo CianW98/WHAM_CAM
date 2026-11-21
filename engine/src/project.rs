@@ -12,7 +12,7 @@ use crate::display::{
     toolpath_display,
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
-use crate::document::{Document, DrawingObject, is_hex_color};
+use crate::document::{Document, DrawingObject, GridArea, check_grid_spacing, is_hex_color};
 use crate::draw::{self, Draft, DrawTool, Snap, SnapKind, SnapOptions};
 use crate::drill;
 use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
@@ -28,6 +28,7 @@ use crate::pocket;
 use crate::post::{Header, JobOperation, PostFormat, Program, write_program};
 use crate::profile;
 use crate::project_file;
+use crate::project_template::ProjectTemplate;
 use crate::safety;
 use crate::svg::{SvgError, SvgOptions, read_svg};
 use crate::tooling::{PickedTool, Tool};
@@ -241,8 +242,11 @@ impl Project {
     // --- Project files ---------------------------------------------------------------------
 
     /// Starts a new, empty project. The clipboard is kept.
-    pub fn new_project(&mut self) {
-        self.replace_document(Document::new("Untitled"));
+    /// Starts a new, empty project with the template's grid and snap settings.
+    pub fn new_project(&mut self, template: &ProjectTemplate) {
+        let mut doc = Document::new("Untitled");
+        copy_template(&mut doc, template);
+        self.replace_document(doc);
     }
 
     /// Opens a project from project-file text, replacing the current one with a fresh undo
@@ -876,12 +880,41 @@ impl Project {
     }
 
     /// Sets the grid spacing in mm as one undo step.
+    /// Sets the grid spacing. Like every project setting (grid, snaps, template) it marks the
+    /// project unsaved but is not an undo step.
     pub fn set_grid_spacing(&mut self, mm: f64) -> Result<(), String> {
-        if !(mm.is_finite() && mm > 0.0) {
-            return Err("The grid spacing must be more than 0 mm.".to_string());
-        }
-        self.edit(|doc| doc.grid_spacing = mm);
+        check_grid_spacing(mm)?;
+        self.set_setting(|doc| doc.grid_spacing = mm);
         Ok(())
+    }
+
+    /// Sets the area the grid is drawn over. Not an undo step.
+    pub fn set_grid_area(&mut self, area: GridArea) -> Result<(), String> {
+        area.validate()?;
+        self.set_setting(|doc| doc.grid_area = area);
+        Ok(())
+    }
+
+    /// Switches the drawing snaps. Not an undo step.
+    pub fn set_snap(&mut self, snap: SnapOptions) {
+        self.set_setting(|doc| doc.snap = snap);
+    }
+
+    /// Copies a project template's values into the project and remembers its name. Not an
+    /// undo step. Operations are never affected.
+    pub fn apply_template(&mut self, template: &ProjectTemplate) {
+        self.set_setting(|doc| copy_template(doc, template));
+    }
+
+    /// Changes a project setting everywhere in the history, so it marks the project unsaved
+    /// but undo and redo never step through it (as for the project name).
+    fn set_setting(&mut self, change: impl Fn(&mut Document)) {
+        for doc in std::iter::once(&mut self.doc)
+            .chain(&mut self.undo)
+            .chain(&mut self.redo)
+        {
+            change(doc);
+        }
     }
 
     /// Snaps a cursor position while drawing. `extra` are the points of the shape being drawn.
@@ -2111,4 +2144,12 @@ fn segment_hits_rect(a: [f64; 2], b: [f64; 2], r: &Rect) -> bool {
         }
     }
     true
+}
+
+/// Copies a project template's values into a document.
+fn copy_template(doc: &mut Document, template: &ProjectTemplate) {
+    doc.grid_spacing = template.grid_spacing;
+    doc.grid_area = template.grid_area;
+    doc.snap = template.snap;
+    doc.template = Some(template.name.clone());
 }

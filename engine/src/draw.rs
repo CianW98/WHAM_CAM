@@ -96,6 +96,16 @@ pub struct SnapOptions {
     pub objects: bool,
 }
 
+impl Default for SnapOptions {
+    /// Both snaps on.
+    fn default() -> Self {
+        Self {
+            grid: true,
+            objects: true,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Building shapes
 

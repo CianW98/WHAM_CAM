@@ -76,6 +76,9 @@ fn check(doc: &Document) -> Result<(), String> {
     if !(doc.grid_spacing.is_finite() && doc.grid_spacing > 0.0) {
         return damaged("the grid spacing must be a number more than 0".into());
     }
+    if let Err(e) = doc.grid_area.validate() {
+        return Err(format!("The project file is damaged: {e}"));
+    }
     if doc.layers.is_empty() {
         return damaged("it has no layers".into());
     }

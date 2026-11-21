@@ -28,6 +28,64 @@ pub struct Document {
     /// Dimensions (measure only; not on any layer, never machined or exported).
     #[serde(default)]
     pub dimensions: Vec<crate::dimension::DimensionObject>,
+    /// The area the drawing grid covers (display only).
+    #[serde(default)]
+    pub grid_area: GridArea,
+    /// Which snaps are on while drawing.
+    #[serde(default)]
+    pub snap: crate::draw::SnapOptions,
+    /// The project template the grid and snap settings were last copied from (by name; the
+    /// templates belong to the computer). None = not picked. Display only: the values above are
+    /// the project's own.
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+/// The area the drawing grid is drawn over, in mm. Interface only: it never affects snapping,
+/// toolpaths or G-code.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GridArea {
+    pub x_min: f64,
+    pub x_max: f64,
+    pub y_min: f64,
+    pub y_max: f64,
+}
+
+impl Default for GridArea {
+    fn default() -> Self {
+        Self {
+            x_min: -1000.0,
+            x_max: 1000.0,
+            y_min: -1000.0,
+            y_max: 1000.0,
+        }
+    }
+}
+
+impl GridArea {
+    /// Checks every value is a number and each minimum is below its maximum.
+    pub fn validate(&self) -> Result<(), String> {
+        let all = [self.x_min, self.x_max, self.y_min, self.y_max];
+        if !all.iter().all(|v| v.is_finite()) {
+            return Err("The grid area values must be numbers.".into());
+        }
+        if self.x_min >= self.x_max {
+            return Err("The grid X min must be less than X max.".into());
+        }
+        if self.y_min >= self.y_max {
+            return Err("The grid Y min must be less than Y max.".into());
+        }
+        Ok(())
+    }
+}
+
+/// Checks a grid spacing is a number more than 0.
+pub fn check_grid_spacing(mm: f64) -> Result<(), String> {
+    if mm.is_finite() && mm > 0.0 {
+        Ok(())
+    } else {
+        Err("The grid spacing must be more than 0 mm.".into())
+    }
 }
 
 /// Grid spacing for new projects (and older project files that don't have one), in mm.
@@ -106,6 +164,9 @@ impl Document {
             machining_tool: None,
             machine: None,
             dimensions: Vec::new(),
+            grid_area: GridArea::default(),
+            snap: crate::draw::SnapOptions::default(),
+            template: None,
         }
     }
 

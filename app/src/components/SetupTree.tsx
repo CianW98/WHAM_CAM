@@ -1,8 +1,8 @@
-// The Setup tab of the left panel: the Master tool list and the Tool libraries (this computer's,
-// shared by every project).
+// The Setup tab of the left panel: the Master tool list, the Tool libraries, the Machines and the
+// Project templates (this computer's, shared by every project).
 
 import { useEffect, useRef, useState } from "react";
-import type { Machines, Tooling } from "../engine";
+import type { Machines, ProjectTemplates, Tooling } from "../engine";
 import type { Selection } from "../selection";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
 
@@ -22,9 +22,17 @@ interface Props {
   /** Resolves false if the new name was rejected. */
   onRenameMachine: (oldName: string, newName: string) => Promise<boolean>;
   onDeleteMachine: (name: string) => void;
+  templates: ProjectTemplates | null;
+  /** Adds a project template; resolves to its name. */
+  onAddTemplate: () => Promise<string>;
+  /** Resolves false if the new name was rejected. */
+  onRenameTemplate: (oldName: string, newName: string) => Promise<boolean>;
+  onDeleteTemplate: (name: string) => void;
+  onSetTemplateForNewProjects: (name: string) => void;
 }
 
-/** A library or machine row: click selects, double-click renames in place (Enter saves, Esc cancels). */
+/** A library, machine or template row: click selects, double-click renames in place (Enter saves,
+ * Esc cancels). */
 function LibraryItem({
   name,
   count,
@@ -37,7 +45,7 @@ function LibraryItem({
 }: {
   name: string;
   /** Shown after the name in brackets (e.g. a library's tool count), if given. */
-  count?: number;
+  count?: number | string;
   selected: boolean;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -107,14 +115,20 @@ export default function SetupTree({
   onAddMachine,
   onRenameMachine,
   onDeleteMachine,
+  templates,
+  onAddTemplate,
+  onRenameTemplate,
+  onDeleteTemplate,
+  onSetTemplateForNewProjects,
 }: Props) {
-  type Group = "library" | "machine";
-  // The right-click menu: on a heading (name null) or on a library or machine.
+  type Group = "library" | "machine" | "template";
+  // The right-click menu: on a heading (name null) or on a library, machine or template.
   const [menu, setMenu] = useState<{ x: number; y: number; group: Group; name: string | null } | null>(null);
   // Which row to start renaming in place, as "group:name".
   const [renaming, setRenaming] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const [machinesOpen, setMachinesOpen] = useState(true);
+  const [templatesOpen, setTemplatesOpen] = useState(true);
   useEffect(() => {
     if (!menu) return;
     const onKey = (e: KeyboardEvent) => {
@@ -147,22 +161,36 @@ export default function SetupTree({
     setRenaming(`machine:${name}`);
   };
 
+  const newTemplate = async () => {
+    const name = await onAddTemplate();
+    setTemplatesOpen(true);
+    onSelect({ kind: "template", name });
+    setRenaming(`template:${name}`);
+  };
+
   const menuItems = (group: Group, name: string | null): MenuItem[] => {
-    const library = group === "library";
     const items: MenuItem[] = [
-      library
+      group === "library"
         ? { label: "New library", action: () => void newLibrary() }
-        : { label: "New machine", action: () => void newMachine() },
+        : group === "machine"
+          ? { label: "New machine", action: () => void newMachine() }
+          : { label: "New template", action: () => void newTemplate() },
     ];
     if (name !== null) {
-      items.push(
-        { label: "Rename", action: () => setRenaming(`${group}:${name}`) },
-        {
-          label: library ? "Delete library" : "Delete machine",
-          separatorBefore: true,
-          action: () => (library ? onDeleteLibrary(name) : onDeleteMachine(name)),
-        },
-      );
+      items.push({ label: "Rename", action: () => setRenaming(`${group}:${name}`) });
+      if (group === "template") {
+        items.push({
+          label: "Use for new projects",
+          disabled: templates?.for_new_projects === name,
+          action: () => onSetTemplateForNewProjects(name),
+        });
+      }
+      items.push({
+        label: group === "library" ? "Delete library" : group === "machine" ? "Delete machine" : "Delete template",
+        separatorBefore: true,
+        action: () =>
+          group === "library" ? onDeleteLibrary(name) : group === "machine" ? onDeleteMachine(name) : onDeleteTemplate(name),
+      });
     }
     return items;
   };
@@ -236,6 +264,38 @@ export default function SetupTree({
                     return ok;
                   }}
                   renameNow={renaming === `machine:${m.name}`}
+                  onRenameStarted={() => setRenaming(null)}
+                />
+              ))}
+            </ul>
+          )}
+        </li>
+        <li>
+          <div
+            className="tree-item"
+            title="Right-click for New template"
+            onClick={() => setTemplatesOpen((o) => !o)}
+            onContextMenu={(e) => openMenu(e, "template", null)}
+          >
+            <span className="chevron">{templatesOpen ? "▾" : "▸"}</span>
+            Project templates
+          </div>
+          {templatesOpen && templates && (
+            <ul>
+              {templates.templates.map((t) => (
+                <LibraryItem
+                  key={t.name}
+                  name={t.name}
+                  count={templates.for_new_projects === t.name ? "new projects" : undefined}
+                  selected={selection.kind === "template" && selection.name === t.name}
+                  onClick={() => onSelect({ kind: "template", name: t.name })}
+                  onContextMenu={(e) => openMenu(e, "template", t.name)}
+                  onRename={async (name) => {
+                    const ok = await onRenameTemplate(t.name, name);
+                    if (ok) onSelect({ kind: "template", name: name.trim() });
+                    return ok;
+                  }}
+                  renameNow={renaming === `template:${t.name}`}
                   onRenameStarted={() => setRenaming(null)}
                 />
               ))}

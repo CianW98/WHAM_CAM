@@ -472,15 +472,16 @@ fn set_shape_edits_and_undoes() {
 }
 
 #[test]
-fn grid_spacing_is_checked_and_undoable() {
+fn grid_spacing_is_checked_and_not_an_undo_step() {
     let mut pr = Project::new();
     assert_eq!(pr.document().grid_spacing, DEFAULT_GRID_SPACING);
     assert!(pr.set_grid_spacing(0.0).is_err());
     assert!(pr.set_grid_spacing(f64::NAN).is_err());
     pr.set_grid_spacing(5.0).unwrap();
     assert_eq!(pr.document().grid_spacing, 5.0);
+    assert!(pr.is_modified());
     pr.undo();
-    assert_eq!(pr.document().grid_spacing, DEFAULT_GRID_SPACING);
+    assert_eq!(pr.document().grid_spacing, 5.0);
 }
 
 #[test]

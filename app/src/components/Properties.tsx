@@ -27,6 +27,9 @@ import type {
   PostProcessor,
   Tool,
   Tooling,
+  GridArea,
+  ProjectTemplates,
+  SnapOptions,
 } from "../engine";
 import type { Selection } from "../selection";
 import { shapeLabel } from "./Tree";
@@ -752,6 +755,17 @@ interface Edits {
   /** Resolves false if the engine refused the change. */
   onSetShape: (id: number, shape: Shape) => Promise<boolean>;
   onSetGridSpacing: (mm: number) => Promise<boolean>;
+  onSetGridArea: (area: GridArea) => Promise<boolean>;
+  onSetSnap: (snap: SnapOptions) => Promise<boolean>;
+  /** This computer's project templates. */
+  templates: ProjectTemplates | null;
+  /** Copies a template's values into the project. */
+  onApplyTemplate: (name: string) => Promise<boolean>;
+  /** Resolves false if the rename was rejected. */
+  onRenameTemplate: (oldName: string, newName: string) => Promise<boolean>;
+  onSetTemplateGridSpacing: (name: string, mm: number) => Promise<boolean>;
+  onSetTemplateGridArea: (name: string, area: GridArea) => Promise<boolean>;
+  onSetTemplateSnap: (name: string, snap: SnapOptions) => Promise<boolean>;
   /** Resolves false if the engine refused the change. */
   onSetOperation: (op: Operation) => Promise<boolean>;
   /** Resolves false if the engine refused the shapes. */
@@ -798,6 +812,72 @@ function LibraryChoice({ doc, tooling, onSet }: { doc: Document; tooling: Toolin
           </option>
         ))}
       </select>
+    </>
+  );
+}
+
+/** The project's template drop-down. Picking one copies its values into the project. */
+function TemplateChoice({
+  doc,
+  templates,
+  onSet,
+}: {
+  doc: Document;
+  templates: ProjectTemplates | null;
+  onSet: (n: string) => void;
+}) {
+  const chosen = doc.template;
+  const list = templates?.templates ?? [];
+  const missing = chosen !== null && !list.some((t) => t.name === chosen);
+  return (
+    <select className="prop-input" value={chosen ?? ""} onChange={(e) => e.target.value !== "" && onSet(e.target.value)}>
+      {chosen === null && <option value="">No template selected</option>}
+      {missing && <option value={chosen!}>{chosen} – not on this computer</option>}
+      {list.map((t) => (
+        <option key={t.name} value={t.name}>
+          {t.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Grid spacing, grid area and snaps: the same rows for the project and for a template. */
+function GridRows({
+  spacing,
+  area,
+  snap,
+  onSpacing,
+  onArea,
+  onSnap,
+}: {
+  spacing: number;
+  area: GridArea;
+  snap: SnapOptions;
+  onSpacing: (mm: number) => Promise<boolean>;
+  onArea: (area: GridArea) => Promise<boolean>;
+  onSnap: (snap: SnapOptions) => void;
+}) {
+  const side = (label: string, key: keyof GridArea) => (
+    <Row label={label}>
+      <NumberField value={area[key]} onSave={(v) => onArea({ ...area, [key]: v })} />
+    </Row>
+  );
+  return (
+    <>
+      <Row label="Grid spacing (mm)">
+        <NumberField value={spacing} onSave={onSpacing} />
+      </Row>
+      {side("Grid X min (mm)", "x_min")}
+      {side("Grid X max (mm)", "x_max")}
+      {side("Grid Y min (mm)", "y_min")}
+      {side("Grid Y max (mm)", "y_max")}
+      <Row label="Snap to grid">
+        <BoolField value={snap.grid} onSave={(grid) => onSnap({ ...snap, grid })} />
+      </Row>
+      <Row label="Snap to objects">
+        <BoolField value={snap.objects} onSave={(objects) => onSnap({ ...snap, objects })} />
+      </Row>
     </>
   );
 }
@@ -980,9 +1060,17 @@ function Content({
             </Row>
           </>
           <>
-            <Row label="Grid spacing (mm)">
-              <NumberField value={doc.grid_spacing} onSave={edits.onSetGridSpacing} />
+            <Row label="Template">
+              <TemplateChoice doc={doc} templates={edits.templates} onSet={(n) => void edits.onApplyTemplate(n)} />
             </Row>
+            <GridRows
+              spacing={doc.grid_spacing}
+              area={doc.grid_area}
+              snap={doc.snap}
+              onSpacing={edits.onSetGridSpacing}
+              onArea={edits.onSetGridArea}
+              onSnap={(snap) => void edits.onSetSnap(snap)}
+            />
           </>
         </Grid>
       );
@@ -1068,6 +1156,33 @@ function Content({
               onSave={(post) => void edits.onSetMachinePost(m.name, post)}
             />
           </Row>
+        </Grid>
+      ) : (
+        nothing
+      );
+    }
+    case "template": {
+      const t = edits.templates?.templates.find((x) => x.name === selection.name);
+      return t ? (
+        <Grid>
+          <Row label="Name">
+            <TextField
+              shown={t.name}
+              parse={(v) => (v.trim() ? v : null)}
+              onSave={(n) => edits.onRenameTemplate(t.name, n)}
+            />
+          </Row>
+          <Row label="New projects">
+            {edits.templates?.for_new_projects === t.name ? "Used for new projects" : "No (right-click to use)"}
+          </Row>
+          <GridRows
+            spacing={t.grid_spacing}
+            area={t.grid_area}
+            snap={t.snap}
+            onSpacing={(mm) => edits.onSetTemplateGridSpacing(t.name, mm)}
+            onArea={(area) => edits.onSetTemplateGridArea(t.name, area)}
+            onSnap={(snap) => void edits.onSetTemplateSnap(t.name, snap)}
+          />
         </Grid>
       ) : (
         nothing

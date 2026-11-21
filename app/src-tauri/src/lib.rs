@@ -9,9 +9,10 @@ use serde::Serialize;
 use tauri::{Manager, State};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DimensionClick, DimensionInfo, DisplayData, DisplayShape,
-    Document, Draft, DxfInfo, GenerateReport, ImportReport, JoinReport, Machines, Operation,
-    OperationState, PickedTool, Playback, Point, PostProcessor, Project, Shape, Snap, SnapOptions,
-    SvgInfo, Tool, ToolDrawing, ToolSetting, Tooling, ToolpathDisplay, TransformOp,
+    Document, Draft, DxfInfo, GenerateReport, GridArea, ImportReport, JoinReport, Machines,
+    Operation, OperationState, PickedTool, Playback, Point, PostProcessor, Project,
+    ProjectTemplates, Shape, Snap, SnapOptions, SvgInfo, Tool, ToolDrawing, ToolSetting, Tooling,
+    ToolpathDisplay, TransformOp,
 };
 
 /// The open project, shared by all commands.
@@ -38,6 +39,9 @@ struct ToolingState(Mutex<SettingsFile<Tooling>>);
 
 /// This computer's machines (`machines.json`).
 struct MachinesState(Mutex<SettingsFile<Machines>>);
+
+/// This computer's project templates (`project_templates.json`).
+struct TemplatesState(Mutex<SettingsFile<ProjectTemplates>>);
 
 /// Loads a settings file from the app's settings folder. A missing file means an empty one.
 /// A file that can't be read is kept aside (renamed `.damaged`), never overwritten.
@@ -139,6 +143,8 @@ struct View {
     tooling: Tooling,
     /// This computer's machines.
     machines: Machines,
+    /// This computer's project templates.
+    templates: ProjectTemplates,
     /// Layers hidden from view (not saved).
     hidden_layers: Vec<String>,
     /// The dimensions as they are now (kind and value).
@@ -147,7 +153,13 @@ struct View {
     dimensions_visible: bool,
 }
 
-fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines) -> View {
+fn view(
+    p: &Project,
+    file: Option<&Path>,
+    tooling: &Tooling,
+    machines: &Machines,
+    templates: &ProjectTemplates,
+) -> View {
     View {
         document: p.document().clone(),
         display: p.display().clone(),
@@ -161,6 +173,7 @@ fn view(p: &Project, file: Option<&Path>, tooling: &Tooling, machines: &Machines
         toolpaths: p.toolpaths_display(),
         tooling: tooling.clone(),
         machines: machines.clone(),
+        templates: templates.clone(),
         hidden_layers: p.hidden_layers(),
         dimensions: p.dimensions(),
         dimensions_visible: p.dimensions_visible(),
@@ -188,13 +201,89 @@ fn get_view(
     file: State<OpenFile>,
     tooling: State<ToolingState>,
     machines: State<MachinesState>,
+    templates: State<TemplatesState>,
 ) -> View {
     view(
         &state.0.lock().unwrap(),
         file.0.lock().unwrap().as_deref(),
         &tooling.0.lock().unwrap().value,
         &machines.0.lock().unwrap().value,
+        &templates.0.lock().unwrap().value,
     )
+}
+
+// --- Project templates --------------------------------------------------------------------------
+// Like everything in the Setup tab, changing a template never changes the open project.
+
+#[tauri::command]
+fn add_template(templates: State<TemplatesState>) -> Result<String, String> {
+    change_settings(&templates.0, |t| Ok(t.add_template()))
+}
+
+/// Renames a template. Returns the new name.
+#[tauri::command]
+fn rename_template(
+    old: String,
+    new: String,
+    templates: State<TemplatesState>,
+) -> Result<String, String> {
+    change_settings(&templates.0, |t| t.rename_template(&old, &new))
+}
+
+#[tauri::command]
+fn delete_template(name: String, templates: State<TemplatesState>) -> Result<(), String> {
+    change_settings(&templates.0, |t| t.delete_template(&name))
+}
+
+#[tauri::command]
+fn set_template_for_new_projects(
+    name: String,
+    templates: State<TemplatesState>,
+) -> Result<(), String> {
+    change_settings(&templates.0, |t| t.set_for_new_projects(&name))
+}
+
+#[tauri::command]
+fn set_template_grid_spacing(
+    name: String,
+    mm: f64,
+    templates: State<TemplatesState>,
+) -> Result<(), String> {
+    change_settings(&templates.0, |t| t.set_grid_spacing(&name, mm))
+}
+
+#[tauri::command]
+fn set_template_grid_area(
+    name: String,
+    area: GridArea,
+    templates: State<TemplatesState>,
+) -> Result<(), String> {
+    change_settings(&templates.0, |t| t.set_grid_area(&name, area))
+}
+
+#[tauri::command]
+fn set_template_snap(
+    name: String,
+    snap: SnapOptions,
+    templates: State<TemplatesState>,
+) -> Result<(), String> {
+    change_settings(&templates.0, |t| t.set_snap(&name, snap))
+}
+
+/// Copies a template's values into the open project. Not an undo step.
+#[tauri::command]
+fn apply_project_template(
+    name: String,
+    state: State<AppState>,
+    templates: State<TemplatesState>,
+) -> Result<(), String> {
+    let templates = templates.0.lock().unwrap();
+    let template = templates
+        .value
+        .template(&name)
+        .ok_or_else(|| format!("There is no project template called \"{name}\"."))?;
+    state.0.lock().unwrap().apply_template(template);
+    Ok(())
 }
 
 // --- Machines -----------------------------------------------------------------------------------
@@ -239,7 +328,11 @@ fn set_project_machine(name: Option<String>, state: State<AppState>) {
 
 /// Problems found loading the settings files (tool list, machine list), once each.
 #[tauri::command]
-fn settings_problems(tooling: State<ToolingState>, machines: State<MachinesState>) -> Vec<String> {
+fn settings_problems(
+    tooling: State<ToolingState>,
+    machines: State<MachinesState>,
+    templates: State<TemplatesState>,
+) -> Vec<String> {
     let mut problems: Vec<String> = tooling
         .0
         .lock()
@@ -249,6 +342,7 @@ fn settings_problems(tooling: State<ToolingState>, machines: State<MachinesState
         .into_iter()
         .collect();
     problems.extend(machines.0.lock().unwrap().problem.take());
+    problems.extend(templates.0.lock().unwrap().problem.take());
     problems
 }
 
@@ -431,8 +525,13 @@ fn set_operation_tool(
 // --- Project files ------------------------------------------------------------------------------
 
 #[tauri::command]
-fn new_project(state: State<AppState>, file: State<OpenFile>) {
-    state.0.lock().unwrap().new_project();
+fn new_project(state: State<AppState>, file: State<OpenFile>, templates: State<TemplatesState>) {
+    let templates = templates.0.lock().unwrap();
+    state
+        .0
+        .lock()
+        .unwrap()
+        .new_project(templates.value.for_new());
     *file.0.lock().unwrap() = None;
 }
 
@@ -679,6 +778,16 @@ fn set_grid_spacing(mm: f64, state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_grid_area(area: GridArea, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_grid_area(area)
+}
+
+#[tauri::command]
+fn set_snap(snap: SnapOptions, state: State<AppState>) {
+    state.0.lock().unwrap().set_snap(snap);
+}
+
+#[tauri::command]
 fn transform(ids: Vec<u32>, op: TransformOp, state: State<AppState>) -> Result<(), String> {
     state.0.lock().unwrap().transform(&ids, op)
 }
@@ -888,6 +997,20 @@ pub fn run() {
                 wham_engine::machine::from_text,
                 wham_engine::machine::to_text,
             ))));
+            let templates = load_settings(
+                dir.as_deref(),
+                "project_templates.json",
+                "project templates",
+                wham_engine::project_template::from_text,
+                wham_engine::project_template::to_text,
+            );
+            // The project shown at startup starts from the template for new projects.
+            app.state::<AppState>()
+                .0
+                .lock()
+                .unwrap()
+                .new_project(templates.value.for_new());
+            app.manage(TemplatesState(Mutex::new(templates)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -898,6 +1021,14 @@ pub fn run() {
             delete_machine,
             set_machine_post,
             set_project_machine,
+            add_template,
+            rename_template,
+            delete_template,
+            set_template_for_new_projects,
+            set_template_grid_spacing,
+            set_template_grid_area,
+            set_template_snap,
+            apply_project_template,
             check_gcode,
             save_gcode,
             new_tool,
@@ -943,6 +1074,8 @@ pub fn run() {
             add_draft,
             set_shape,
             set_grid_spacing,
+            set_grid_area,
+            set_snap,
             transform,
             transform_preview,
             selection_centre,

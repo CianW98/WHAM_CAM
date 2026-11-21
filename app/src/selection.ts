@@ -14,7 +14,9 @@ export type Selection =
   /** A tool library (Setup tab), by name. */
   | { kind: "library"; name: string }
   /** A machine (Setup tab), by name. */
-  | { kind: "machine"; name: string };
+  | { kind: "machine"; name: string }
+  /** A project template (Setup tab), by name. */
+  | { kind: "template"; name: string };
 
 export const NOTHING: Selection = { kind: "objects", ids: [] };
 

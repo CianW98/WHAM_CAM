@@ -247,6 +247,71 @@ export interface Document {
   machine: string | null;
   /** Dimensions (not on any layer; see `View.dimensions` for their values). */
   dimensions: DimensionObject[];
+  /** The area the grid is drawn over (display only). */
+  grid_area: GridArea;
+  /** Which snaps are on while drawing (saved with the project). */
+  snap: SnapOptions;
+  /** The project template the grid and snaps were last copied from; null = none picked. */
+  template: string | null;
+}
+
+/** The area the drawing grid is drawn over, in mm. */
+export interface GridArea {
+  x_min: number;
+  x_max: number;
+  y_min: number;
+  y_max: number;
+}
+
+// --- Project templates (spec 5.9) ---------------------------------------------------------------
+
+export interface ProjectTemplate {
+  name: string;
+  grid_spacing: number;
+  grid_area: GridArea;
+  snap: SnapOptions;
+}
+
+/** This computer's project templates. */
+export interface ProjectTemplates {
+  templates: ProjectTemplate[];
+  /** The template File ▸ New starts from. */
+  for_new_projects: string;
+}
+
+/** Adds a template ("Template 1", ...) with the built-in values. Returns its name. */
+export function addTemplate(): Promise<string> {
+  return invoke<string>("add_template");
+}
+
+/** Renames a template. Resolves to the name as stored. */
+export function renameTemplate(oldName: string, newName: string): Promise<string> {
+  return invoke<string>("rename_template", { old: oldName, new: newName });
+}
+
+export function deleteTemplate(name: string): Promise<void> {
+  return invoke<void>("delete_template", { name });
+}
+
+export function setTemplateForNewProjects(name: string): Promise<void> {
+  return invoke<void>("set_template_for_new_projects", { name });
+}
+
+export function setTemplateGridSpacing(name: string, mm: number): Promise<void> {
+  return invoke<void>("set_template_grid_spacing", { name, mm });
+}
+
+export function setTemplateGridArea(name: string, area: GridArea): Promise<void> {
+  return invoke<void>("set_template_grid_area", { name, area });
+}
+
+export function setTemplateSnap(name: string, snap: SnapOptions): Promise<void> {
+  return invoke<void>("set_template_snap", { name, snap });
+}
+
+/** Copies a template's grid and snap values into the project. Not an undo step. */
+export function applyProjectTemplate(name: string): Promise<void> {
+  return invoke<void>("apply_project_template", { name });
 }
 
 // --- Machines (spec 5.7) ------------------------------------------------------------------------
@@ -384,6 +449,8 @@ export interface View {
   dimensionsVisible: boolean;
   /** This computer's machines. */
   machines: Machines;
+  /** This computer's project templates. */
+  templates: ProjectTemplates;
 }
 
 export interface DxfUnits {
@@ -543,7 +610,7 @@ export function onCloseRequested(canClose: () => Promise<boolean>): Promise<() =
 // The master tool list and libraries belong to this computer and are saved straight away
 // (not undo steps). The active library and an operation's tool are part of the project.
 
-/** Problems found loading the tool list and machine list (each reported once). */
+/** Problems found loading the tool list, machine list and project templates (each reported once). */
 export function settingsProblems(): Promise<string[]> {
   return invoke<string[]>("settings_problems");
 }
@@ -862,6 +929,16 @@ export function addDraft(layer: string, draft: Draft): Promise<number> {
 /** Replaces an object's shape. Rejects with a plain-English message if the shape isn't valid. */
 export function setShape(id: number, shape: Shape): Promise<void> {
   return invoke<void>("set_shape", { id, shape });
+}
+
+/** Sets the area the grid is drawn over. Not an undo step. */
+export function setGridArea(area: GridArea): Promise<void> {
+  return invoke<void>("set_grid_area", { area });
+}
+
+/** Switches the drawing snaps (saved with the project). Not an undo step. */
+export function setSnap(snap: SnapOptions): Promise<void> {
+  return invoke<void>("set_snap", { snap });
 }
 
 export function setGridSpacing(mm: number): Promise<void> {

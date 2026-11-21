@@ -23,6 +23,7 @@ pub mod post;
 pub mod profile;
 pub mod project;
 pub mod project_file;
+pub mod project_template;
 pub mod safety;
 pub mod svg;
 pub mod tooling;
@@ -34,7 +35,9 @@ pub use display::{
     ASSUMED_RAPID_RATE, CutWidthStep, DISPLAY_TOLERANCE, Direction, DisplayData, DisplayShape,
     Playback, PlaybackStep, PlaybackTool, ToolpathDisplay, display_data,
 };
-pub use document::{DEFAULT_GRID_SPACING, Document, DrawingObject, LAYER_PALETTE, Layer, Part};
+pub use document::{
+    DEFAULT_GRID_SPACING, Document, DrawingObject, GridArea, LAYER_PALETTE, Layer, Part,
+};
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfOptions, DxfUnits, read_dxf};
 pub use geometry::{Point, Polyline, Shape, Transform, Vertex};
@@ -44,6 +47,7 @@ pub use project::{
     BoxMode, BreakReport, DimensionClick, DimensionInfo, DxfInfo, GenerateReport, ImportReport,
     JoinReport, NO_TOOL, OperationState, Project, SvgInfo, ToolSetting,
 };
+pub use project_template::{ProjectTemplate, ProjectTemplates};
 pub use svg::{SvgError, read_svg};
 pub use tooling::{
     EndType, FluteType, LibraryTool, PickedTool, Tool, ToolDrawing, ToolLibrary, Tooling,
