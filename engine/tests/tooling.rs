@@ -63,7 +63,7 @@ fn automatic_names_follow_the_values() {
     let id = t.add_tool(Tool::new_default()).unwrap();
     assert_eq!(
         t.tool(id).unwrap().name,
-        "6mm 2F Spiral End Mill, 20mm flute"
+        "6mm 2F Upcut End Mill, 20mm flute"
     );
     let mut edited = t.tool(id).unwrap().clone();
     edited.diameter = 3.175;
@@ -73,14 +73,14 @@ fn automatic_names_follow_the_values() {
     t.set_tool(edited).unwrap();
     assert_eq!(
         t.tool(id).unwrap().name,
-        "3.175mm 1F Spiral Ball Nose, 12.5mm flute"
+        "3.175mm 1F Upcut Ball Nose, 12.5mm flute"
     );
     let vbit = Tool {
         end_type: EndType::VBit,
         v_angle: 60.0,
         ..Tool::new_default()
     };
-    assert_eq!(vbit.generated_name(), "6mm 60° 2F Spiral V-Bit, 20mm flute");
+    assert_eq!(vbit.generated_name(), "6mm 60° 2F Upcut V-Bit, 20mm flute");
     let drill = Tool {
         end_type: EndType::Drill,
         ..Tool::new_default()
@@ -271,7 +271,7 @@ fn drills_have_no_flute_type() {
     assert_eq!(slope(&drill(FluteType::Downcut)), -1.0);
     assert_eq!(
         drill(FluteType::Straight).drawing(),
-        drill(FluteType::Spiral).drawing()
+        drill(FluteType::Upcut).drawing()
     );
 }
 
@@ -283,11 +283,11 @@ fn helix_angle_checked_only_where_it_applies() {
         helix_angle: 95.0,
         ..Tool::new_default()
     };
-    assert!(bad(FluteType::Spiral, EndType::Flat).validate().is_err());
+    assert!(bad(FluteType::Upcut, EndType::Flat).validate().is_err());
     assert!(bad(FluteType::Downcut, EndType::Ball).validate().is_err());
     assert!(bad(FluteType::Straight, EndType::Flat).validate().is_ok());
     assert!(
-        bad(FluteType::Spiral, EndType::Drill).validate().is_ok(),
+        bad(FluteType::Upcut, EndType::Drill).validate().is_ok(),
         "drills have no helix angle"
     );
     assert_eq!(Tool::new_default().helix_angle, 30.0);
@@ -305,7 +305,7 @@ fn older_tools_get_spiral_flutes_at_30_degrees() {
     assert!(
         t.tools
             .iter()
-            .all(|x| x.flute_type == FluteType::Spiral && x.helix_angle == 30.0)
+            .all(|x| x.flute_type == FluteType::Upcut && x.helix_angle == 30.0)
     );
 }
 
@@ -620,7 +620,7 @@ fn custom_tool_has_all_tool_values() {
     assert_eq!((c.tool_number, c.tool_diameter), (1, 6.0));
     assert_eq!(
         c.tool.as_ref().unwrap().name,
-        "6mm 2F Spiral End Mill, 20mm flute"
+        "6mm 2F Upcut End Mill, 20mm flute"
     );
 
     // Every value can be changed; the automatic name and the diameter follow.

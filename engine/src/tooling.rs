@@ -40,25 +40,25 @@ impl EndType {
 /// How the flutes run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum FluteType {
-    /// Right-hand spiral: lifts chips up out of the cut (upcut).
+    /// Upcut (right-hand spiral): lifts chips up out of the cut.
     #[default]
-    Spiral,
+    Upcut,
     /// Straight flutes, along the tool.
     Straight,
-    /// Reverse (left-hand) spiral: pushes chips down, for a clean top edge.
+    /// Downcut (left-hand spiral): pushes chips down, for a clean top edge.
     Downcut,
 }
 
 impl FluteType {
     pub fn label(self) -> &'static str {
         match self {
-            FluteType::Spiral => "Spiral",
+            FluteType::Upcut => "Upcut",
             FluteType::Straight => "Straight",
             FluteType::Downcut => "Downcut",
         }
     }
 
-    /// Spiral and downcut flutes have a helix angle.
+    /// Upcut and downcut flutes have a helix angle.
     pub fn has_helix(self) -> bool {
         self != FluteType::Straight
     }
@@ -89,7 +89,7 @@ pub struct Tool {
     pub flutes: u32,
     #[serde(default)]
     pub flute_type: FluteType,
-    /// Helix (spiral) angle from the tool's axis, in degrees: Spiral and Downcut flutes, not
+    /// Helix (spiral) angle from the tool's axis, in degrees: Upcut and Downcut flutes, not
     /// drills. (Drills have no flute type in v1: `flute_type` is ignored for them.)
     #[serde(default = "default_helix_angle")]
     pub helix_angle: f64,
@@ -124,13 +124,13 @@ pub struct ToolDrawing {
     /// Radius of the flutes at `flute_top` (to draw the line between flutes and shank).
     pub flute_top_radius: f64,
     /// The cutting edges seen on the front of the flutes, as lines (each a list of points):
-    /// helices for spiral and downcut flutes, straight lines for straight flutes.
+    /// helices for upcut and downcut flutes, straight lines for straight flutes.
     pub flute_lines: Vec<Vec<Point>>,
 }
 
 impl Tool {
     /// The automatic name: diameter, (V angle,) flutes, flute type, end type and flute length,
-    /// e.g. "6mm 2F Spiral End Mill, 20mm flute" or "6mm 90° 2F Straight V-Bit, 10mm flute".
+    /// e.g. "6mm 2F Upcut End Mill, 20mm flute" or "6mm 90° 2F Straight V-Bit, 10mm flute".
     /// The helix angle is not part of the name, nor the flute type for drills
     /// ("6mm 2F Drill, 20mm flute").
     pub fn generated_name(&self) -> String {
@@ -185,7 +185,7 @@ impl Tool {
         // Axial length of one full turn of a flute.
         // Drills have no flute type in v1: always drawn as a twist drill (spiral).
         let flute_type = if self.end_type == EndType::Drill {
-            FluteType::Spiral
+            FluteType::Upcut
         } else {
             self.flute_type
         };
@@ -333,7 +333,7 @@ impl Tool {
             diameter: 6.0,
             shank_diameter: None,
             flutes: 2,
-            flute_type: FluteType::Spiral,
+            flute_type: FluteType::Upcut,
             helix_angle: DEFAULT_HELIX_ANGLE,
             flute_length: 20.0,
             overall_length: 60.0,
@@ -343,7 +343,7 @@ impl Tool {
         .named()
     }
 
-    /// True if the helix angle applies: spiral or downcut flutes, and not a drill.
+    /// True if the helix angle applies: upcut or downcut flutes, and not a drill.
     pub fn uses_helix_angle(&self) -> bool {
         self.flute_type.has_helix() && self.end_type != EndType::Drill
     }

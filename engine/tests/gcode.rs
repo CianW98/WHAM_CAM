@@ -72,14 +72,14 @@ fn a_pocket_program_has_the_decided_start_tool_spindle_and_end() {
     assert_eq!(l[0], format!("( WHAM_CAM {} )", env!("CARGO_PKG_VERSION")));
     assert_eq!(l[1], format!("( Project: Untitled   {DATE} )"));
     assert_eq!(l[2], "( Post-processor: Generic   Machine: Default )");
-    assert_eq!(l[3], "( T1: 6mm 2F Spiral End Mill, 20mm flute, D6 )");
+    assert_eq!(l[3], "( T1: 6mm 2F Upcut End Mill, 20mm flute, D6 )");
     assert_eq!(l[4], "G21 G90 G17");
     assert_eq!(l[5], "G0 Z3");
     assert_eq!(
         l[6],
         "( Pocket1: Pocket, T1 D6, stock 0, target -2, depth increment 1 )"
     );
-    assert_eq!(l[7], "( T1: 6mm 2F Spiral End Mill, 20mm flute )");
+    assert_eq!(l[7], "( T1: 6mm 2F Upcut End Mill, 20mm flute )");
     assert_eq!(l[8], "T1 M6");
     assert_eq!(l[9], "S10000 M3");
     assert_eq!(l[10], "G4 P2");
@@ -231,7 +231,7 @@ fn tool_changes_and_clearance_lifts_between_operations() {
     // Before T2: spindle off first.
     let t2 = l.iter().position(|x| x == "T2 M6").unwrap();
     assert!(l[t2 - 2] == "M5", "{:#?}", &l[t2 - 3..=t2]);
-    assert!(text.contains("( T2: 6mm 2F Spiral End Mill, 20mm flute, D3 )"));
+    assert!(text.contains("( T2: 6mm 2F Upcut End Mill, 20mm flute, D3 )"));
 }
 
 #[test]

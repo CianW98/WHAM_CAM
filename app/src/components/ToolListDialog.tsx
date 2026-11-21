@@ -12,12 +12,12 @@ export const END_TYPES: [EndType, string][] = [
 ];
 
 export const FLUTE_TYPES: [FluteType, string][] = [
-  ["Spiral", "Spiral (upcut)"],
+  ["Upcut", "Upcut"],
   ["Straight", "Straight"],
-  ["Downcut", "Downcut (reverse spiral)"],
+  ["Downcut", "Downcut"],
 ];
 
-/** Spiral and downcut flutes have a helix angle. Drills have no flute type (or helix angle) in v1. */
+/** Upcut and downcut flutes have a helix angle. Drills have no flute type (or helix angle) in v1. */
 const usesHelix = (flute: FluteType, end: EndType) => flute !== "Straight" && end !== "Drill";
 
 export const endTypeLabel = (t: EndType) => END_TYPES.find(([v]) => v === t)?.[1] ?? t;

@@ -1,11 +1,11 @@
 ( WHAM_CAM 0.4.0 )
 ( Project: Pocket   reference )
 ( Post-processor: Generic   Machine: Default )
-( T1: 3mm 2F Spiral End Mill, 20mm flute, D3 )
+( T1: 3mm 2F Upcut End Mill, 20mm flute, D3 )
 G21 G90 G17
 G0 Z3
 ( Pocket1: Pocket, T1 D3, stock 0, target -10, depth increment 5 )
-( T1: 3mm 2F Spiral End Mill, 20mm flute )
+( T1: 3mm 2F Upcut End Mill, 20mm flute )
 T1 M6
 S1000 M3
 G4 P2

@@ -349,7 +349,7 @@ function ShapeRows({
 
 // --- Operations -----------------------------------------------------------------------------
 
-/** "T3: 6mm 2F Spiral End Mill, 20mm flute (Ø6)" */
+/** "T3: 6mm 2F Upcut End Mill, 20mm flute (Ø6)" */
 const toolText = (number: number, t: Tool) => `T${number}: ${t.name} (Ø${num(t.diameter)})`;
 
 /** Same tool values (ignoring the master-list id, which differs between computers). */

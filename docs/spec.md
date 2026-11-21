@@ -327,16 +327,16 @@ Properties show:
   - name (automatic or typed, below);
   - end type: End mill, Ball nose, V-bit or Drill;
   - diameter, and shank diameter (blank = same as the diameter);
-  - flutes, and flute type: Spiral (upcut), Straight or Downcut (reverse spiral); drills have no
+  - flutes, and flute type: Upcut, Straight or Downcut; drills have no
     flute type;
-  - helix angle, for Spiral and Downcut only (not drills): default 30°, the common general-purpose
+  - helix angle, for Upcut and Downcut only (not drills): default 30°, the common general-purpose
     angle;
   - flute length and overall length;
   - V angle (V-bits only).
 
   All values are in mm.
 - **Automatic tool names**, made from diameter, V angle (V-bits), flutes, flute type (not for
-  drills), end type and flute length, but not the helix angle, e.g. "6mm 2F Spiral End Mill, 20mm
+  drills), end type and flute length, but not the helix angle, e.g. "6mm 2F Upcut End Mill, 20mm
   flute". They follow the values when those change. Typing a name (or unticking *Automatic name*)
   keeps the typed name.
 - The Add/Edit tool window shows a **live side view** of the tool on the right, drawn from the

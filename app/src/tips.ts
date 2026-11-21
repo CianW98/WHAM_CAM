@@ -124,7 +124,7 @@ export const SETTING_TIPS: Record<string, string> = {
 
   // Custom tool (on an operation) and tools
   "End type": "The shape of the tool's end. Only end mills are supported in v1.",
-  "Flute type": "Spiral (upcut), Straight or Downcut.",
+  "Flute type": "Upcut (lifts chips out), Downcut (pushes chips down for a clean top edge) or Straight.",
   "Helix angle (°)": "The angle of the flutes' twist.",
   "V angle (°)": "The included angle of the V-bit's point.",
   Diameter: "Cutting diameter in mm.",
