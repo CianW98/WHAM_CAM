@@ -255,12 +255,12 @@ A classic CAD/CAM layout, with a toolbar:
   cursor (by the centre of the copied shapes) and a click drops it; pasted shapes go back onto
   the layers they came from and are selected. Select All (Ctrl+A), Select All On Layer
   (Ctrl+Shift+A, current layer).
-- **Join…** asks for a tolerance (default 0.01 mm, remembered). Lines, arcs and open polylines
+- **Join…** (key **J**) asks for a tolerance (default 0.01 mm, remembered). Lines, arcs and open polylines
   whose ends are within it are chained into polylines (pieces turned round as needed; where
   several ends meet, the closest wins). A chain whose ends meet is closed. Each new polyline takes
   the layer of its first piece. Shapes that touch nothing, and other shape types, are left alone.
-- **Explode**: polylines become separate lines and arcs; PolyRectangles become 4 lines.
-- **Break at intersections**: wherever two or more selected shapes cross or touch, each shape
+- **Explode** (key **E**): polylines become separate lines and arcs; PolyRectangles become 4 lines.
+- **Break at intersections** (key **B**): wherever two or more selected shapes cross or touch, each shape
   running through that point is cut there. Lines, arcs, circles, polylines and PolyRectangles
   (which become polylines). A circle needs 2 cuts to become arcs; a closed polyline cut once
   opens at the cut. A shape is not cut where it crosses itself.

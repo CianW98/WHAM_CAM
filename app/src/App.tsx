@@ -1202,7 +1202,10 @@ export default function App() {
     else if (!ctrl && !e.altKey && key === "w") {
       // Cut width only shows with the toolpaths, the same as its button.
       if (showToolpaths) toggleCutWidth();
-    } else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
+    } else if (!ctrl && !e.altKey && key === "j") run(joinSelected);
+    else if (!ctrl && !e.altKey && key === "e") run(explodeSelected);
+    else if (!ctrl && !e.altKey && key === "b") run(breakSelected);
+    else if (!ctrl && (key === "arrowdown" || key === "arrowup")) stepSelection(key === "arrowdown" ? 1 : -1);
     else if (key === "delete") run(deleteSelected);
     else if (ctrl && key === "z" && !e.shiftKey) run(() => undoRedo("undo"));
     else if (ctrl && (key === "y" || (key === "z" && e.shiftKey))) run(() => undoRedo("redo"));
@@ -1310,9 +1313,14 @@ export default function App() {
         action: () => run(deleteSelected),
       } as MenuItem,
       editTools: [
-        sep({ label: "Join…", disabled: none, action: () => run(joinSelected) }),
-        { label: "Explode", disabled: none, action: () => run(explodeSelected) },
-        { label: "Break at intersections", disabled: ids.length < 2, action: () => run(breakSelected) },
+        sep({ label: "Join…", shortcut: "J", disabled: none, action: () => run(joinSelected) }),
+        { label: "Explode", shortcut: "E", disabled: none, action: () => run(explodeSelected) },
+        {
+          label: "Break at intersections",
+          shortcut: "B",
+          disabled: ids.length < 2,
+          action: () => run(breakSelected),
+        },
         { label: "Close polyline", disabled: none, action: () => run(closeSelected) },
       ] as MenuItem[],
       select: [
