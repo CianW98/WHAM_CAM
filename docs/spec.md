@@ -203,9 +203,10 @@ A classic CAD/CAM layout, with a toolbar:
 - Exact values are edited in the properties panel afterwards: line ends, arc centre/radius/angles,
   circle centre/radius, polyline closed and points, rectangle lower left/width/height/rotation,
   point-list points.
-- Grid spacing (default 10 mm) and grid area (X min/max, Y min/max; default -1000 to 1000) are
-  project settings, in the project's properties. The grid is drawn only inside its area, with the
-  X/Y axes through 0,0; grid snapping works everywhere.
+- Minor grid spacing (default 10 mm; grid snapping uses it), major grid spacing (the heavier lines,
+  default 50 mm) and grid area (X min/max, Y min/max; default -1000 to 1000) are project settings,
+  in the project's properties. The grid is drawn only inside its area, with the X/Y axes through
+  0,0; grid snapping works everywhere.
 
 ### 5.2a Selection
 - Click selects a shape; Shift/Ctrl-click adds or removes. Esc clears.
@@ -433,7 +434,8 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
 - The file holds `"format": "WHAM_CAM project"`, `"format_version"` (2), `"saved_by"` (the
-  WHAM_CAM version) and the document: project name, grid spacing, grid area, snap settings, the
+  WHAM_CAM version) and the document: project name, minor and major grid spacing, grid area, snap
+  settings, the
   project template's name, layers (name, colour, shapes),
   the project's tool library (by name) and Machining tool, and parts with their tool and
   operations (settings and tool).
@@ -451,13 +453,14 @@ Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format 
 - Not saved: current layer, view position.
 
 ### 5.9 Project templates
-A project template is a saved set of a project's interface settings: grid spacing, grid area and
-snap to grid / snap to objects. They have no effect on toolpaths or G-code.
+A project template is a saved set of a project's interface settings: minor and major grid
+spacing, grid area and snap to grid / snap to objects. They have no effect on toolpaths or G-code.
 - The templates are a list in the Setup tab (global, like the machines), kept in
   `project_templates.json` in WHAM_CAM's settings folder. Right-click → New template; on a template
   → Rename, Use for new projects, Delete template. Selecting a template shows its settings in
   Properties. Changes are saved straight away and are not undo steps.
-- WHAM_CAM starts with one template, **Default** (grid 10 mm, area -1000 to 1000, both snaps on).
+- WHAM_CAM starts with one template, **Default** (grid 10 mm, major 50 mm, area -1000 to 1000,
+  both snaps on).
   One template is marked "new projects": File ▸ New and startup use it. It can't be deleted until
   another is marked.
 - The **Project** item's Properties: **Template**, then the project's own grid spacing, grid area

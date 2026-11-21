@@ -755,6 +755,7 @@ interface Edits {
   /** Resolves false if the engine refused the change. */
   onSetShape: (id: number, shape: Shape) => Promise<boolean>;
   onSetGridSpacing: (mm: number) => Promise<boolean>;
+  onSetMajorGridSpacing: (mm: number) => Promise<boolean>;
   onSetGridArea: (area: GridArea) => Promise<boolean>;
   onSetSnap: (snap: SnapOptions) => Promise<boolean>;
   /** This computer's project templates. */
@@ -764,6 +765,7 @@ interface Edits {
   /** Resolves false if the rename was rejected. */
   onRenameTemplate: (oldName: string, newName: string) => Promise<boolean>;
   onSetTemplateGridSpacing: (name: string, mm: number) => Promise<boolean>;
+  onSetTemplateMajorGridSpacing: (name: string, mm: number) => Promise<boolean>;
   onSetTemplateGridArea: (name: string, area: GridArea) => Promise<boolean>;
   onSetTemplateSnap: (name: string, snap: SnapOptions) => Promise<boolean>;
   /** Resolves false if the engine refused the change. */
@@ -845,16 +847,20 @@ function TemplateChoice({
 /** Grid spacing, grid area and snaps: the same rows for the project and for a template. */
 function GridRows({
   spacing,
+  major,
   area,
   snap,
   onSpacing,
+  onMajor,
   onArea,
   onSnap,
 }: {
   spacing: number;
+  major: number;
   area: GridArea;
   snap: SnapOptions;
   onSpacing: (mm: number) => Promise<boolean>;
+  onMajor: (mm: number) => Promise<boolean>;
   onArea: (area: GridArea) => Promise<boolean>;
   onSnap: (snap: SnapOptions) => void;
 }) {
@@ -865,8 +871,11 @@ function GridRows({
   );
   return (
     <>
-      <Row label="Grid spacing (mm)">
+      <Row label="Minor grid spacing (mm)">
         <NumberField value={spacing} onSave={onSpacing} />
+      </Row>
+      <Row label="Major grid spacing (mm)">
+        <NumberField value={major} onSave={onMajor} />
       </Row>
       {side("Grid X min (mm)", "x_min")}
       {side("Grid X max (mm)", "x_max")}
@@ -1065,9 +1074,11 @@ function Content({
             </Row>
             <GridRows
               spacing={doc.grid_spacing}
+              major={doc.major_grid_spacing}
               area={doc.grid_area}
               snap={doc.snap}
               onSpacing={edits.onSetGridSpacing}
+              onMajor={edits.onSetMajorGridSpacing}
               onArea={edits.onSetGridArea}
               onSnap={(snap) => void edits.onSetSnap(snap)}
             />
@@ -1177,9 +1188,11 @@ function Content({
           </Row>
           <GridRows
             spacing={t.grid_spacing}
+            major={t.major_grid_spacing}
             area={t.grid_area}
             snap={t.snap}
             onSpacing={(mm) => edits.onSetTemplateGridSpacing(t.name, mm)}
+            onMajor={(mm) => edits.onSetTemplateMajorGridSpacing(t.name, mm)}
             onArea={(area) => edits.onSetTemplateGridArea(t.name, area)}
             onSnap={(snap) => void edits.onSetTemplateSnap(t.name, snap)}
           />

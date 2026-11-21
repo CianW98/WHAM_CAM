@@ -9,7 +9,10 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::document::{DEFAULT_GRID_SPACING, GridArea, check_grid_spacing};
+use crate::document::{
+    DEFAULT_GRID_SPACING, DEFAULT_MAJOR_GRID_SPACING, GridArea, check_grid_spacing,
+    check_major_grid_spacing,
+};
 use crate::draw::SnapOptions;
 
 /// The name of the template WHAM_CAM starts with.
@@ -21,6 +24,8 @@ pub struct ProjectTemplate {
     /// Unique among the templates.
     pub name: String,
     pub grid_spacing: f64,
+    /// Spacing of the heavier grid lines.
+    pub major_grid_spacing: f64,
     pub grid_area: GridArea,
     pub snap: SnapOptions,
 }
@@ -31,6 +36,7 @@ impl ProjectTemplate {
         Self {
             name: name.to_string(),
             grid_spacing: DEFAULT_GRID_SPACING,
+            major_grid_spacing: DEFAULT_MAJOR_GRID_SPACING,
             grid_area: GridArea::default(),
             snap: SnapOptions::default(),
         }
@@ -128,6 +134,12 @@ impl ProjectTemplates {
         Ok(())
     }
 
+    pub fn set_major_grid_spacing(&mut self, name: &str, mm: f64) -> Result<(), String> {
+        check_major_grid_spacing(mm)?;
+        self.template_mut(name)?.major_grid_spacing = mm;
+        Ok(())
+    }
+
     pub fn set_grid_area(&mut self, name: &str, area: GridArea) -> Result<(), String> {
         area.validate()?;
         self.template_mut(name)?.grid_area = area;
@@ -196,7 +208,10 @@ pub fn from_text(text: &str) -> Result<ProjectTemplates, String> {
         if !names.insert(t.name.as_str()) {
             return damaged(format!("there are two templates called \"{}\"", t.name));
         }
-        if let Err(e) = check_grid_spacing(t.grid_spacing).and(t.grid_area.validate()) {
+        if let Err(e) = check_grid_spacing(t.grid_spacing)
+            .and(check_major_grid_spacing(t.major_grid_spacing))
+            .and(t.grid_area.validate())
+        {
             return damaged(format!("\"{}\": {e}", t.name));
         }
     }

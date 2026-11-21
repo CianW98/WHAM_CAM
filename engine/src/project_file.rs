@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::document::{Document, is_hex_color};
+use crate::document::{Document, check_major_grid_spacing, is_hex_color};
 use crate::draw;
 
 /// The value of the "format" field, so other JSON files are recognised as not ours.
@@ -76,7 +76,7 @@ fn check(doc: &Document) -> Result<(), String> {
     if !(doc.grid_spacing.is_finite() && doc.grid_spacing > 0.0) {
         return damaged("the grid spacing must be a number more than 0".into());
     }
-    if let Err(e) = doc.grid_area.validate() {
+    if let Err(e) = check_major_grid_spacing(doc.major_grid_spacing).and(doc.grid_area.validate()) {
         return Err(format!("The project file is damaged: {e}"));
     }
     if doc.layers.is_empty() {

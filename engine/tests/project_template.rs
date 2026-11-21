@@ -225,3 +225,26 @@ fn grid_and_snap_settings_are_saved_in_the_project_file() {
     let bad = text.replace("\"x_max\": 1220.0", "\"x_max\": -5.0");
     assert!(project_file::from_text(&bad).unwrap_err().contains("X min"));
 }
+
+#[test]
+fn major_grid_spacing_is_a_template_and_project_setting() {
+    let mut t = ProjectTemplates::default();
+    assert_eq!(t.for_new().major_grid_spacing, DEFAULT_MAJOR_GRID_SPACING);
+    assert!(t.set_major_grid_spacing("Default", 0.0).is_err());
+    assert!(t.set_major_grid_spacing("Default", f64::NAN).is_err());
+    t.set_grid_spacing("Default", 1.0).unwrap();
+    t.set_major_grid_spacing("Default", 10.0).unwrap();
+
+    let mut p = Project::new();
+    assert_eq!(p.document().major_grid_spacing, DEFAULT_MAJOR_GRID_SPACING);
+    p.apply_template(t.for_new());
+    assert_eq!(p.document().grid_spacing, 1.0);
+    assert_eq!(p.document().major_grid_spacing, 10.0);
+
+    assert!(p.set_major_grid_spacing(-1.0).is_err());
+    p.set_major_grid_spacing(25.0).unwrap();
+    assert!(!p.undo(), "not an undo step");
+    let doc = project_file::from_text(&p.save_text("job")).unwrap();
+    assert_eq!(doc.major_grid_spacing, 25.0);
+    assert_eq!(from_text(&to_text(&t)).unwrap(), t);
+}

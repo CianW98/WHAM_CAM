@@ -14,6 +14,9 @@ pub struct Document {
     /// Drawing grid spacing in mm, used for display and grid snapping.
     #[serde(default = "default_grid_spacing")]
     pub grid_spacing: f64,
+    /// Spacing of the heavier grid lines in mm (display only).
+    #[serde(default = "default_major_grid_spacing")]
+    pub major_grid_spacing: f64,
     /// The tool library operations pick their tools from (by name; the libraries themselves
     /// belong to the computer, not the project). None = not chosen yet.
     #[serde(default)]
@@ -88,11 +91,27 @@ pub fn check_grid_spacing(mm: f64) -> Result<(), String> {
     }
 }
 
+/// Checks a major grid spacing is a number more than 0.
+pub fn check_major_grid_spacing(mm: f64) -> Result<(), String> {
+    if mm.is_finite() && mm > 0.0 {
+        Ok(())
+    } else {
+        Err("The major grid spacing must be more than 0 mm.".into())
+    }
+}
+
 /// Grid spacing for new projects (and older project files that don't have one), in mm.
 pub const DEFAULT_GRID_SPACING: f64 = 10.0;
 
 fn default_grid_spacing() -> f64 {
     DEFAULT_GRID_SPACING
+}
+
+/// Major grid spacing for new projects (and project files that don't have one), in mm.
+pub const DEFAULT_MAJOR_GRID_SPACING: f64 = 50.0;
+
+fn default_major_grid_spacing() -> f64 {
+    DEFAULT_MAJOR_GRID_SPACING
 }
 
 /// Colours given to new layers, in order: strong, clearly different hues that stand out on
@@ -160,6 +179,7 @@ impl Document {
                 operations: Vec::new(),
             }],
             grid_spacing: DEFAULT_GRID_SPACING,
+            major_grid_spacing: DEFAULT_MAJOR_GRID_SPACING,
             active_library: None,
             machining_tool: None,
             machine: None,

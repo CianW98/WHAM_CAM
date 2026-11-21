@@ -12,7 +12,9 @@ use crate::display::{
     toolpath_display,
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
-use crate::document::{Document, DrawingObject, GridArea, check_grid_spacing, is_hex_color};
+use crate::document::{
+    Document, DrawingObject, GridArea, check_grid_spacing, check_major_grid_spacing, is_hex_color,
+};
 use crate::draw::{self, Draft, DrawTool, Snap, SnapKind, SnapOptions};
 use crate::drill;
 use crate::dxf::{DxfError, DxfOptions, DxfUnits, read_dxf};
@@ -885,6 +887,13 @@ impl Project {
     pub fn set_grid_spacing(&mut self, mm: f64) -> Result<(), String> {
         check_grid_spacing(mm)?;
         self.set_setting(|doc| doc.grid_spacing = mm);
+        Ok(())
+    }
+
+    /// Sets the spacing of the heavier grid lines. Not an undo step.
+    pub fn set_major_grid_spacing(&mut self, mm: f64) -> Result<(), String> {
+        check_major_grid_spacing(mm)?;
+        self.set_setting(|doc| doc.major_grid_spacing = mm);
         Ok(())
     }
 
@@ -2149,6 +2158,7 @@ fn segment_hits_rect(a: [f64; 2], b: [f64; 2], r: &Rect) -> bool {
 /// Copies a project template's values into a document.
 fn copy_template(doc: &mut Document, template: &ProjectTemplate) {
     doc.grid_spacing = template.grid_spacing;
+    doc.major_grid_spacing = template.major_grid_spacing;
     doc.grid_area = template.grid_area;
     doc.snap = template.snap;
     doc.template = Some(template.name.clone());

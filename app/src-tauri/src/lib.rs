@@ -253,6 +253,15 @@ fn set_template_grid_spacing(
 }
 
 #[tauri::command]
+fn set_template_major_grid_spacing(
+    name: String,
+    mm: f64,
+    templates: State<TemplatesState>,
+) -> Result<(), String> {
+    change_settings(&templates.0, |t| t.set_major_grid_spacing(&name, mm))
+}
+
+#[tauri::command]
 fn set_template_grid_area(
     name: String,
     area: GridArea,
@@ -778,6 +787,11 @@ fn set_grid_spacing(mm: f64, state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_major_grid_spacing(mm: f64, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_major_grid_spacing(mm)
+}
+
+#[tauri::command]
 fn set_grid_area(area: GridArea, state: State<AppState>) -> Result<(), String> {
     state.0.lock().unwrap().set_grid_area(area)
 }
@@ -1026,6 +1040,7 @@ pub fn run() {
             delete_template,
             set_template_for_new_projects,
             set_template_grid_spacing,
+            set_template_major_grid_spacing,
             set_template_grid_area,
             set_template_snap,
             apply_project_template,
@@ -1074,6 +1089,7 @@ pub fn run() {
             add_draft,
             set_shape,
             set_grid_spacing,
+            set_major_grid_spacing,
             set_grid_area,
             set_snap,
             transform,

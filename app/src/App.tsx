@@ -1510,12 +1510,14 @@ export default function App() {
             onSetLayerColor={setLayerColor}
             onSetShape={setShape}
             onSetGridSpacing={setGridSpacing}
+            onSetMajorGridSpacing={(mm) => tryEdit(() => engine.setMajorGridSpacing(mm))}
             onSetGridArea={(area) => tryEdit(() => engine.setGridArea(area))}
             onSetSnap={(snap) => tryEdit(() => engine.setSnap(snap))}
             templates={view?.templates ?? null}
             onApplyTemplate={(name) => tryEdit(() => engine.applyProjectTemplate(name))}
             onRenameTemplate={renameTemplate}
             onSetTemplateGridSpacing={(name, mm) => toolingTry(() => engine.setTemplateGridSpacing(name, mm))}
+            onSetTemplateMajorGridSpacing={(name, mm) => toolingTry(() => engine.setTemplateMajorGridSpacing(name, mm))}
             onSetTemplateGridArea={(name, area) => toolingTry(() => engine.setTemplateGridArea(name, area))}
             onSetTemplateSnap={(name, snap) => toolingTry(() => engine.setTemplateSnap(name, snap))}
             onSetOperation={setOperation}
@@ -1550,6 +1552,7 @@ export default function App() {
         selectedIds={selectedSet}
         fitRequest={fitRequest}
         gridSpacing={view?.document.grid_spacing ?? 10}
+        majorGridSpacing={view?.document.major_grid_spacing ?? 50}
         gridArea={view?.document.grid_area ?? DEFAULT_GRID_AREA}
         mode={viewMode}
         onMode={setViewMode}

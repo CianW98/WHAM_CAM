@@ -36,7 +36,8 @@ pub use display::{
     Playback, PlaybackStep, PlaybackTool, ToolpathDisplay, display_data,
 };
 pub use document::{
-    DEFAULT_GRID_SPACING, Document, DrawingObject, GridArea, LAYER_PALETTE, Layer, Part,
+    DEFAULT_GRID_SPACING, DEFAULT_MAJOR_GRID_SPACING, Document, DrawingObject, GridArea,
+    LAYER_PALETTE, Layer, Part,
 };
 pub use draw::{Draft, DrawTool, Snap, SnapKind, SnapOptions};
 pub use dxf::{DxfDrawing, DxfError, DxfOptions, DxfUnits, read_dxf};

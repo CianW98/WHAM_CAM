@@ -237,8 +237,10 @@ export interface Document {
   name: string;
   layers: Layer[];
   parts: Part[];
-  /** Drawing grid spacing in mm. */
+  /** Drawing grid spacing in mm (the minor lines; grid snapping uses it). */
   grid_spacing: number;
+  /** Spacing of the heavier grid lines in mm (display only). */
+  major_grid_spacing: number;
   /** Name of the tool library operations pick tools from; null = not chosen. */
   active_library: string | null;
   /** The tool every part and operation uses unless it has its own; null = none. */
@@ -268,6 +270,7 @@ export interface GridArea {
 export interface ProjectTemplate {
   name: string;
   grid_spacing: number;
+  major_grid_spacing: number;
   grid_area: GridArea;
   snap: SnapOptions;
 }
@@ -299,6 +302,10 @@ export function setTemplateForNewProjects(name: string): Promise<void> {
 
 export function setTemplateGridSpacing(name: string, mm: number): Promise<void> {
   return invoke<void>("set_template_grid_spacing", { name, mm });
+}
+
+export function setTemplateMajorGridSpacing(name: string, mm: number): Promise<void> {
+  return invoke<void>("set_template_major_grid_spacing", { name, mm });
 }
 
 export function setTemplateGridArea(name: string, area: GridArea): Promise<void> {
@@ -929,6 +936,11 @@ export function addDraft(layer: string, draft: Draft): Promise<number> {
 /** Replaces an object's shape. Rejects with a plain-English message if the shape isn't valid. */
 export function setShape(id: number, shape: Shape): Promise<void> {
   return invoke<void>("set_shape", { id, shape });
+}
+
+/** Sets the spacing of the heavier grid lines. Not an undo step. */
+export function setMajorGridSpacing(mm: number): Promise<void> {
+  return invoke<void>("set_major_grid_spacing", { mm });
 }
 
 /** Sets the area the grid is drawn over. Not an undo step. */
