@@ -92,6 +92,10 @@ Everything here changes output, so batch it and re-verify once per release.
 - **Toolbar customisation**: choose which buttons show on the toolbar and in what order, kept in the Setup settings on this computer, with a reset to the default layout. Every action stays reachable from the menus.
 - **Profile modifiers**: shape the cut wall of a Profile operation so a 2D outline produces a sloped or rounded edge instead of a vertical one. The user picks a method (slope, convex radius or concave radius) and a value (an angle from vertical, or a radius). Each depth pass then follows the contour offset for its depth. For chamfered and bevelled edges, filleted edges and cove cuts using suitable tool shapes.
 
+## Undecided
+
+- **User-editable post-processors**: a user can copy a built-in post-processor and modify it, at their own risk; the form (templates or scripts) is settled in the controller analysis (1.5). The G-code read-back check runs only on the built-in post-processors. G-code from a modified one is not checked, and its header comment and a warning on writing say so. The toolpath safety checker still runs on every toolpath. When built, the safety rules in `CLAUDE.md` and spec sections 7 and 8 change to match.
+
 ## Decided against
 
 - Importing other CAM programs' project files.
