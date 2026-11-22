@@ -133,7 +133,7 @@ struct View {
     can_redo: bool,
     /// Unsaved changes since the last save or open.
     modified: bool,
-    /// The project file's name (e.g. "bracket.whamcam"), or None if never saved.
+    /// The project file's name (e.g. "bracket.wc"), or None if never saved.
     file_name: Option<String>,
     /// Toolpath state of each operation (for the tree).
     operations: Vec<OperationState>,
@@ -703,7 +703,7 @@ fn open_project(path: String, state: State<AppState>, file: State<OpenFile>) -> 
     Ok(())
 }
 
-/// Saves the project to `path` (adding the .whamcam extension if missing), or to the file it
+/// Saves the project to `path` (adding the .wc extension if missing), or to the file it
 /// was last saved to or opened from if `path` is None.
 #[tauri::command]
 fn save_project(

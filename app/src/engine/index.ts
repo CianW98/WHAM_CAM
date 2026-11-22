@@ -492,7 +492,7 @@ export interface View {
   canRedo: boolean;
   /** Unsaved changes since the last save or open. */
   modified: boolean;
-  /** The project file's name (e.g. "bracket.whamcam"), or null if never saved. */
+  /** The project file's name (e.g. "bracket.wc"), or null if never saved. */
   fileName: string | null;
   /** Toolpath state of each operation. */
   operations: OperationState[];
@@ -614,7 +614,7 @@ export function getView(): Promise<View> {
 /** Shows the file-open dialog for DXF files. Returns the chosen path, or null if cancelled. */
 // --- Project files ---------------------------------------------------------------------------
 
-const PROJECT_FILTER = { name: "WHAM_CAM projects", extensions: ["whamcam"] };
+const PROJECT_FILTER = { name: "WHAM_CAM projects", extensions: ["wc"] };
 
 /** Asks which project file to open. Null if cancelled. */
 export async function chooseProjectFile(): Promise<string | null> {
@@ -846,7 +846,7 @@ export function openProject(path: string): Promise<void> {
   return invoke<void>("open_project", { path });
 }
 
-/** Saves to `path` (".whamcam" added if missing), or to the current file if null. */
+/** Saves to `path` (".wc" added if missing), or to the current file if null. */
 export function saveProject(path: string | null): Promise<void> {
   return invoke<void>("save_project", { path });
 }

@@ -1,4 +1,4 @@
-//! WHAM_CAM project files (`.whamcam`): the document as readable JSON with a format version.
+//! WHAM_CAM project files (`.wc`): the document as readable JSON with a format version.
 //! The engine only turns a document into text and back; the app reads and writes the file.
 
 use std::collections::HashSet;
@@ -18,7 +18,7 @@ pub const FORMAT_NAME: &str = "WHAM_CAM project";
 pub const FORMAT_VERSION: u32 = 3;
 
 /// The file extension for project files (without the dot).
-pub const EXTENSION: &str = "whamcam";
+pub const EXTENSION: &str = "wc";
 
 #[derive(Serialize)]
 struct FileOut<'a> {

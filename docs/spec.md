@@ -467,7 +467,7 @@ without touching the toolpaths.
   (see `docs/limitations.md`).
 
 ### 5.8 Project files
-Save/open a WHAM_CAM project: one readable JSON file, `.whamcam`, with a format version number.
+Save/open a WHAM_CAM project: one readable JSON file, `.wc`, with a format version number.
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
 - The file holds `"format": "WHAM_CAM project"`, `"format_version"` (3), `"saved_by"` (the

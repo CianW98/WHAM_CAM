@@ -9,7 +9,7 @@ export interface ToolbarTip {
 /** Toolbar buttons, by action name. */
 export const TOOLBAR_TIPS: Record<string, ToolbarTip> = {
   New: { text: "Start a new, empty project.", key: "Ctrl+N" },
-  Open: { text: "Open a saved WHAM_CAM project (.whamcam).", key: "Ctrl+O" },
+  Open: { text: "Open a saved WHAM_CAM project (.wc).", key: "Ctrl+O" },
   Save: { text: "Save the project. A project not saved before asks for a file name.", key: "Ctrl+S" },
   Import: { text: "Bring in shapes from a DXF or SVG file." },
   Undo: { text: "Undo the last change to the drawing or operations.", key: "Ctrl+Z" },

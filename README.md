@@ -13,7 +13,7 @@ WHAM_CAM runs on Windows and Linux, works fully offline, and is not tied to any 
   shortcuts (L, A, C, R, P and `.`);
 - move, rotate, scale, mirror, cut, copy and paste;
 - join, explode, break at intersections and close polylines;
-- save and open projects (`.whamcam` files);
+- save and open projects (`.wc` files);
 - keep a **master tool list** and **tool libraries** on your computer (tool numbers per library,
   e.g. for a tool changer), and give tools to the whole job, a part or a single operation;
 - make **profile** (inside, outside, on line), **pocket** (with islands) and **drill**

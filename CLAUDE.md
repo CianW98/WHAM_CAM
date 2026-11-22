@@ -154,7 +154,7 @@ Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeSc
   breaking changes (e.g. old project files no longer open).
 - **PATCH releases** do not change toolpath or G-code output unless they fix a safety bug, and then
   the release notes say so.
-- **Project-file compatibility** (from 1.0.0): a newer WHAM_CAM opens every older `.whamcam`; older
+- **Project-file compatibility** (from 1.0.0): a newer WHAM_CAM opens every older `.wc`; older
   format versions are upgraded on open (spec 5.8); format version bumps are listed in the release
   notes.
 - **One version everywhere:** `engine/Cargo.toml`, `app/src-tauri/Cargo.toml`, `app/package.json`
@@ -193,7 +193,7 @@ Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeSc
   - Toolpaths: `operation.rs`, `toolpath.rs`, `path.rs`, `offset.rs` (the only file that calls
     cavalier_contours), `pocket.rs`, `profile.rs`, `drill.rs`, `safety.rs` (safety checker).
   - Tools, machines and files: `tooling.rs` (master tool list and libraries), `machine.rs`
-    (machine list), `project_template.rs` (project templates), `project_file.rs` (`.whamcam`
+    (machine list), `project_template.rs` (project templates), `project_file.rs` (`.wc`
     files). `Project::resolve` works out which tool each operation uses.
   - G-code: `post.rs` (generic post-processor), `gcode_read.rs` (read-back check).
 - Interface (`app/src/`):

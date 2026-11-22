@@ -348,7 +348,7 @@ export default function App() {
   /** Save As…: ask where, then save. Resolves false if cancelled. */
   const saveAs = useCallback(async () => {
     const v = await engine.getView();
-    const path = await engine.chooseSavePath(v.fileName ?? `${v.document.name}.whamcam`);
+    const path = await engine.chooseSavePath(v.fileName ?? `${v.document.name}.wc`);
     if (!path) return false;
     await engine.saveProject(path);
     const after = await refresh();
