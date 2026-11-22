@@ -5,7 +5,6 @@
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
 - **WHAM_CAM logo**: design a logo and use it for the app icon (`app/src-tauri/icons/`, which shows in the taskbar, window and installers).
 - **Font for the "WHAM_CAM" name** at the top left of the actions bar: choose and set a proper font for it.
-- **Installed-app check**: install the release build on Windows and Linux and run a real job end to end (open, save, reopen, write G-code).
 - **Final air cut** of a real multi-operation part with the release candidate.
 
 ## Release themes after 1.0.0
