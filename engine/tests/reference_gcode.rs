@@ -1,6 +1,9 @@
-//! Known-good G-code (spec 8): the reference projects (Profile, Pocket, Drill, as in the reference
-//! examples, and the Arcs test shape) written by the generic post-processor, compared exactly with
-//! the checked files in `engine/tests/reference_gcode/` (see the README there).
+//! Known-good G-code (spec 8): the reference projects (Profile, Pocket and Drill on the test
+//! shapes) written by the generic post-processor, compared exactly with the checked files in
+//! `engine/tests/reference_gcode/` (see the README there).
+//!
+//! Every project uses the default settings (clearance 3, feeds 800 / 300, spindle 10000, target
+//! −10) with a 6 mm end mill as T2, except where a project says otherwise.
 //!
 //! To write fresh files for checking, run:
 //!   cargo test -p wham_engine --test reference_gcode -- --ignored
@@ -10,7 +13,9 @@
 use std::path::PathBuf;
 
 use wham_engine::geometry::{Polyline, Vertex};
-use wham_engine::operation::{MillingDirection, OperationKind, ProfileSide};
+use wham_engine::operation::{
+    CutOrdering, DrillMethod, MillingDirection, OperationKind, ProfileSide,
+};
 use wham_engine::*;
 
 /// A fixed date, so the files don't change from day to day.
@@ -20,103 +25,58 @@ fn folder() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/reference_gcode")
 }
 
-/// A project with one operation from `add`, using a `diameter` mm end mill as T1, with the
-/// operation's settings changed by `edit`, generated.
-fn job(
-    shape: Shape,
-    diameter: f64,
-    add: fn(&mut Project, &[u32]) -> Result<u32, String>,
-    edit: impl FnOnce(&mut Operation),
-) -> Project {
-    let mut p = Project::new();
-    p.set_machining_tool(Some(PickedTool {
-        number: 1,
+/// A `diameter` mm, `flute` mm flute end mill as tool `number`.
+fn end_mill(number: u32, diameter: f64, flute: f64) -> PickedTool {
+    PickedTool {
+        number,
         tool: Tool {
             diameter,
+            flute_length: flute,
             ..Tool::new_default()
         }
         .named(),
-    }))
-    .unwrap();
-    let id = p.add_shape("Default", shape).unwrap();
-    let op = add(&mut p, &[id]).unwrap();
+    }
+}
+
+/// A new project with the 6 mm end mill as T2 for Machining.
+fn new_project() -> Project {
+    let mut p = Project::new();
+    p.set_machining_tool(Some(end_mill(2, 6.0, 20.0))).unwrap();
+    p
+}
+
+/// Adds an operation from `add` on `shapes`, with target −10 and its settings changed by `edit`.
+fn add_op(
+    p: &mut Project,
+    shapes: &[u32],
+    add: fn(&mut Project, &[u32]) -> Result<u32, String>,
+    edit: impl FnOnce(&mut Operation),
+) -> u32 {
+    let op = add(p, shapes).unwrap();
     let mut o = p.operation(op).unwrap().clone();
+    o.common.target_depth = Some(-10.0);
     edit(&mut o);
     p.set_operation(o).unwrap();
+    op
+}
+
+/// Generates every operation, checking nothing failed.
+fn generated(mut p: Project) -> Project {
     let report = p.generate(&[]);
     assert!(report.errors.is_empty(), "{:?}", report.errors);
     p
 }
 
-/// The reference Profile: the 8-point polyline with arcs, 6 mm tool, Outside, Conventional,
-/// target −5 in one pass, clearance 10, feeds 1200 / 600, spindle 1000.
-fn profile() -> Project {
-    let v = |x: f64, y: f64, bulge: f64| Vertex { x, y, bulge };
-    let shape = Shape::Polyline(Polyline {
-        vertices: vec![
-            v(-13.5991651223692, 29.0712686279469, 0.0),
-            v(-10.0, 39.0, 0.0),
-            v(64.0, 5.0, 0.0),
-            v(31.0, -36.0, 0.0),
-            v(-39.0, -41.0, 0.0),
-            v(-30.9753411612932, -18.8630101001193, -0.04098469246601959),
-            v(-34.747548783982, -17.0794021658196, -0.5773502691896257),
-            v(-34.747548783982, 27.0794021658196, -0.218213101023905),
-        ],
-        closed: true,
-    });
-    job(shape, 6.0, Project::add_profile, |o| {
-        let c = &mut o.common;
-        c.target_depth = Some(-5.0);
-        c.depth_increment = 5.0;
-        c.clearance_plane = 10.0;
-        c.cut_feedrate = 1200.0;
-        c.plunge_feedrate = 600.0;
-        c.spindle_speed = 1000.0;
-    })
-}
-
-/// The reference Pocket: a 100 × 80 rectangle, 3 mm tool, stepover 0.4, target −10 in 5 mm
-/// passes, clearance 3, feeds 800 / 300, spindle 1000.
-fn pocket() -> Project {
-    let shape = Shape::Polyline(Polyline {
-        vertices: vec![
-            Vertex::line(0.0, 0.0),
-            Vertex::line(100.0, 0.0),
-            Vertex::line(100.0, 80.0),
-            Vertex::line(0.0, 80.0),
-        ],
-        closed: true,
-    });
-    job(shape, 3.0, Project::add_pocket, |o| {
-        let c = &mut o.common;
-        c.target_depth = Some(-10.0);
-        c.depth_increment = 5.0;
-        c.clearance_plane = 3.0;
-        c.cut_feedrate = 800.0;
-        c.plunge_feedrate = 300.0;
-        c.spindle_speed = 1000.0;
-    })
-}
-
-/// The reference Drill: 4 points, 1 mm tool, Standard, target −12, retract and clearance 3,
-/// plunge 300, spindle 1000.
-fn drill() -> Project {
-    let shape = Shape::Points {
-        points: vec![
-            Point::new(34.0, 22.0),
-            Point::new(53.0, 22.0),
-            Point::new(53.0, 8.0),
-            Point::new(34.0, 8.0),
-        ],
-    };
-    job(shape, 1.0, Project::add_drill, |o| {
-        let c = &mut o.common;
-        c.target_depth = Some(-12.0);
-        c.clearance_plane = 3.0;
-        c.plunge_feedrate = 300.0;
-        c.spindle_speed = 1000.0;
-    })
+/// A project with one operation from `add` on `shape`.
+fn job(
+    shape: Shape,
+    add: fn(&mut Project, &[u32]) -> Result<u32, String>,
+    edit: impl FnOnce(&mut Operation),
+) -> Project {
+    let mut p = new_project();
+    let id = p.add_shape("Default", shape).unwrap();
+    add_op(&mut p, &[id], add, edit);
+    generated(p)
 }
 
 /// The arc test shape (as `tests/shapes/square_convex_concave.dxf`): one closed polyline, drawn
@@ -135,58 +95,135 @@ fn arc_shape() -> Shape {
     })
 }
 
-/// Settings shared by the arc test projects: 6 mm tool, target −5 in one pass, clearance 10,
-/// feeds 1200 / 600, spindle 1000, Conventional.
-fn arc_settings(o: &mut Operation) {
-    let c = &mut o.common;
-    c.target_depth = Some(-5.0);
-    c.depth_increment = 5.0;
-    c.clearance_plane = 10.0;
-    c.cut_feedrate = 1200.0;
-    c.plunge_feedrate = 600.0;
-    c.spindle_speed = 1000.0;
-    match &mut o.kind {
-        OperationKind::Profile(p) => p.milling_direction = MillingDirection::Conventional,
-        OperationKind::Pocket(p) => p.milling_direction = MillingDirection::Conventional,
-        _ => {}
-    }
+/// A closed rectangle from (x0, y0) to (x1, y1).
+fn rectangle(x0: f64, y0: f64, x1: f64, y1: f64) -> Shape {
+    Shape::Polyline(Polyline {
+        vertices: vec![
+            Vertex::line(x0, y0),
+            Vertex::line(x1, y0),
+            Vertex::line(x1, y1),
+            Vertex::line(x0, y1),
+        ],
+        closed: true,
+    })
 }
 
+/// Profile of the arc shape on `side`, Conventional, in one 10 mm pass.
 fn arc_profile(side: ProfileSide) -> Project {
-    job(arc_shape(), 6.0, Project::add_profile, |o| {
-        arc_settings(o);
+    job(arc_shape(), Project::add_profile, |o| {
+        o.common.depth_increment = 10.0;
         if let OperationKind::Profile(p) = &mut o.kind {
             p.side = side;
+            p.milling_direction = MillingDirection::Conventional;
         }
     })
 }
 
-/// Pocket of the arc shape, stepover 0.4.
-fn arc_pocket() -> Project {
-    job(arc_shape(), 6.0, Project::add_pocket, arc_settings)
+/// Pocket of the arc shape, stepover 0.4, in one 10 mm pass.
+fn arc_pocket(direction: MillingDirection) -> Project {
+    job(arc_shape(), Project::add_pocket, |o| {
+        o.common.depth_increment = 10.0;
+        if let OperationKind::Pocket(p) = &mut o.kind {
+            p.milling_direction = direction;
+        }
+    })
+}
+
+/// The two pocket rectangles, 100 × 50: one at the bottom, one above it from Y70.
+fn two_rectangles(p: &mut Project) -> (u32, u32) {
+    let bottom = p
+        .add_shape("Default", rectangle(0.0, 0.0, 100.0, 50.0))
+        .unwrap();
+    let top = p
+        .add_shape("Default", rectangle(0.0, 70.0, 100.0, 120.0))
+        .unwrap();
+    (bottom, top)
+}
+
+/// One pocket of both rectangles, Level first, Conventional, in 5 mm passes.
+fn pocket_level_first() -> Project {
+    let mut p = new_project();
+    let (bottom, top) = two_rectangles(&mut p);
+    add_op(&mut p, &[bottom, top], Project::add_pocket, |o| {
+        o.common.depth_increment = 5.0;
+        if let OperationKind::Pocket(k) = &mut o.kind {
+            k.cut_ordering = CutOrdering::LevelFirst;
+        }
+    });
+    generated(p)
+}
+
+/// Two pockets in 5 mm passes: the top rectangle with T2 (6 mm), then the bottom one with its
+/// own tool T1 (a 3 mm, 15 mm flute end mill), so the program changes tool between them.
+fn pocket_tool_change() -> Project {
+    let mut p = new_project();
+    let (bottom, top) = two_rectangles(&mut p);
+    add_op(&mut p, &[top], Project::add_pocket, |o| {
+        o.common.depth_increment = 5.0;
+    });
+    let second = add_op(&mut p, &[bottom], Project::add_pocket, |o| {
+        o.common.depth_increment = 5.0;
+    });
+    p.set_operation_tool(second, ToolSetting::Library(end_mill(1, 3.0, 15.0)))
+        .unwrap();
+    generated(p)
+}
+
+/// Drilling 4 points with `method`: peck 2 (Peck); hole 8 mm, 2 mm down per turn (Helical).
+fn drill(method: DrillMethod) -> Project {
+    let shape = Shape::Points {
+        points: vec![
+            Point::new(50.0, 150.0),
+            Point::new(150.0, 150.0),
+            Point::new(150.0, 50.0),
+            Point::new(50.0, 50.0),
+        ],
+    };
+    job(shape, Project::add_drill, |o| {
+        o.common.depth_increment = 2.0;
+        if let OperationKind::Drill(d) = &mut o.kind {
+            d.method = method;
+            d.peck_distance = 2.0;
+            d.hole_diameter = 8.0;
+        }
+    })
 }
 
 fn programs() -> Vec<(&'static str, String)> {
     [
-        ("Profile", profile()),
-        ("Pocket", pocket()),
-        ("Drill", drill()),
-        ("Arcs Profile Outside", arc_profile(ProfileSide::Outside)),
-        ("Arcs Profile Inside", arc_profile(ProfileSide::Inside)),
-        ("Arcs Pocket", arc_pocket()),
+        (
+            "Profile_Outside_Conventional",
+            arc_profile(ProfileSide::Outside),
+        ),
+        (
+            "Profile_Inside_Conventional",
+            arc_profile(ProfileSide::Inside),
+        ),
+        (
+            "Profile_On_Line_Conventional",
+            arc_profile(ProfileSide::OnLine),
+        ),
+        (
+            "Pocket_Conventional",
+            arc_pocket(MillingDirection::Conventional),
+        ),
+        ("Pocket_Climb", arc_pocket(MillingDirection::Climb)),
+        ("Pocket_Level_First_Conventional", pocket_level_first()),
+        ("Pocket_Tool_Change_Conventional", pocket_tool_change()),
+        ("Drill_Standard", drill(DrillMethod::Standard)),
+        ("Drill_Peck", drill(DrillMethod::Peck)),
+        ("Drill_Helical", drill(DrillMethod::Helical)),
     ]
     .into_iter()
-    .map(|(name, mut p)| {
-        let _ = p.save_text(name); // names the project like the file
-        (name, p.gcode(DATE).unwrap().text())
-    })
+    .map(|(name, p)| (name, p.gcode(DATE).unwrap().text()))
     .collect()
 }
 
-/// The lines compared: all but the version line, which changes with every release.
+/// The lines compared: all but the version line (changes with every release) and the project
+/// line (the project's name and when the file was made).
 fn compared(text: &str) -> Vec<&str> {
     text.lines()
-        .filter(|l| !l.starts_with("( WHAM_CAM "))
+        .filter(|l| !l.starts_with("( WHAM_CAM ") && !l.starts_with("( Project: "))
         .collect()
 }
 
@@ -264,7 +301,12 @@ fn conventional_inside_profile_cuts_convex_arcs_g2_and_concave_g3() {
 #[test]
 fn conventional_pocket_cuts_both_arc_directions() {
     // Rings run clockwise like a conventional inside profile: convex arcs G2, concave arcs G3.
-    let a = arcs(&arc_pocket().gcode(DATE).unwrap().text());
+    let a = arcs(
+        &arc_pocket(MillingDirection::Conventional)
+            .gcode(DATE)
+            .unwrap()
+            .text(),
+    );
     assert_eq!(codes_for(&a, 34.5), ["G2"], "outer ring convex arc: {a:?}");
     assert_eq!(codes_for(&a, 75.5), ["G3"], "outer ring concave arc: {a:?}");
 }

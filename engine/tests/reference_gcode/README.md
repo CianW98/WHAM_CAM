@@ -12,14 +12,19 @@ exactly this G-code, so any change to toolpaths or G-code output is caught on ev
 
 | File | What it tests |
 |---|---|
-| `Profile.nc` | Outside profile of a polyline with arcs |
-| `Pocket.nc` | Rectangular pocket in two depth passes |
-| `Drill.nc` | Standard drilling (`G81` cycle) |
-| `Arcs Profile Outside.nc` | Square corners, convex and concave arcs: outside, conventional |
-| `Arcs Profile Inside.nc` | The same shape: inside, conventional |
-| `Arcs Pocket.nc` | The same shape: pocket, conventional |
+| `Profile_Outside_Conventional.nc` | Arc test shape (square corners, convex and concave arcs): outside, conventional |
+| `Profile_Inside_Conventional.nc` | The same shape: inside, conventional |
+| `Profile_On_Line_Conventional.nc` | The same shape: on the line |
+| `Pocket_Conventional.nc` | The same shape: pocket, conventional |
+| `Pocket_Climb.nc` | The same shape: pocket, climb |
+| `Pocket_Level_First_Conventional.nc` | Two rectangles in one pocket, two depth passes, level first |
+| `Pocket_Tool_Change_Conventional.nc` | Two pockets with different tools (T2 6 mm, then T1 3 mm): tool change |
+| `Drill_Standard.nc` | Four holes, standard drilling (`G81` cycle) |
+| `Drill_Peck.nc` | The same holes, peck drilling (`G83` cycle) |
+| `Drill_Helical.nc` | The same holes, helical (8 mm holes with the 6 mm tool) |
 
-The `( WHAM_CAM x.y.z )` version line is not compared, so the files don't change with each release.
+The `( WHAM_CAM x.y.z )` version line and the `( Project: ... )` line (project name and date) are not
+compared, so the files don't change with each release.
 
 ## Updating
 
