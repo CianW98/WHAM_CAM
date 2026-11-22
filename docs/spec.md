@@ -546,7 +546,7 @@ Names follow common CAM terminology.
 | Milling direction | Conventional / Climb | Conventional |
 | Cut ordering | Depth first / Level first (across multiple shapes) | Depth first |
 
-Behaviour (the cut loop matches the reference Profile example move for move):
+Behaviour (checked against the reference G-code `Profile.nc`, section 8):
 - **Shapes:** lines, arcs, circles, PolyRectangles and polylines (open or closed). Open shapes
   can only be cut **On line** (only that choice is offered). Point lists are refused.
 - **Corners:** outside corners get an arc of tool radius (G2/G3).
@@ -574,7 +574,7 @@ Behaviour (the cut loop matches the reference Profile example move for move):
 | Region fill style | Inside→outside offsets (the only style) | Inside→outside offsets |
 | Cut ordering | Depth first / Level first | Depth first |
 
-Behaviour (matches the reference Pocket example move for move):
+Behaviour (checked against the reference G-code `Pocket.nc`, section 8):
 - Select closed shapes (polylines, PolyRectangles, circles), then Pocket. The operation's
   **Shapes** in Properties lists their ids (e.g. `1, 2, 3`, as shown in the tree) and can be
   edited; ids that don't exist or can't be pocketed are refused. Nesting decides the
@@ -605,8 +605,7 @@ Behaviour (matches the reference Pocket example move for move):
 | Milling direction | Helical only: Conventional (clockwise round the hole) / Climb | Conventional |
 | Depth per turn | Helical only: the common Depth increment, shown under this name | 1 |
 
-Behaviour (matches the reference Drill example written out in full, move for
-move):
+Behaviour (checked against the reference G-code `Drill.nc`, section 8):
 - **Hole order:** the first listed hole, then always the nearest hole not yet drilled.
 - **Between holes** the tool always rises to the clearance plane (no sideways rapid below it).
 - **Standard:** rapid over the hole at clearance, rapid down to the retract height (if lower),
