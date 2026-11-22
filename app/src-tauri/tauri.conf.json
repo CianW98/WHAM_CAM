@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "WHAM_CAM",
   "version": "0.6.0",
-  "identifier": "io.github.cianw98.whamcam",
+  "identifier": "whamcam",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",

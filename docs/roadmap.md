@@ -3,7 +3,6 @@
 ## Road to 1.0.0
 
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
-- **Plainer settings folder name**: change the app identifier (`tauri.conf.json`) so Setup settings live in `~/.config/whamcam/` (identifier `whamcam`) instead of `~/.config/io.github.cianw98.whamcam/`. Check the installers still build with a single-word identifier. Must be done before 1.0.0, so no user's settings are left in the old folder.
 - **Final project file format check**: look through a saved file and settle setting names and grouping, set the format version to 1, and have the upgrade-on-open step ready for the first format change after 1.0.0.
 - **More reference G-code files**, so every feature in the v1 spec has a checked file in `engine/tests/reference_gcode/`. For each one: add the job to `engine/tests/reference_gcode.rs`, write it to `pending/`, have it checked in a simulator and with an air cut, then move it up, commit it and add it to the README table there. Files to add:
   - Drill Peck (`G83`) and Drill Helical.
