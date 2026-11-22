@@ -4,10 +4,9 @@
 
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
 - **More reference G-code files**, so every feature in the v1 spec has a checked file in `engine/tests/reference_gcode/`. For each one: add the job to `engine/tests/reference_gcode.rs`, write it to `pending/`, have it checked in a simulator and with an air cut, then move it up, commit it and add it to the README table there. Files to add:
-  - Drill Peck (`G83`) and Drill Helical.
-  - Climb versions of the Arcs jobs: Profile Outside, Profile Inside and Pocket.
-  - Profile On line: a closed shape and an open shape.
-  - A job with several operations and a tool change (e.g. a pocket, a profile and a drill with two tools).
+  - Climb versions of the arc-shape profiles: Profile Outside and Profile Inside.
+  - Profile On line of an open shape.
+  - A job with different operation types and a tool change (e.g. a pocket, a profile and a drill with two tools).
 - **WHAM_CAM logo**: design a logo and use it for the app icon (`app/src-tauri/icons/`, which shows in the taskbar, window and installers).
 - **Font for the "WHAM_CAM" name** at the top left of the actions bar: choose and set a proper font for it.
 - **Installed-app check**: install the release build on Windows and Linux and run a real job end to end (open, save, reopen, write G-code).
