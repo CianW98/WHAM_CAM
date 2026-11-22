@@ -83,6 +83,11 @@ fn job(
 /// anticlockwise, 100 × 60. Straight bottom and left edges with square corners, a convex arc on
 /// the right (bulges out 15, R37.5) and a concave arc on the top (dips in 20, R72.5).
 fn arc_shape() -> Shape {
+    arc_polyline(true)
+}
+
+/// The arc test shape, closed or open (open: without the left edge from (0, 60) back to (0, 0)).
+fn arc_polyline(closed: bool) -> Shape {
     let v = |x: f64, y: f64, bulge: f64| Vertex { x, y, bulge };
     Shape::Polyline(Polyline {
         vertices: vec![
@@ -91,7 +96,7 @@ fn arc_shape() -> Shape {
             v(100.0, 60.0, -0.4),
             v(0.0, 60.0, 0.0),
         ],
-        closed: true,
+        closed,
     })
 }
 
@@ -110,11 +115,16 @@ fn rectangle(x0: f64, y0: f64, x1: f64, y1: f64) -> Shape {
 
 /// Profile of the arc shape on `side`, Conventional, in one 10 mm pass.
 fn arc_profile(side: ProfileSide) -> Project {
-    job(arc_shape(), Project::add_profile, |o| {
+    profile_of(arc_shape(), side, MillingDirection::Conventional)
+}
+
+/// Profile of `shape` on `side` in `direction`, in one 10 mm pass.
+fn profile_of(shape: Shape, side: ProfileSide, direction: MillingDirection) -> Project {
+    job(shape, Project::add_profile, |o| {
         o.common.depth_increment = 10.0;
         if let OperationKind::Profile(p) = &mut o.kind {
             p.side = side;
-            p.milling_direction = MillingDirection::Conventional;
+            p.milling_direction = direction;
         }
     })
 }
@@ -202,6 +212,26 @@ fn programs() -> Vec<(&'static str, String)> {
         (
             "Profile_On_Line_Conventional",
             arc_profile(ProfileSide::OnLine),
+        ),
+        (
+            "Profile_Outside_Climb",
+            profile_of(arc_shape(), ProfileSide::Outside, MillingDirection::Climb),
+        ),
+        (
+            "Profile_Inside_Climb",
+            profile_of(arc_shape(), ProfileSide::Inside, MillingDirection::Climb),
+        ),
+        (
+            "Profile_On_Line_Climb",
+            profile_of(arc_shape(), ProfileSide::OnLine, MillingDirection::Climb),
+        ),
+        (
+            "Profile_On_Line_Conventional_Open",
+            profile_of(
+                arc_polyline(false),
+                ProfileSide::OnLine,
+                MillingDirection::Conventional,
+            ),
         ),
         (
             "Pocket_Conventional",

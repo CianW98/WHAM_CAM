@@ -15,6 +15,10 @@ exactly this G-code, so any change to toolpaths or G-code output is caught on ev
 | `Profile_Outside_Conventional.nc` | Arc test shape (square corners, convex and concave arcs): outside, conventional |
 | `Profile_Inside_Conventional.nc` | The same shape: inside, conventional |
 | `Profile_On_Line_Conventional.nc` | The same shape: on the line |
+| `Profile_Outside_Climb.nc` | The same shape: outside, climb |
+| `Profile_Inside_Climb.nc` | The same shape: inside, climb |
+| `Profile_On_Line_Climb.nc` | The same shape: on the line, climb |
+| `Profile_On_Line_Conventional_Open.nc` | The same shape left open (no left edge): on the line |
 | `Pocket_Conventional.nc` | The same shape: pocket, conventional |
 | `Pocket_Climb.nc` | The same shape: pocket, climb |
 | `Pocket_Level_First_Conventional.nc` | Two rectangles in one pocket, two depth passes, level first |
