@@ -10,6 +10,8 @@
   - Profile On line: a closed shape and an open shape.
   - A job with several operations and a tool change (e.g. a pocket, a profile and a drill with two tools).
 - **Remove the old reference-example tests**: delete the three move-by-move comparisons with the original reference examples (`matches_the_reference_drill_move_for_move` in `engine/tests/drill.rs`, `matches_the_reference_pocket_move_for_move` in `engine/tests/pocket.rs`, `matches_the_reference_profile_loop_move_for_move` in `engine/tests/profile.rs`). The checked `Drill.nc`, `Pocket.nc` and `Profile.nc` cover the same jobs. Also remove the "Reference toolpath comparison" bullet in spec section 8 and the `tests/reference/local/` line in `CLAUDE.md`'s "Where things are".
+- **WHAM_CAM logo**: design a logo and use it for the app icon (`app/src-tauri/icons/`, which shows in the taskbar, window and installers).
+- **Font for the "WHAM_CAM" name** at the top left of the actions bar: choose and set a proper font for it.
 - **Installed-app check**: install the release build on Windows and Linux and run a real job end to end (open, save, reopen, write G-code).
 - **Final air cut** of a real multi-operation part with the release candidate.
 
