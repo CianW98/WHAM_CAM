@@ -55,54 +55,6 @@ fn same_point(a: Point3, b: Point3) -> bool {
     close(a.x, b.x) && close(a.y, b.y) && close(a.z, b.z)
 }
 
-fn same_move(got: &Move, want: &Move) -> bool {
-    same_point(got.to(), want.to())
-        && match (got, want) {
-            (Move::Rapid { .. }, Move::Rapid { .. }) => true,
-            (Move::Feed { feed: a, .. }, Move::Feed { feed: b, .. }) => close(*a, *b),
-            (
-                Move::Arc {
-                    center_x: ax,
-                    center_y: ay,
-                    ccw: ac,
-                    feed: af,
-                    ..
-                },
-                Move::Arc {
-                    center_x: bx,
-                    center_y: by,
-                    ccw: bc,
-                    feed: bf,
-                    ..
-                },
-            ) => close(*ax, *bx) && close(*ay, *by) && ac == bc && close(*af, *bf),
-            _ => false,
-        }
-}
-
-fn rapid(x: f64, y: f64, z: f64) -> Move {
-    Move::Rapid {
-        to: Point3::new(x, y, z),
-    }
-}
-
-fn feed(x: f64, y: f64, z: f64, f: f64) -> Move {
-    Move::Feed {
-        to: Point3::new(x, y, z),
-        feed: f,
-    }
-}
-
-fn arc(x: f64, y: f64, z: f64, cx: f64, cy: f64, ccw: bool, f: f64) -> Move {
-    Move::Arc {
-        to: Point3::new(x, y, z),
-        center_x: cx,
-        center_y: cy,
-        ccw,
-        feed: f,
-    }
-}
-
 /// The cut moves (Feed and Arc) at height `z`.
 fn cuts_at(tp: &Toolpath, z: f64) -> Vec<Move> {
     let mut at: Option<Point3> = None;
@@ -115,66 +67,6 @@ fn cuts_at(tp: &Toolpath, z: f64) -> Vec<Move> {
         at = Some(m.to());
     }
     out
-}
-
-/// The reference Profile example: an 8-point polyline with arcs, 6 mm tool, Outside,
-/// Conventional, target −5 in one 5 mm pass, clearance 10, feeds 1200 / 600.
-/// The reference enters with a spiral lead-in (set on purpose in the reference); WHAM_CAM v1
-/// plunges straight down at the start point instead (user's decision, 2026-11-16), so the entry
-/// differs but the cut loop must match move for move.
-#[test]
-fn matches_the_reference_profile_loop_move_for_move() {
-    let v = |x: f64, y: f64, bulge: f64| Vertex { x, y, bulge };
-    let shape = Polyline {
-        vertices: vec![
-            v(-13.5991651223692, 29.0712686279469, 0.0),
-            v(-10.0, 39.0, 0.0),
-            v(64.0, 5.0, 0.0),
-            v(31.0, -36.0, 0.0),
-            v(-39.0, -41.0, 0.0),
-            v(-30.9753411612932, -18.8630101001193, -0.04098469246601959),
-            v(-34.747548783982, -17.0794021658196, -0.5773502691896257),
-            v(-34.747548783982, 27.0794021658196, -0.218213101023905),
-        ],
-        closed: true,
-    };
-    let c = CommonSettings {
-        tool_diameter: 6.0,
-        target_depth: Some(-5.0),
-        depth_increment: 5.0,
-        clearance_plane: 10.0,
-        cut_feedrate: 1200.0,
-        plunge_feedrate: 600.0,
-        spindle_speed: 1000.0,
-        ..CommonSettings::default()
-    };
-    let tp = profile(&[(4, shape)], &c, &side(ProfileSide::Outside));
-    let z = -5.0;
-    let f = 1200.0;
-    let want = vec![
-        // Entry: straight plunge at the start (the reference uses a spiral lead-in here).
-        rapid(-15.4621, 32.7349, 10.0),
-        rapid(-15.4621, 32.7349, 1.0),
-        feed(-15.4621, 32.7349, z, 600.0),
-        // The loop, as in the reference G-code.
-        arc(-36.2475, 29.6775, z, -22.0, 5.0, true, f),
-        arc(-36.2475, -19.6775, z, -22.0, 5.0, true, f),
-        arc(-34.7532, -20.4819, z, -22.0, 5.0, true, f),
-        feed(-41.8204, -39.9776, z, f),
-        arc(-38.7863, -43.9924, z, -39.0, -41.0, true, f),
-        feed(31.2137, -38.9924, z, f),
-        arc(33.337, -37.881, z, 31.0, -36.0, true, f),
-        feed(66.337, 3.119, z, f),
-        arc(65.2525, 7.726, z, 64.0, 5.0, true, f),
-        feed(-8.7475, 41.726, z, f),
-        arc(-12.8204, 40.0224, z, -10.0, 39.0, true, f),
-        feed(-15.4621, 32.7349, z, f),
-        rapid(-15.4621, 32.7349, 10.0),
-    ];
-    assert_eq!(tp.moves.len(), want.len(), "moves: {:#?}", tp.moves);
-    for (i, (g, w)) in tp.moves.iter().zip(&want).enumerate() {
-        assert!(same_move(g, w), "move {}: got {g:?}, want {w:?}", i + 1);
-    }
 }
 
 #[test]

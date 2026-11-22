@@ -208,6 +208,3 @@ Layout: `engine/` (Rust CAM engine, crate `wham_engine`), `app/` (React + TypeSc
   settings kept on this computer).
 - Engine tests are in `engine/tests/`, one file per area (e.g. `pocket.rs`, `dxf.rs`).
   `reference_gcode.rs` compares output with the checked files in `engine/tests/reference_gcode/`.
-- The reference examples (Drill, Pocket, Profile) are in `tests/reference/local/`. The whole
-  top-level `tests/` folder is git-ignored (this machine only), so the expected moves from the
-  references are written into the engine tests.

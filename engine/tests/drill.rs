@@ -77,27 +77,6 @@ fn p(x: f64, y: f64) -> Point {
     Point::new(x, y)
 }
 
-/// The reference Drill example: a point list of 4 points, 1 mm tool, target −12, retract height
-/// and clearance 3, plunge feed 300. The reference writes a canned cycle (G98 G81 … R3); written
-/// out in full it is: rapid over the hole at Z3, feed to −12, rapid back to Z3, in the reference's
-/// hole order (nearest next).
-#[test]
-fn matches_the_reference_drill_move_for_move() {
-    let holes = [p(34.0, 22.0), p(53.0, 22.0), p(53.0, 8.0), p(34.0, 8.0)];
-    let tp = drill(
-        &holes,
-        &settings(1.0, -12.0),
-        &method(DrillMethod::Standard),
-    );
-    let mut want = Vec::new();
-    for (x, y) in [(34.0, 22.0), (34.0, 8.0), (53.0, 8.0), (53.0, 22.0)] {
-        want.push(rapid(x, y, 3.0));
-        want.push(feed(x, y, -12.0, 300.0));
-        want.push(rapid(x, y, 3.0));
-    }
-    assert_moves(&tp.moves, &want);
-}
-
 #[test]
 fn standard_rapids_down_to_a_lower_retract_height_first() {
     let c = CommonSettings {

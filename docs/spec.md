@@ -699,10 +699,6 @@ Safety rules (from CLAUDE.md; tests check these on every output):
 ## 8. Testing
 
 - The engine has its own unit tests (`cargo test`) that run without the UI.
-- **Reference toolpath comparison**: the reference examples in `tests/reference/local/`
-  (git-ignored, kept on this machine only) are used to check toolpath **shape**: offsets,
-  stepovers, depth levels and cut order. They are not compared as exact text, because their G-code
-  format differs from WHAM_CAM's.
 - **WHAM_CAM reference outputs**: once WHAM_CAM's output has been checked in a simulator and
   with an air cut, it is kept in `engine/tests/reference_gcode/` and later output is compared to it
   exactly, on GitHub too. A README there says the files are test data, not
