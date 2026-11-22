@@ -6,7 +6,12 @@
 - **Shorter project file extension**: change `.whamcam` to `.wc` (save/open dialogs, file association, docs). Must be done before 1.0.0, when the project file format is locked.
 - **Plainer settings folder name**: change the app identifier (`tauri.conf.json`) so Setup settings live in `~/.config/whamcam/` (identifier `whamcam`) instead of `~/.config/io.github.cianw98.whamcam/`. Check the installers still build with a single-word identifier. Must be done before 1.0.0, so no user's settings are left in the old folder.
 - **Final project file format check**: look through a saved file and settle setting names and grouping, set the format version to 1, and have the upgrade-on-open step ready for the first format change after 1.0.0.
-- **More reference G-code files**, each checked in a simulator and with an air cut: Peck and Helical drilling, climb cutting, an open shape cut On line, and a job with several operations and a tool change.
+- **More reference G-code files**, so every feature in the v1 spec has a checked file in `engine/tests/reference_gcode/`. For each one: add the job to `engine/tests/reference_gcode.rs`, write it to `pending/`, have it checked in a simulator and with an air cut, then move it up, commit it and add it to the README table there. Files to add:
+  - Drill Peck (`G83`) and Drill Helical.
+  - Climb versions of the Arcs jobs: Profile Outside, Profile Inside and Pocket.
+  - Profile On line: a closed shape and an open shape.
+  - A job with several operations and a tool change (e.g. a pocket, a profile and a drill with two tools).
+- **Remove the old reference-example tests**: delete the three move-by-move comparisons with the original reference examples (`matches_the_reference_drill_move_for_move` in `engine/tests/drill.rs`, `matches_the_reference_pocket_move_for_move` in `engine/tests/pocket.rs`, `matches_the_reference_profile_loop_move_for_move` in `engine/tests/profile.rs`). The checked `Drill.nc`, `Pocket.nc` and `Profile.nc` cover the same jobs. Also remove the "Reference toolpath comparison" bullet in spec section 8 and the `tests/reference/local/` line in `CLAUDE.md`'s "Where things are".
 - **Installed-app check**: install the release build on Windows and Linux and run a real job end to end (open, save, reopen, write G-code).
 - **Final air cut** of a real multi-operation part with the release candidate.
 
