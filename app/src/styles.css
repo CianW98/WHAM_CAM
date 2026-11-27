@@ -75,8 +75,16 @@ body,
   border-bottom: 1px solid var(--panel-border);
 }
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 700;
   margin-right: 8px;
+}
+.brand-logo {
+  height: 24px;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .tool-group {
   display: flex;

@@ -1,3 +1,4 @@
+import logo from "../assets/logo.png";
 import { TOOLBAR_TIPS } from "../tips";
 import { ActionIcon } from "./Icons";
 import { tipProps } from "./Tooltip";
@@ -24,7 +25,10 @@ interface Props {
 export default function Toolbar({ onAction, disabled, active, on }: Props) {
   return (
     <header className="toolbar">
-      <span className="brand">WHAM_CAM</span>
+      <span className="brand">
+        <img className="brand-logo" src={logo} alt="" />
+        WHAM_CAM
+      </span>
       {GROUPS.map(({ heading, actions }) => (
         <div className="tool-group" key={heading}>
           <div className="tool-group-heading">{heading}</div>
