@@ -54,3 +54,4 @@ For the engine's WebAssembly check: `rustup target add wasm32-unknown-unknown`
 ## Licence
 
 Apache License 2.0.
+The logo is not covered by this licence: see `NOTICE`.

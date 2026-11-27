@@ -3,7 +3,6 @@
 ## Road to 1.0.0
 
 - **Full end-to-end check by Cian**: vastly done already; the machine dialog and project templates are what remain.
-- **WHAM_CAM logo**: design a logo and use it for the app icon (`app/src-tauri/icons/`, which shows in the taskbar, window and installers).
 - **Font for the "WHAM_CAM" name** at the top left of the actions bar: choose and set a proper font for it.
 - **Final air cut** of a real multi-operation part with the release candidate.
 
