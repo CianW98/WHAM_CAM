@@ -216,6 +216,9 @@ pub struct Project {
     mm_per_px: f64,
     /// Whether dimensions are shown. View only: not saved, not in undo.
     dimensions_visible: bool,
+    /// The part new operations go into (by name; set by the app, like the current layer). If no
+    /// part has this name, the first part. Not saved, not in undo.
+    current_part: Option<String>,
 }
 
 impl Default for Project {
@@ -240,6 +243,7 @@ impl Project {
             hidden_layers: BTreeSet::new(),
             mm_per_px: DEFAULT_MM_PER_PX,
             dimensions_visible: true,
+            current_part: None,
         }
     }
 
@@ -1488,12 +1492,16 @@ impl Project {
             // Follows its part in everything; the edit fills the values in.
             own: BTreeSet::new(),
         };
+        let current = self.current_part.clone();
         self.edit(|doc| {
             if doc.parts.is_empty() {
                 doc.parts.push(Part::new("Part1", &doc.machining_settings));
             }
-            // New operations go into the last part (spec 5.4).
-            doc.parts.last_mut().expect("a part").operations.push(op);
+            // New operations go into the current part, or the first (spec 5.4).
+            let pi = current
+                .and_then(|name| doc.parts.iter().position(|p| p.name == name))
+                .unwrap_or(0);
+            doc.parts[pi].operations.push(op);
         });
         Ok(id)
     }
@@ -1761,6 +1769,12 @@ impl Project {
             doc.parts[pi].operations[oi].own.remove(&setting);
         });
         Ok(())
+    }
+
+    /// Sets the part new operations go into, by name (None or a name no part has = the first
+    /// part). A view setting: not saved, not an undo step.
+    pub fn set_current_part(&mut self, name: Option<String>) {
+        self.current_part = name;
     }
 
     /// Adds a new, empty part ("Part2", or the next unused number) at the end, following

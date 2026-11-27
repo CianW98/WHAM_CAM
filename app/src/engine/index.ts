@@ -873,17 +873,18 @@ export function moveOperation(id: number, part: number): Promise<void> {
 
 /** Adds a Pocket of the given closed shapes. Returns its id. */
 /** Adds a Profile of the given shapes (Outside, or On line if any are open). Returns its id. */
-export function addProfile(shapeIds: number[]): Promise<number> {
-  return invoke<number>("add_profile", { shapeIds });
+export function addProfile(shapeIds: number[], part: string | null): Promise<number> {
+  return invoke<number>("add_profile", { shapeIds, part });
 }
 
 /** Adds a Drill of the given point lists, circles and arcs. Returns its id. */
-export function addDrill(shapeIds: number[]): Promise<number> {
-  return invoke<number>("add_drill", { shapeIds });
+export function addDrill(shapeIds: number[], part: string | null): Promise<number> {
+  return invoke<number>("add_drill", { shapeIds, part });
 }
 
-export function addPocket(shapeIds: number[]): Promise<number> {
-  return invoke<number>("add_pocket", { shapeIds });
+/** New operations (Pocket, Profile, Drill) go into `part` (by name), or the first part. */
+export function addPocket(shapeIds: number[], part: string | null): Promise<number> {
+  return invoke<number>("add_pocket", { shapeIds, part });
 }
 
 /** Replaces an operation's settings (matched by id). */

@@ -158,6 +158,8 @@ export default function App() {
   const [fitRequest, setFitRequest] = useState(0);
   const [choice, setChoice] = useState<(Choice & { resolve: (a: string | null) => void }) | null>(null);
   const [currentLayer, setCurrentLayer] = useState<string | null>(null);
+  // The part new operations go into (by name), highlighted in the tree like the current layer.
+  const [currentPart, setCurrentPart] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("2D");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   /** The open menu-bar heading, if any. */
@@ -388,6 +390,7 @@ export default function App() {
     setSpecial(null);
     setSelection(NOTHING);
     setCurrentLayer(null);
+    setCurrentPart(null);
   }, [setDraft, setSpecial]);
 
   const newProject = useCallback(async () => {
@@ -443,6 +446,10 @@ export default function App() {
 
   // --- Operations ----------------------------------------------------------------------------
 
+  const parts = view?.document.parts ?? [];
+  /** The current part, or the first if none is set (or it's gone). */
+  const operationPart = parts.find((p) => p.name === currentPart)?.name ?? parts[0]?.name ?? null;
+
   /** Pocket: adds a Pocket of the selected shapes and selects it. */
   const addPocket = useCallback(async () => {
     const shapes = selectedIds(selection);
@@ -450,11 +457,11 @@ export default function App() {
       notify("info", "Select the closed shapes to pocket first (the outline and any islands).");
       return;
     }
-    const id = await engine.addPocket(shapes);
+    const id = await engine.addPocket(shapes, operationPart);
     await refresh();
     setSelection({ kind: "operation", id });
     notify("info", "Pocket added. Set its target depth in Properties, then Generate toolpaths.");
-  }, [selection, refresh, notify]);
+  }, [selection, refresh, notify, operationPart]);
 
   /** Profile: adds a Profile of the selected shapes and selects it. */
   const addProfile = useCallback(async () => {
@@ -463,11 +470,11 @@ export default function App() {
       notify("info", "Select the shapes to profile first.");
       return;
     }
-    const id = await engine.addProfile(shapes);
+    const id = await engine.addProfile(shapes, operationPart);
     await refresh();
     setSelection({ kind: "operation", id });
     notify("info", "Profile added. Set its target depth in Properties, then Generate toolpaths.");
-  }, [selection, refresh, notify]);
+  }, [selection, refresh, notify, operationPart]);
 
   /** Drill: adds a Drill of the selected point lists, circles and arcs and selects it. */
   const addDrill = useCallback(async () => {
@@ -476,11 +483,11 @@ export default function App() {
       notify("info", "Select the point lists, circles or arcs to drill first.");
       return;
     }
-    const id = await engine.addDrill(shapes);
+    const id = await engine.addDrill(shapes, operationPart);
     await refresh();
     setSelection({ kind: "operation", id });
     notify("info", "Drill added. Set its target depth in Properties, then Generate toolpaths.");
-  }, [selection, refresh, notify]);
+  }, [selection, refresh, notify, operationPart]);
 
   /** Generate toolpaths: for the given operations, or all enabled ones. */
   const generateToolpaths = useCallback(
@@ -1258,6 +1265,7 @@ export default function App() {
   );
   const onSelect = (sel: Selection) => {
     setSelection(sel);
+    if (sel.kind === "part" && parts[sel.part]) setCurrentPart(parts[sel.part].name);
     if (sel.kind === "layer" && layers[sel.layer]) {
       const name = layers[sel.layer].name;
       setCurrentLayer(name);
@@ -1550,13 +1558,21 @@ export default function App() {
               return op ? setOperation({ ...op, name }) : false;
             }}
             onDeleteLayer={(name) => run(() => deleteLayer(name))}
+            currentPart={operationPart}
             onNewPart={async () => {
               const part = await engine.newPart();
               await refresh();
+              const view = await engine.getView();
               setSelection({ kind: "part", part });
+              setCurrentPart(view.document.parts[part]?.name ?? null);
               return part;
             }}
-            onRenamePart={(part, name) => tryEdit(() => engine.renamePart(part, name))}
+            onRenamePart={async (part, name) => {
+              const old = parts[part]?.name;
+              const ok = await tryEdit(() => engine.renamePart(part, name));
+              if (ok) setCurrentPart((c) => (c === old ? name.trim() : c));
+              return ok;
+            }}
             onDeletePart={(part) =>
               run(async () => {
                 await engine.deletePart(part);

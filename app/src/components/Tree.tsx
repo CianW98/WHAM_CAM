@@ -37,7 +37,9 @@ interface Props {
   operationMenu: (id: number) => MenuItem[];
   /** Resolves false if the new name was rejected. */
   onRenameOperation: (id: number, name: string) => Promise<boolean>;
-  /** Adds a part (selected); resolves to its index. */
+  /** The part new operations go into (highlighted like the current layer). */
+  currentPart: string | null;
+  /** Adds a part (selected and made current); resolves to its index. */
   onNewPart: () => Promise<number>;
   /** Resolves false if the new name was rejected. */
   onRenamePart: (part: number, name: string) => Promise<boolean>;
@@ -85,8 +87,11 @@ function OperationItem({
   renameNow,
   onRenameStarted,
   children,
+  current = false,
 }: {
   children?: ReactNode;
+  /** The current part: highlighted like the current layer. */
+  current?: boolean;
   name: string;
   enabled: boolean;
   marker: ReactNode;
@@ -120,7 +125,7 @@ function OperationItem({
   return (
     <li>
       <div
-        className={`tree-item${selected ? " selected" : ""}`}
+        className={`tree-item${selected ? " selected" : ""}${current ? " current-layer" : ""}`}
         onClick={onClick}
         onDoubleClick={start}
         onContextMenu={onContextMenu}
@@ -327,6 +332,7 @@ export default function Tree({
   operationStates,
   operationMenu,
   onRenameOperation,
+  currentPart,
   onNewPart,
   onRenamePart,
   onDeletePart,
@@ -525,6 +531,7 @@ export default function Tree({
               enabled
               marker={null}
               selected={is({ kind: "part", part: pi })}
+              current={part.name === currentPart}
               onClick={() => onSelect({ kind: "part", part: pi })}
               onContextMenu={(e) => openMachiningMenu(e, pi)}
               onRename={(name) => onRenamePart(pi, name)}

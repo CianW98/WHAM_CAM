@@ -1036,20 +1036,39 @@ fn break_at_intersections(ids: Vec<u32>, state: State<AppState>) -> BreakReport 
 }
 
 // --- Operations ---------------------------------------------------------------------------------
+// New operations go into `part` (the current part, by name), or the first part.
 
 #[tauri::command]
-fn add_pocket(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
-    state.0.lock().unwrap().add_pocket(&shape_ids)
+fn add_pocket(
+    shape_ids: Vec<u32>,
+    part: Option<String>,
+    state: State<AppState>,
+) -> Result<u32, String> {
+    let mut project = state.0.lock().unwrap();
+    project.set_current_part(part);
+    project.add_pocket(&shape_ids)
 }
 
 #[tauri::command]
-fn add_drill(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
-    state.0.lock().unwrap().add_drill(&shape_ids)
+fn add_drill(
+    shape_ids: Vec<u32>,
+    part: Option<String>,
+    state: State<AppState>,
+) -> Result<u32, String> {
+    let mut project = state.0.lock().unwrap();
+    project.set_current_part(part);
+    project.add_drill(&shape_ids)
 }
 
 #[tauri::command]
-fn add_profile(shape_ids: Vec<u32>, state: State<AppState>) -> Result<u32, String> {
-    state.0.lock().unwrap().add_profile(&shape_ids)
+fn add_profile(
+    shape_ids: Vec<u32>,
+    part: Option<String>,
+    state: State<AppState>,
+) -> Result<u32, String> {
+    let mut project = state.0.lock().unwrap();
+    project.set_current_part(part);
+    project.add_profile(&shape_ids)
 }
 
 #[tauri::command]

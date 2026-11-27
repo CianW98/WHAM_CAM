@@ -222,7 +222,7 @@ fn shared_setting_changes_are_undo_steps() {
 }
 
 #[test]
-fn new_parts_follow_machining_and_take_new_operations() {
+fn new_parts_follow_machining_and_new_operations_go_into_the_current_part() {
     let (mut p, first) = with_pocket();
     let s = SharedSettings {
         plunge_feedrate: 222.0,
@@ -234,11 +234,22 @@ fn new_parts_follow_machining_and_take_new_operations() {
     assert_eq!(part.name, "Part2");
     assert_eq!(part.settings.plunge_feedrate, 222.0);
 
+    // New operations go into the current part; with none (or one that's gone), the first.
     let shape = p.add_shape("Default", circle(5.0)).unwrap();
+    let in_first = p.add_profile(&[shape]).unwrap();
+    p.set_current_part(Some("Part2".into()));
     let second = p.add_profile(&[shape]).unwrap();
-    let parts = &p.document().parts;
-    assert_eq!(parts[0].operations[0].id, first);
-    assert_eq!(parts[1].operations[0].id, second);
+    p.set_current_part(Some("Gone".into()));
+    let third = p.add_profile(&[shape]).unwrap();
+    let ids = |pi: usize| -> Vec<u32> {
+        p.document().parts[pi]
+            .operations
+            .iter()
+            .map(|o| o.id)
+            .collect()
+    };
+    assert_eq!(ids(0), vec![first, in_first, third]);
+    assert_eq!(ids(1), vec![second]);
 }
 
 #[test]

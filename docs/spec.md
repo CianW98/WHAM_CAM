@@ -333,10 +333,11 @@ Machining's values, and an operation its part's, unless it sets its own:
   whichever level a value comes from.
 
 **Parts**: right-click Machining → **New part** (Part2, Part3…, following Machining in
-everything; it starts renaming in place). Right-click a part → **Rename**, **Delete part** (with
+everything; it becomes the current part and starts renaming in place). Right-click a part → **Rename**, **Delete part** (with
 its operations; also Delete with the part selected). Part names are unique. Right-click an operation → **Move to part** (the other
 parts): the settings and tool it follows then come from that part; its own ones stay. New
-operations go into the last part.
+operations go into the **current part**, highlighted light blue in the tree like the current
+layer. Clicking a part makes it current; with none set (or it was deleted), the first part.
 
 ### 5.5 Tool library
 
@@ -513,9 +514,10 @@ Save/open a WHAM_CAM project: one readable JSON file, `.wc`, with a format versi
 - The project name (top of the tree) follows the file name. The window title shows the file name
   and `*` while there are unsaved changes (undoing back to the saved state clears it).
 - New, Open and closing the window with unsaved changes ask Save / Don't save / Cancel.
-- Opening starts a fresh undo history, zooms to fit and resets the current layer to the first.
+- Opening starts a fresh undo history, zooms to fit and resets the current layer and current
+  part to the first.
   The copy/paste clipboard is kept, so shapes can be copied between projects.
-- Not saved: current layer, view position.
+- Not saved: current layer, current part, view position.
 
 ### 5.9 Project templates
 A project template is a saved set of a project's interface settings: minor and major grid
