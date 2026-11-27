@@ -4189,7 +4189,7 @@ dependencies = [
 
 [[package]]
 name = "wham_cam_app"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde",
  "tauri",
@@ -4200,7 +4200,7 @@ dependencies = [
 
 [[package]]
 name = "wham_engine"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cavalier_contours",
  "roxmltree",
