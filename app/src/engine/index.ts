@@ -81,6 +81,10 @@ export interface Part {
   name: string;
   /** The part's own tool; null = use the Machining tool. */
   tool: PickedTool | null;
+  /** The shared settings as its operations follow them (its own values, or Machining's). */
+  settings: SharedSettings;
+  /** The shared settings set on the part itself. */
+  own: SharedSetting[];
   operations: Operation[];
 }
 
@@ -97,6 +101,35 @@ export type SpindleDirection = "CW" | "CCW" | "Off";
 export type MillingDirection = "Conventional" | "Climb";
 export type CutOrdering = "DepthFirst" | "LevelFirst";
 export type StepoverFeed = "Plunge" | "Cut";
+
+/** A setting set on Machining that a part or operation can set for itself (spec 5.4). */
+export type SharedSetting =
+  | "StockSurface"
+  | "DepthIncrement"
+  | "FinalDepthIncrement"
+  | "ClearancePlane"
+  | "FastPlungeHeight"
+  | "CutFeedrate"
+  | "PlungeFeedrate"
+  | "SpindleSpeed"
+  | "SpindleDirection"
+  | "RoughingClearance"
+  | "MillingDirection";
+
+/** The shared settings' values. Lengths in mm, feeds in mm/min. */
+export interface SharedSettings {
+  stock_surface: number;
+  depth_increment: number;
+  final_depth_increment: number;
+  clearance_plane: number;
+  fast_plunge_height: number;
+  cut_feedrate: number;
+  plunge_feedrate: number;
+  spindle_speed: number;
+  spindle_direction: SpindleDirection;
+  roughing_clearance: number;
+  milling_direction: MillingDirection;
+}
 
 /** Settings common to all operations. Lengths in mm, feeds in mm/min. */
 export interface CommonSettings {
@@ -163,6 +196,8 @@ export interface Operation {
   shape_ids: number[];
   common: CommonSettings;
   kind: OperationKind;
+  /** The shared settings set on the operation itself; the others follow its part. */
+  own: SharedSetting[];
 }
 
 export interface OperationState {
@@ -245,6 +280,8 @@ export interface Document {
   active_library: string | null;
   /** The tool every part and operation uses unless it has its own; null = none. */
   machining_tool: PickedTool | null;
+  /** The shared settings every part and operation follows unless it sets its own. */
+  machining_settings: SharedSettings;
   /** The machine the G-code is for (by name). */
   machine: string;
   /** The project's copy of its machine's settings (edited only in Setup). */
@@ -789,6 +826,47 @@ export function setMachiningTool(number: number | null): Promise<void> {
 /** Sets a part's own tool (null = use the Machining tool). An undo step. */
 export function setPartTool(part: number, number: number | null): Promise<void> {
   return invoke<void>("set_part_tool", { part, number });
+}
+
+/** Sets the Machining shared settings. An undo step. */
+export function setMachiningSettings(settings: SharedSettings): Promise<void> {
+  return invoke<void>("set_machining_settings", { settings });
+}
+
+/** Sets a part's shared settings; changed ones become its own. An undo step. */
+export function setPartSettings(part: number, settings: SharedSettings): Promise<void> {
+  return invoke<void>("set_part_settings", { part, settings });
+}
+
+/** Makes a part's setting follow Machining again. An undo step. */
+export function resetPartSetting(part: number, setting: SharedSetting): Promise<void> {
+  return invoke<void>("reset_part_setting", { part, setting });
+}
+
+/** Makes an operation's setting follow its part again. An undo step. */
+export function resetOperationSetting(id: number, setting: SharedSetting): Promise<void> {
+  return invoke<void>("reset_operation_setting", { id, setting });
+}
+
+// --- Parts -----------------------------------------------------------------------------------
+
+/** Adds a new part at the end. Returns its index. */
+export function newPart(): Promise<number> {
+  return invoke<number>("new_part");
+}
+
+export function renamePart(part: number, name: string): Promise<void> {
+  return invoke<void>("rename_part", { part, name });
+}
+
+/** Deletes a part and its operations. An undo step. */
+export function deletePart(part: number): Promise<void> {
+  return invoke<void>("delete_part", { part });
+}
+
+/** Moves an operation to the end of another part. An undo step. */
+export function moveOperation(id: number, part: number): Promise<void> {
+  return invoke<void>("move_operation", { id, part });
 }
 
 // --- Operations ------------------------------------------------------------------------------

@@ -541,6 +541,7 @@ export default function App() {
     const op = operationById(id);
     if (!op) return [];
     const shapes = selectedIds(selection);
+    const parts = view?.document.parts ?? [];
     return [
       {
         label: "Use selected shapes",
@@ -559,6 +560,18 @@ export default function App() {
         action: () => void setOperation({ ...op, enabled: !op.enabled }),
       },
       { label: "Generate toolpath", action: () => run(() => generateToolpaths([id])) },
+      {
+        label: "Move to part",
+        separatorBefore: true,
+        disabled: parts.length < 2,
+        items: parts
+          .map((part, pi) => ({ part, pi }))
+          .filter(({ part }) => !part.operations.some((o) => o.id === id))
+          .map(({ part, pi }) => ({
+            label: part.name,
+            action: () => void tryEdit(() => engine.moveOperation(id, pi)),
+          })),
+      },
       { label: "Delete", separatorBefore: true, action: () => run(() => deleteOperation(id)) },
     ];
   };
@@ -1530,6 +1543,20 @@ export default function App() {
               return op ? setOperation({ ...op, name }) : false;
             }}
             onDeleteLayer={(name) => run(() => deleteLayer(name))}
+            onNewPart={async () => {
+              const part = await engine.newPart();
+              await refresh();
+              setSelection({ kind: "part", part });
+              return part;
+            }}
+            onRenamePart={(part, name) => tryEdit(() => engine.renamePart(part, name))}
+            onDeletePart={(part) =>
+              run(async () => {
+                await engine.deletePart(part);
+                if (selection.kind === "part" || selection.kind === "operation") setSelection(NOTHING);
+                await refresh();
+              })
+            }
           />
           )}
         </section>
@@ -1561,6 +1588,10 @@ export default function App() {
             onPickTool={pickTool}
             onSetMachiningTool={(n) => tryEdit(() => engine.setMachiningTool(n))}
             onSetPartTool={(part, n) => tryEdit(() => engine.setPartTool(part, n))}
+            onSetMachiningSettings={(st) => tryEdit(() => engine.setMachiningSettings(st))}
+            onSetPartSettings={(part, st) => tryEdit(() => engine.setPartSettings(part, st))}
+            onResetPartSetting={(part, st) => tryEdit(() => engine.resetPartSetting(part, st))}
+            onResetOperationSetting={(id, st) => tryEdit(() => engine.resetOperationSetting(id, st))}
             machines={view?.machines ?? EMPTY_MACHINES}
             onRenameMachine={renameMachine}
             onSetMachineSettings={(name, settings) => toolingTry(() => engine.setMachineSettings(name, settings))}

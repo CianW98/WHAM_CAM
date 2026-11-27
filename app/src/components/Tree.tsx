@@ -37,6 +37,12 @@ interface Props {
   operationMenu: (id: number) => MenuItem[];
   /** Resolves false if the new name was rejected. */
   onRenameOperation: (id: number, name: string) => Promise<boolean>;
+  /** Adds a part (selected); resolves to its index. */
+  onNewPart: () => Promise<number>;
+  /** Resolves false if the new name was rejected. */
+  onRenamePart: (part: number, name: string) => Promise<boolean>;
+  /** Deletes a part and its operations. */
+  onDeletePart: (part: number) => void;
 }
 
 type ContextEvent = React.MouseEvent<HTMLElement>;
@@ -65,8 +71,8 @@ function Item({
 }
 
 /**
- * An operation in the tree. Click: select. Double-click (or Rename in its menu): rename in place
- * (Enter or clicking away saves, Esc cancels).
+ * An operation or part in the tree. Click: select. Double-click (or Rename in its menu): rename
+ * in place (Enter or clicking away saves, Esc cancels). A part shows its operations below.
  */
 function OperationItem({
   name,
@@ -78,7 +84,9 @@ function OperationItem({
   onRename,
   renameNow,
   onRenameStarted,
+  children,
 }: {
+  children?: ReactNode;
   name: string;
   enabled: boolean;
   marker: ReactNode;
@@ -139,6 +147,7 @@ function OperationItem({
           />
         )}
       </div>
+      {children && <ul>{children}</ul>}
     </li>
   );
 }
@@ -318,12 +327,21 @@ export default function Tree({
   operationStates,
   operationMenu,
   onRenameOperation,
+  onNewPart,
+  onRenamePart,
+  onDeletePart,
 }: Props) {
-  // The right-click menu: on a layer (its name) or on the Layers heading (null).
-  // The right-click menu: on a layer (its name), the Layers heading (null), or an operation.
+  // The right-click menu: on a layer (its name), the Layers heading (null), an operation,
+  // Machining, or a part (its index).
   const [menu, setMenu] = useState<
-    { x: number; y: number; layer: string | null } | { x: number; y: number; operation: number } | null
+    | { x: number; y: number; layer: string | null }
+    | { x: number; y: number; operation: number }
+    | { x: number; y: number; machining: true }
+    | { x: number; y: number; part: number }
+    | null
   >(null);
+  // A part to start renaming in place (its index).
+  const [renamingPart, setRenamingPart] = useState<number | null>(null);
   // A layer to start renaming in place.
   const [renaming, setRenaming] = useState<string | null>(null);
   // An operation to start renaming in place (from its menu).
@@ -396,6 +414,27 @@ export default function Tree({
       );
     }
     return items;
+  };
+
+  const newPart = async () => {
+    setRenamingPart(await onNewPart());
+  };
+
+  const machiningMenu = (part: number | null): MenuItem[] => {
+    const items: MenuItem[] = [{ label: "New part", action: () => void newPart() }];
+    if (part !== null) {
+      items.push(
+        { label: "Rename", action: () => setRenamingPart(part) },
+        { label: "Delete part", separatorBefore: true, action: () => onDeletePart(part) },
+      );
+    }
+    return items;
+  };
+
+  const openMachiningMenu = (e: ContextEvent, part: number | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu(part === null ? { x: e.clientX, y: e.clientY, machining: true } : { x: e.clientX, y: e.clientY, part });
   };
 
   const openOperationMenu = (e: ContextEvent, id: number) => {
@@ -477,13 +516,20 @@ export default function Tree({
           label="Machining"
           selected={is({ kind: "machining" })}
           onClick={() => onSelect({ kind: "machining" })}
+          onContextMenu={(e) => openMachiningMenu(e, null)}
         >
           {doc.parts.map((part, pi) => (
-            <Item
+            <OperationItem
               key={part.name}
-              label={part.name}
+              name={part.name}
+              enabled
+              marker={null}
               selected={is({ kind: "part", part: pi })}
               onClick={() => onSelect({ kind: "part", part: pi })}
+              onContextMenu={(e) => openMachiningMenu(e, pi)}
+              onRename={(name) => onRenamePart(pi, name)}
+              renameNow={renamingPart === pi}
+              onRenameStarted={() => setRenamingPart(null)}
             >
               {part.operations.length > 0 &&
                 part.operations.map((op) => (
@@ -500,7 +546,7 @@ export default function Tree({
                     onRenameStarted={() => setRenamingOp(null)}
                   />
                 ))}
-            </Item>
+            </OperationItem>
           ))}
         </Item>
       </Item>
@@ -513,7 +559,11 @@ export default function Tree({
                 { label: "Rename", action: () => setRenamingOp(menu.operation) },
                 ...operationMenu(menu.operation).map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item)),
               ]
-            : menuItems(menu.layer)
+            : "machining" in menu
+              ? machiningMenu(null)
+              : "part" in menu
+                ? machiningMenu(menu.part)
+                : menuItems(menu.layer)
         }
         x={menu.x}
         y={menu.y}

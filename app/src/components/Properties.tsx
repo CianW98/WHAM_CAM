@@ -36,6 +36,8 @@ import type {
   GridArea,
   ProjectTemplates,
   SnapOptions,
+  SharedSetting,
+  SharedSettings,
 } from "../engine";
 import type { Selection } from "../selection";
 import { SETTING_TIPS } from "../tips";
@@ -78,6 +80,8 @@ function Row({
   own = false,
   onReset,
   tipKey,
+  ownNote = "Changed in this project",
+  resetTitle = "Back to the template's or machine's value",
 }: {
   label: string;
   children: ReactNode;
@@ -85,16 +89,19 @@ function Row({
   onReset?: () => void;
   /** Which hover description to show, when the label alone is ambiguous (see SETTING_TIPS). */
   tipKey?: string;
+  /** The hover note for an own setting, and the ↺ button's description. */
+  ownNote?: string;
+  resetTitle?: string;
 }) {
   const text = SETTING_TIPS[tipKey ?? label];
-  const note = own ? "Changed in this project" : undefined;
+  const note = own ? ownNote : undefined;
   const tip = text || note ? tipProps(label, text, undefined, note) : {};
   return (
     <tr>
       <th className={own ? "prop-own" : undefined} {...tip}>
         {label}
         {own && onReset && (
-          <button className="prop-reset" title="Back to the template's or machine's value" onClick={onReset}>
+          <button className="prop-reset" title={resetTitle} onClick={onReset}>
             ↺
           </button>
         )}
@@ -563,6 +570,7 @@ function OperationRows({
   doc,
   tooling,
   onPickTool,
+  onResetSetting,
 }: {
   op: Operation;
   state: OperationState | undefined;
@@ -571,8 +579,11 @@ function OperationRows({
   doc: Document;
   tooling: Tooling;
   onPickTool: (id: number, tool: OperationTool) => Promise<boolean>;
+  /** Makes a shared setting follow the part again. */
+  onResetSetting: (setting: SharedSetting) => void;
 }) {
   const c = op.common;
+  const m = marks(op.own, onResetSetting, "operation", "part's");
   const drill = op.kind.type === "Drill";
   const common = (patch: Partial<Operation["common"]>) => onSet({ ...op, common: { ...c, ...patch } });
   const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
@@ -617,7 +628,7 @@ function OperationRows({
           </Row>
         </>
       )}
-      <Row label="Stock surface">{num(c.stock_surface, (stock_surface) => common({ stock_surface }))}</Row>
+      <Row label="Stock surface" {...m("StockSurface")}>{num(c.stock_surface, (stock_surface) => common({ stock_surface }))}</Row>
       <Row label="Target depth">
         <TextField
           shown={c.target_depth === null ? "" : String(Number(c.target_depth.toFixed(4)))}
@@ -628,39 +639,117 @@ function OperationRows({
       {/* Drilling has no depth passes: Standard and Peck don't use these; Helical uses the depth
           increment as its depth per turn. */}
       {(op.kind.type !== "Drill" || op.kind.method === "Helical") && (
-        <Row label={drill ? "Depth per turn" : "Depth increment"}>
+        <Row label={drill ? "Depth per turn" : "Depth increment"} {...m("DepthIncrement")}>
           {num(c.depth_increment, (depth_increment) => common({ depth_increment }))}
         </Row>
       )}
       {!drill && (
-        <Row label="Final depth increment">
+        <Row label="Final depth increment" {...m("FinalDepthIncrement")}>
           {num(c.final_depth_increment, (final_depth_increment) => common({ final_depth_increment }))}
         </Row>
       )}
-      <Row label="Clearance plane">{num(c.clearance_plane, (clearance_plane) => common({ clearance_plane }))}</Row>
-      <Row label="Fast plunge height">
+      <Row label="Clearance plane" {...m("ClearancePlane")}>{num(c.clearance_plane, (clearance_plane) => common({ clearance_plane }))}</Row>
+      <Row label="Fast plunge height" {...m("FastPlungeHeight")}>
         {num(c.fast_plunge_height, (fast_plunge_height) => common({ fast_plunge_height }))}
       </Row>
-      <Row label="Cut feed rate">{num(c.cut_feedrate, (cut_feedrate) => common({ cut_feedrate }))}</Row>
-      <Row label="Plunge feed rate">{num(c.plunge_feedrate, (plunge_feedrate) => common({ plunge_feedrate }))}</Row>
-      <Row label="Spindle speed">{num(c.spindle_speed, (spindle_speed) => common({ spindle_speed }))}</Row>
-      <Row label="Spindle direction">
+      <Row label="Cut feed rate" {...m("CutFeedrate")}>{num(c.cut_feedrate, (cut_feedrate) => common({ cut_feedrate }))}</Row>
+      <Row label="Plunge feed rate" {...m("PlungeFeedrate")}>{num(c.plunge_feedrate, (plunge_feedrate) => common({ plunge_feedrate }))}</Row>
+      <Row label="Spindle speed" {...m("SpindleSpeed")}>{num(c.spindle_speed, (spindle_speed) => common({ spindle_speed }))}</Row>
+      <Row label="Spindle direction" {...m("SpindleDirection")}>
         <ChoiceField
           value={c.spindle_direction}
-          choices={[
-            ["CW", "CW"],
-            ["CCW", "CCW"],
-            ["Off", "Off"],
-          ]}
+          choices={SPINDLE_DIRECTIONS}
           onSave={(spindle_direction) => void common({ spindle_direction })}
         />
       </Row>
       {!drill && (
-        <Row label="Roughing clearance">
+        <Row label="Roughing clearance" {...m("RoughingClearance")}>
           {num(c.roughing_clearance, (roughing_clearance) => common({ roughing_clearance }))}
         </Row>
       )}
-      <KindRows op={op} state={state} onSet={onSet} />
+      <KindRows op={op} state={state} onSet={onSet} mark={m} />
+    </>
+  );
+}
+
+/** How a shared setting's row is marked on a part or operation: set there (bold, ↺) or followed. */
+type Mark = (s: SharedSetting) => { own: boolean; onReset: () => void; ownNote: string; resetTitle: string };
+
+/** Marks for a part's or operation's shared settings. */
+function marks(
+  own: SharedSetting[],
+  reset: (s: SharedSetting) => void,
+  where: string,
+  from: string,
+): Mark {
+  return (s) => ({ own: own.includes(s), onReset: () => reset(s), ownNote: `Set on this ${where}`, resetTitle: `Back to the ${from} value` });
+}
+
+const SPINDLE_DIRECTIONS: [SpindleDirectionValue, string][] = [
+  ["CW", "CW"],
+  ["CCW", "CCW"],
+  ["Off", "Off"],
+];
+type SpindleDirectionValue = SharedSettings["spindle_direction"];
+
+/** The shared settings (spec 5.4) on Machining or a part: every one, with `mark` showing which
+ * the part sets itself. */
+function SharedRows({
+  values,
+  onSave,
+  mark,
+}: {
+  values: SharedSettings;
+  onSave: (v: SharedSettings) => Promise<boolean>;
+  mark?: Mark;
+}) {
+  const set = (patch: Partial<SharedSettings>) => onSave({ ...values, ...patch });
+  const m = (s: SharedSetting) => mark?.(s) ?? {};
+  const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
+  return (
+    <>
+      <GroupRow label="Shared settings" />
+      <Row label="Stock surface" {...m("StockSurface")}>
+        {num(values.stock_surface, (stock_surface) => set({ stock_surface }))}
+      </Row>
+      <Row label="Depth increment" {...m("DepthIncrement")}>
+        {num(values.depth_increment, (depth_increment) => set({ depth_increment }))}
+      </Row>
+      <Row label="Final depth increment" {...m("FinalDepthIncrement")}>
+        {num(values.final_depth_increment, (final_depth_increment) => set({ final_depth_increment }))}
+      </Row>
+      <Row label="Clearance plane" {...m("ClearancePlane")}>
+        {num(values.clearance_plane, (clearance_plane) => set({ clearance_plane }))}
+      </Row>
+      <Row label="Fast plunge height" {...m("FastPlungeHeight")}>
+        {num(values.fast_plunge_height, (fast_plunge_height) => set({ fast_plunge_height }))}
+      </Row>
+      <Row label="Cut feed rate" {...m("CutFeedrate")}>
+        {num(values.cut_feedrate, (cut_feedrate) => set({ cut_feedrate }))}
+      </Row>
+      <Row label="Plunge feed rate" {...m("PlungeFeedrate")}>
+        {num(values.plunge_feedrate, (plunge_feedrate) => set({ plunge_feedrate }))}
+      </Row>
+      <Row label="Spindle speed" {...m("SpindleSpeed")}>
+        {num(values.spindle_speed, (spindle_speed) => set({ spindle_speed }))}
+      </Row>
+      <Row label="Spindle direction" {...m("SpindleDirection")}>
+        <ChoiceField
+          value={values.spindle_direction}
+          choices={SPINDLE_DIRECTIONS}
+          onSave={(spindle_direction) => void set({ spindle_direction })}
+        />
+      </Row>
+      <Row label="Roughing clearance" {...m("RoughingClearance")}>
+        {num(values.roughing_clearance, (roughing_clearance) => set({ roughing_clearance }))}
+      </Row>
+      <Row label="Milling direction" {...m("MillingDirection")}>
+        <ChoiceField
+          value={values.milling_direction}
+          choices={MILLING_DIRECTIONS}
+          onSave={(milling_direction) => void set({ milling_direction })}
+        />
+      </Row>
     </>
   );
 }
@@ -679,17 +768,19 @@ function KindRows({
   op,
   state,
   onSet,
+  mark,
 }: {
   op: Operation;
   state: OperationState | undefined;
   onSet: (op: Operation) => Promise<boolean>;
+  mark: Mark;
 }) {
   const k = op.kind;
   const kind = (patch: Partial<ProfileSettings> | Partial<PocketSettings> | Partial<DrillSettings>) =>
     onSet({ ...op, kind: { ...k, ...patch } as OperationKind });
   const num = (value: number, save: (v: number) => Promise<boolean>) => <NumberField value={value} onSave={save} />;
   const direction = (
-    <Row label="Milling direction">
+    <Row label="Milling direction" {...mark("MillingDirection")}>
       <ChoiceField
         value={k.milling_direction}
         choices={MILLING_DIRECTIONS}
@@ -813,6 +904,11 @@ interface Edits {
   /** Sets the Machining tool / a part's tool to a library tool number (null = none). */
   onSetMachiningTool: (number: number | null) => Promise<boolean>;
   onSetPartTool: (part: number, number: number | null) => Promise<boolean>;
+  /** Shared settings (spec 5.4): set on Machining or a part, or put back to following. */
+  onSetMachiningSettings: (settings: SharedSettings) => Promise<boolean>;
+  onSetPartSettings: (part: number, settings: SharedSettings) => Promise<boolean>;
+  onResetPartSetting: (part: number, setting: SharedSetting) => Promise<boolean>;
+  onResetOperationSetting: (id: number, setting: SharedSetting) => Promise<boolean>;
   /** This computer's machines. */
   machines: Machines;
   /** Resolves false if the rename was rejected. */
@@ -1279,6 +1375,7 @@ function Content({
           <Row label="Machine">
             <MachineChoice doc={doc} machines={edits.machines} onSet={(n) => void edits.onSetProjectMachine(n)} />
           </Row>
+          <SharedRows values={doc.machining_settings} onSave={edits.onSetMachiningSettings} />
         </Grid>
       );
     case "part": {
@@ -1299,6 +1396,11 @@ function Content({
               />
             </Row>
           </>
+          <SharedRows
+            values={part.settings}
+            onSave={(st) => edits.onSetPartSettings(selection.part, st)}
+            mark={marks(part.own, (st) => void edits.onResetPartSetting(selection.part, st), "part", "Machining")}
+          />
         </Grid>
       ) : (
         nothing
@@ -1317,6 +1419,7 @@ function Content({
             doc={doc}
             tooling={edits.tooling}
             onPickTool={edits.onPickTool}
+            onResetSetting={(st) => void edits.onResetOperationSetting(op.id, st)}
           />
         </Grid>
       ) : (

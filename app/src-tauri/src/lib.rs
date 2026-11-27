@@ -7,6 +7,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{Manager, State};
+use wham_engine::operation::{SharedSetting, SharedSettings};
 use wham_engine::{
     BoxMode, BreakReport, CutWidthStep, DimensionClick, DimensionInfo, DisplayData, DisplayShape,
     Document, Draft, DxfInfo, GenerateReport, GridArea, ImportReport, JoinReport, MachineSettings,
@@ -646,6 +647,65 @@ fn set_part_tool(
     project.set_part_tool(part, pick)
 }
 
+/// Sets the Machining shared settings (spec 5.4). An undo step.
+#[tauri::command]
+fn set_machining_settings(settings: SharedSettings, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().set_machining_settings(settings)
+}
+
+/// Sets part `part`'s shared settings; changed ones become its own. An undo step.
+#[tauri::command]
+fn set_part_settings(
+    part: usize,
+    settings: SharedSettings,
+    state: State<AppState>,
+) -> Result<(), String> {
+    state.0.lock().unwrap().set_part_settings(part, settings)
+}
+
+/// Makes a part's setting follow Machining again. An undo step.
+#[tauri::command]
+fn reset_part_setting(
+    part: usize,
+    setting: SharedSetting,
+    state: State<AppState>,
+) -> Result<(), String> {
+    state.0.lock().unwrap().reset_part_setting(part, setting)
+}
+
+/// Makes an operation's setting follow its part again. An undo step.
+#[tauri::command]
+fn reset_operation_setting(
+    id: u32,
+    setting: SharedSetting,
+    state: State<AppState>,
+) -> Result<(), String> {
+    state.0.lock().unwrap().reset_operation_setting(id, setting)
+}
+
+/// Adds a new part at the end. Returns its index.
+#[tauri::command]
+fn new_part(state: State<AppState>) -> usize {
+    state.0.lock().unwrap().new_part()
+}
+
+#[tauri::command]
+fn rename_part(part: usize, name: String, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().rename_part(part, &name)
+}
+
+/// Deletes a part and its operations.
+#[tauri::command]
+fn delete_part(part: usize, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().delete_part(part)
+}
+
+/// Moves an operation to the end of part `part`.
+#[tauri::command]
+fn move_operation(id: u32, part: usize, state: State<AppState>) -> Result<(), String> {
+    state.0.lock().unwrap().move_operation(id, part)
+}
+
 /// How an operation gets its tool, as the interface sends it.
 #[derive(serde::Deserialize)]
 enum OperationTool {
@@ -1218,6 +1278,14 @@ pub fn run() {
             set_operation_tool,
             set_machining_tool,
             set_part_tool,
+            set_machining_settings,
+            set_part_settings,
+            reset_part_setting,
+            reset_operation_setting,
+            new_part,
+            rename_part,
+            delete_part,
+            move_operation,
             new_project,
             open_project,
             save_project,
