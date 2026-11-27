@@ -246,8 +246,12 @@ fn layer_colour_is_used_for_its_shapes_and_is_undoable() {
 
 #[test]
 fn documents_saved_without_layer_colours_still_load() {
-    let json = r#"{"name":"old","layers":[{"name":"L","objects":[]}],"parts":[]}"#;
-    let doc: Document = serde_json::from_str(json).unwrap();
+    let settings =
+        serde_json::to_string(&wham_engine::operation::SharedSettings::default()).unwrap();
+    let json = format!(
+        r#"{{"name":"old","layers":[{{"name":"L","objects":[]}}],"parts":[],"machining_settings":{settings}}}"#
+    );
+    let doc: Document = serde_json::from_str(&json).unwrap();
     assert_eq!(doc.layers[0].color, LAYER_PALETTE[0]);
 }
 

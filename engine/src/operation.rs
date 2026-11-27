@@ -1,5 +1,7 @@
 //! Machining operations and their settings (spec section 6): Profile, Pocket and Drill.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::tooling::{EndType, Tool};
@@ -102,6 +104,157 @@ impl Default for CommonSettings {
             spindle_direction: SpindleDirection::CW,
             roughing_clearance: 0.0,
         }
+    }
+}
+
+/// One of the settings set on Machining that a part or an operation can override (spec 5.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum SharedSetting {
+    StockSurface,
+    DepthIncrement,
+    FinalDepthIncrement,
+    ClearancePlane,
+    FastPlungeHeight,
+    CutFeedrate,
+    PlungeFeedrate,
+    SpindleSpeed,
+    SpindleDirection,
+    RoughingClearance,
+    MillingDirection,
+}
+
+impl SharedSetting {
+    pub const ALL: [SharedSetting; 11] = [
+        SharedSetting::StockSurface,
+        SharedSetting::DepthIncrement,
+        SharedSetting::FinalDepthIncrement,
+        SharedSetting::ClearancePlane,
+        SharedSetting::FastPlungeHeight,
+        SharedSetting::CutFeedrate,
+        SharedSetting::PlungeFeedrate,
+        SharedSetting::SpindleSpeed,
+        SharedSetting::SpindleDirection,
+        SharedSetting::RoughingClearance,
+        SharedSetting::MillingDirection,
+    ];
+}
+
+/// The values of the shared settings (spec 5.4, 6.1): Machining holds them all, and each part
+/// and operation holds the values it really uses (its own, or followed from the level above).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SharedSettings {
+    pub stock_surface: f64,
+    pub depth_increment: f64,
+    pub final_depth_increment: f64,
+    pub clearance_plane: f64,
+    pub fast_plunge_height: f64,
+    pub cut_feedrate: f64,
+    pub plunge_feedrate: f64,
+    pub spindle_speed: f64,
+    pub spindle_direction: SpindleDirection,
+    pub roughing_clearance: f64,
+    pub milling_direction: MillingDirection,
+}
+
+impl Default for SharedSettings {
+    fn default() -> Self {
+        let c = CommonSettings::default();
+        Self {
+            stock_surface: c.stock_surface,
+            depth_increment: c.depth_increment,
+            final_depth_increment: c.final_depth_increment,
+            clearance_plane: c.clearance_plane,
+            fast_plunge_height: c.fast_plunge_height,
+            cut_feedrate: c.cut_feedrate,
+            plunge_feedrate: c.plunge_feedrate,
+            spindle_speed: c.spindle_speed,
+            spindle_direction: c.spindle_direction,
+            roughing_clearance: c.roughing_clearance,
+            milling_direction: MillingDirection::Conventional,
+        }
+    }
+}
+
+impl SharedSettings {
+    /// Copies one setting's value from `from`.
+    pub fn copy(&mut self, from: &SharedSettings, s: SharedSetting) {
+        match s {
+            SharedSetting::StockSurface => self.stock_surface = from.stock_surface,
+            SharedSetting::DepthIncrement => self.depth_increment = from.depth_increment,
+            SharedSetting::FinalDepthIncrement => {
+                self.final_depth_increment = from.final_depth_increment
+            }
+            SharedSetting::ClearancePlane => self.clearance_plane = from.clearance_plane,
+            SharedSetting::FastPlungeHeight => self.fast_plunge_height = from.fast_plunge_height,
+            SharedSetting::CutFeedrate => self.cut_feedrate = from.cut_feedrate,
+            SharedSetting::PlungeFeedrate => self.plunge_feedrate = from.plunge_feedrate,
+            SharedSetting::SpindleSpeed => self.spindle_speed = from.spindle_speed,
+            SharedSetting::SpindleDirection => self.spindle_direction = from.spindle_direction,
+            SharedSetting::RoughingClearance => self.roughing_clearance = from.roughing_clearance,
+            SharedSetting::MillingDirection => self.milling_direction = from.milling_direction,
+        }
+    }
+
+    /// True if this setting's value differs from `other`'s.
+    pub fn differs(&self, other: &SharedSettings, s: SharedSetting) -> bool {
+        let mut copy = self.clone();
+        copy.copy(other, s);
+        copy != *self
+    }
+
+    /// The settings `own` doesn't list take their values from `parent`.
+    pub fn follow(&mut self, parent: &SharedSettings, own: &BTreeSet<SharedSetting>) {
+        for s in SharedSetting::ALL {
+            if !own.contains(&s) {
+                self.copy(parent, s);
+            }
+        }
+    }
+
+    /// Checks the values make sense on their own. Checks that need the tool or the target depth
+    /// happen when generating ([`Operation::validate`]).
+    pub fn check(&self) -> Result<(), String> {
+        let ok = |cond: bool, msg: &str| if cond { Ok(()) } else { Err(msg.to_string()) };
+        ok(
+            [
+                self.stock_surface,
+                self.depth_increment,
+                self.final_depth_increment,
+                self.clearance_plane,
+                self.fast_plunge_height,
+                self.cut_feedrate,
+                self.plunge_feedrate,
+                self.spindle_speed,
+                self.roughing_clearance,
+            ]
+            .iter()
+            .all(|n| n.is_finite()),
+            "Every setting must be a number.",
+        )?;
+        ok(
+            self.clearance_plane > self.stock_surface,
+            "The clearance plane must be above the stock surface.",
+        )?;
+        ok(
+            self.depth_increment > 0.0,
+            "The depth increment must be more than 0.",
+        )?;
+        ok(
+            self.final_depth_increment >= 0.0,
+            "The final depth increment can't be negative.",
+        )?;
+        ok(
+            self.fast_plunge_height > 0.0,
+            "The fast plunge height must be more than 0.",
+        )?;
+        ok(
+            self.cut_feedrate > 0.0 && self.plunge_feedrate > 0.0,
+            "Feed rates must be more than 0.",
+        )?;
+        ok(
+            self.spindle_speed >= 0.0,
+            "The spindle speed can't be negative.",
+        )
     }
 }
 
@@ -209,6 +362,14 @@ impl OperationKind {
             OperationKind::Drill(_) => "Drill",
         }
     }
+
+    pub fn milling_direction(&self) -> MillingDirection {
+        match self {
+            OperationKind::Profile(k) => k.milling_direction,
+            OperationKind::Pocket(k) => k.milling_direction,
+            OperationKind::Drill(k) => k.milling_direction,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -224,9 +385,59 @@ pub struct Operation {
     pub shape_ids: Vec<u32>,
     pub common: CommonSettings,
     pub kind: OperationKind,
+    /// The shared settings set on this operation itself. The others follow its part (spec 5.4):
+    /// the project keeps their values in `common` and `kind` up to date.
+    pub own: BTreeSet<SharedSetting>,
 }
 
 impl Operation {
+    /// The shared settings' values as this operation uses them.
+    pub fn shared(&self) -> SharedSettings {
+        let c = &self.common;
+        SharedSettings {
+            stock_surface: c.stock_surface,
+            depth_increment: c.depth_increment,
+            final_depth_increment: c.final_depth_increment,
+            clearance_plane: c.clearance_plane,
+            fast_plunge_height: c.fast_plunge_height,
+            cut_feedrate: c.cut_feedrate,
+            plunge_feedrate: c.plunge_feedrate,
+            spindle_speed: c.spindle_speed,
+            spindle_direction: c.spindle_direction,
+            roughing_clearance: c.roughing_clearance,
+            milling_direction: self.kind.milling_direction(),
+        }
+    }
+
+    /// Writes the shared settings' values into the operation.
+    pub fn set_shared(&mut self, s: &SharedSettings) {
+        let c = &mut self.common;
+        c.stock_surface = s.stock_surface;
+        c.depth_increment = s.depth_increment;
+        c.final_depth_increment = s.final_depth_increment;
+        c.clearance_plane = s.clearance_plane;
+        c.fast_plunge_height = s.fast_plunge_height;
+        c.cut_feedrate = s.cut_feedrate;
+        c.plunge_feedrate = s.plunge_feedrate;
+        c.spindle_speed = s.spindle_speed;
+        c.spindle_direction = s.spindle_direction;
+        c.roughing_clearance = s.roughing_clearance;
+        match &mut self.kind {
+            OperationKind::Profile(k) => k.milling_direction = s.milling_direction,
+            OperationKind::Pocket(k) => k.milling_direction = s.milling_direction,
+            OperationKind::Drill(k) => k.milling_direction = s.milling_direction,
+        }
+    }
+
+    /// The shared settings not in `own` take their values from `parent` (the part's values).
+    pub fn follow(&mut self, parent: &SharedSettings) {
+        let mut s = self.shared();
+        s.follow(parent, &self.own);
+        if s != self.shared() {
+            self.set_shared(&s);
+        }
+    }
+
     /// Checks the settings make sense. Errors are plain-English messages.
     pub fn validate(&self) -> Result<(), String> {
         let c = &self.common;

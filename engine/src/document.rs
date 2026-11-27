@@ -1,9 +1,11 @@
 //! The project document: layers of drawing objects, and machining parts.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::Shape;
-use crate::operation::Operation;
+use crate::operation::{Operation, SharedSetting, SharedSettings};
 use crate::tooling::PickedTool;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -24,6 +26,8 @@ pub struct Document {
     /// The tool every part and operation uses unless it picks its own. None = not chosen.
     #[serde(default)]
     pub machining_tool: Option<PickedTool>,
+    /// The shared settings every part and operation follows unless it sets its own (spec 5.4).
+    pub machining_settings: SharedSettings,
     /// The machine the G-code is for (by name; machines belong to the computer).
     #[serde(default = "default_source")]
     pub machine: String,
@@ -174,8 +178,26 @@ pub struct Part {
     /// the tree. None = use the Machining tool.
     #[serde(default)]
     pub tool: Option<PickedTool>,
+    /// The shared settings as the part's operations follow them: its own values for the
+    /// settings in `own`, the Machining values for the rest (kept up to date by the project).
+    pub settings: SharedSettings,
+    /// The shared settings set on the part itself.
+    pub own: BTreeSet<SharedSetting>,
     #[serde(default)]
     pub operations: Vec<Operation>,
+}
+
+impl Part {
+    /// A new part that follows Machining in everything.
+    pub fn new(name: &str, machining: &SharedSettings) -> Self {
+        Self {
+            name: name.to_string(),
+            tool: None,
+            settings: machining.clone(),
+            own: BTreeSet::new(),
+            operations: Vec::new(),
+        }
+    }
 }
 
 impl Document {
@@ -187,15 +209,12 @@ impl Document {
                 color: default_layer_color(),
                 objects: Vec::new(),
             }],
-            parts: vec![Part {
-                name: "Part1".to_string(),
-                tool: None,
-                operations: Vec::new(),
-            }],
+            parts: vec![Part::new("Part1", &SharedSettings::default())],
             grid_spacing: DEFAULT_GRID_SPACING,
             major_grid_spacing: DEFAULT_MAJOR_GRID_SPACING,
             active_library: None,
             machining_tool: None,
+            machining_settings: SharedSettings::default(),
             machine: default_source(),
             machine_settings: crate::machine::MachineSettings::default(),
             machine_kept: false,
@@ -204,6 +223,18 @@ impl Document {
             snap: crate::draw::SnapOptions::default(),
             template: default_source(),
             template_overrides: Default::default(),
+        }
+    }
+
+    /// Fills in every shared setting a part or operation doesn't set itself from the level
+    /// above: Machining → part → operation (spec 5.4).
+    pub fn apply_inheritance(&mut self) {
+        let machining = &self.machining_settings;
+        for part in &mut self.parts {
+            part.settings.follow(machining, &part.own);
+            for op in &mut part.operations {
+                op.follow(&part.settings);
+            }
         }
     }
 

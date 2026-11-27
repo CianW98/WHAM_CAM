@@ -13,7 +13,8 @@ use crate::display::{
 };
 use crate::display::{DisplayData, DisplayShape, display_data, display_shape};
 use crate::document::{
-    Document, DrawingObject, GridArea, check_grid_spacing, check_major_grid_spacing, is_hex_color,
+    Document, DrawingObject, GridArea, Part, check_grid_spacing, check_major_grid_spacing,
+    is_hex_color,
 };
 use crate::draw::{self, Draft, DrawTool, Snap, SnapKind, SnapOptions};
 use crate::drill;
@@ -24,7 +25,7 @@ use crate::geometry::{Point, Shape, Transform};
 use crate::machine::{Machine, Machines};
 use crate::operation::{
     DrillSettings, Operation, OperationKind, PocketSettings, ProfileSettings, ProfileSide,
-    ToolSource,
+    SharedSetting, SharedSettings, ToolSource,
 };
 use crate::path;
 use crate::pocket;
@@ -259,6 +260,7 @@ impl Project {
     pub fn open(&mut self, text: &str, name: &str) -> Result<(), String> {
         let mut doc = project_file::from_text(text)?;
         doc.name = name.to_string();
+        doc.apply_inheritance();
         self.replace_document(doc);
         Ok(())
     }
@@ -321,6 +323,8 @@ impl Project {
     fn edit(&mut self, change: impl FnOnce(&mut Document)) {
         let before = self.doc.clone();
         change(&mut self.doc);
+        // Parts and operations follow the values above them (spec 5.4).
+        self.doc.apply_inheritance();
         // A dimension whose shapes are gone, replaced or no longer have what it measured goes in
         // the same step (decided 2026-11-20).
         let doc = &self.doc;
@@ -1481,16 +1485,15 @@ impl Project {
             shape_ids: shape_ids.to_vec(),
             common: Default::default(),
             kind,
+            // Follows its part in everything; the edit fills the values in.
+            own: BTreeSet::new(),
         };
         self.edit(|doc| {
             if doc.parts.is_empty() {
-                doc.parts.push(crate::document::Part {
-                    name: "Part1".into(),
-                    tool: None,
-                    operations: Vec::new(),
-                });
+                doc.parts.push(Part::new("Part1", &doc.machining_settings));
             }
-            doc.parts[0].operations.push(op);
+            // New operations go into the last part (spec 5.4).
+            doc.parts.last_mut().expect("a part").operations.push(op);
         });
         Ok(id)
     }
@@ -1510,6 +1513,17 @@ impl Project {
             return Err(e);
         }
         let mut op = op;
+        // A shared setting changed here becomes the operation's own; ones already its own stay
+        // so (only ↺ makes one follow again).
+        let stored = &self.doc.parts[pi].operations[oi];
+        let (before, mut own) = (stored.shared(), stored.own.clone());
+        let after = op.shared();
+        own.extend(
+            SharedSetting::ALL
+                .into_iter()
+                .filter(|&s| after.differs(&before, s)),
+        );
+        op.own = own;
         if op.common.tool_source != ToolSource::Inherit {
             let tool = op
                 .common
@@ -1690,6 +1704,128 @@ impl Project {
         }
         self.edit(|doc| doc.parts[part].tool = tool);
         Ok(())
+    }
+
+    /// Sets the Machining shared settings (spec 5.4) as one undo step. Parts and operations
+    /// that follow them change with them.
+    pub fn set_machining_settings(&mut self, settings: SharedSettings) -> Result<(), String> {
+        settings.check()?;
+        self.edit(|doc| doc.machining_settings = settings);
+        Ok(())
+    }
+
+    /// Sets a part's shared settings as one undo step. Settings that differ from what the part
+    /// had become its own.
+    pub fn set_part_settings(
+        &mut self,
+        part: usize,
+        settings: SharedSettings,
+    ) -> Result<(), String> {
+        let current = &self.part(part)?.settings;
+        settings.check()?;
+        let changed: Vec<SharedSetting> = SharedSetting::ALL
+            .into_iter()
+            .filter(|&s| settings.differs(current, s))
+            .collect();
+        self.edit(|doc| {
+            let p = &mut doc.parts[part];
+            p.own.extend(changed);
+            p.settings = settings;
+        });
+        Ok(())
+    }
+
+    /// Makes a part's setting follow Machining again (↺), as one undo step.
+    pub fn reset_part_setting(
+        &mut self,
+        part: usize,
+        setting: SharedSetting,
+    ) -> Result<(), String> {
+        self.part(part)?;
+        self.edit(|doc| {
+            doc.parts[part].own.remove(&setting);
+        });
+        Ok(())
+    }
+
+    /// Makes an operation's setting follow its part again (↺), as one undo step.
+    pub fn reset_operation_setting(
+        &mut self,
+        id: u32,
+        setting: SharedSetting,
+    ) -> Result<(), String> {
+        let (pi, oi) = self
+            .find_operation(id)
+            .ok_or_else(|| format!("There is no operation with id {id}."))?;
+        self.edit(|doc| {
+            doc.parts[pi].operations[oi].own.remove(&setting);
+        });
+        Ok(())
+    }
+
+    /// Adds a new, empty part ("Part2", or the next unused number) at the end, following
+    /// Machining in everything, as one undo step. Returns its index.
+    pub fn new_part(&mut self) -> usize {
+        let name = (1..)
+            .map(|n| format!("Part{n}"))
+            .find(|n| !self.doc.parts.iter().any(|p| &p.name == n))
+            .expect("some number is free");
+        self.edit(|doc| {
+            let part = Part::new(&name, &doc.machining_settings);
+            doc.parts.push(part);
+        });
+        self.doc.parts.len() - 1
+    }
+
+    /// Renames a part as one undo step. The new name is trimmed, must not be empty and must not
+    /// already be used by another part.
+    pub fn rename_part(&mut self, part: usize, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        let old = &self.part(part)?.name;
+        if name.is_empty() {
+            return Err("A part name can't be empty.".into());
+        }
+        if name == old {
+            return Ok(());
+        }
+        if self.doc.parts.iter().any(|p| p.name == name) {
+            return Err(format!("There is already a part called \"{name}\"."));
+        }
+        self.edit(|doc| doc.parts[part].name = name.to_string());
+        Ok(())
+    }
+
+    /// Deletes a part and its operations, as one undo step.
+    pub fn delete_part(&mut self, part: usize) -> Result<(), String> {
+        self.part(part)?;
+        self.edit(|doc| {
+            doc.parts.remove(part);
+        });
+        Ok(())
+    }
+
+    /// Moves an operation to the end of another part, as one undo step. The settings and tool
+    /// it follows then come from that part; its own ones stay.
+    pub fn move_operation(&mut self, id: u32, part: usize) -> Result<(), String> {
+        let (pi, oi) = self
+            .find_operation(id)
+            .ok_or_else(|| format!("There is no operation with id {id}."))?;
+        self.part(part)?;
+        if pi == part {
+            return Ok(());
+        }
+        self.edit(|doc| {
+            let op = doc.parts[pi].operations.remove(oi);
+            doc.parts[part].operations.push(op);
+        });
+        Ok(())
+    }
+
+    fn part(&self, part: usize) -> Result<&Part, String> {
+        self.doc
+            .parts
+            .get(part)
+            .ok_or_else(|| format!("There is no part {part}."))
     }
 
     /// Where an operation in part `pi` gets its tool, and the tool (None = no tool set).

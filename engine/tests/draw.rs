@@ -486,8 +486,11 @@ fn grid_spacing_is_checked_and_not_an_undo_step() {
 
 #[test]
 fn older_documents_without_grid_spacing_load_with_the_default() {
-    let json = r#"{"name":"Old","layers":[],"parts":[]}"#;
-    let doc: Document = serde_json::from_str(json).unwrap();
+    let settings =
+        serde_json::to_string(&wham_engine::operation::SharedSettings::default()).unwrap();
+    let json =
+        format!(r#"{{"name":"Old","layers":[],"parts":[],"machining_settings":{settings}}}"#);
+    let doc: Document = serde_json::from_str(&json).unwrap();
     assert_eq!(doc.grid_spacing, DEFAULT_GRID_SPACING);
 }
 

@@ -15,7 +15,9 @@ pub const FORMAT_NAME: &str = "WHAM_CAM project";
 /// The file format version written by this WHAM_CAM. Bump it when the format changes in a way
 /// older versions can't read, and upgrade older files in [`from_text`].
 /// 3: the project's machine settings and the settings changed in the project.
-pub const FORMAT_VERSION: u32 = 3;
+/// 4: shared settings on Machining and parts, followed by operations (spec 5.4). Older files
+/// are not upgraded (before 1.0.0).
+pub const FORMAT_VERSION: u32 = 4;
 
 /// The file extension for project files (without the dot).
 pub const EXTENSION: &str = "wc";
@@ -63,6 +65,12 @@ pub fn from_text(text: &str) -> Result<Document, String> {
         return Err(format!(
             "This project was made with a newer WHAM_CAM ({by}). Please update WHAM_CAM to open it."
         ));
+    }
+    if version < u64::from(FORMAT_VERSION) {
+        return Err(
+            "This project was made with an older WHAM_CAM whose project files this version can't open."
+                .into(),
+        );
     }
     let file: FileIn = serde_json::from_value(value)
         .map_err(|e| format!("The project file is damaged and can't be opened ({e})."))?;
@@ -114,6 +122,26 @@ fn check(doc: &Document) -> Result<(), String> {
                     problem.trim_end_matches('.')
                 ));
             }
+        }
+    }
+    if let Err(e) = doc.machining_settings.check() {
+        return Err(format!(
+            "The project file is damaged: Machining settings: {e}"
+        ));
+    }
+    let mut part_names = HashSet::new();
+    for part in &doc.parts {
+        if part.name.trim().is_empty() {
+            return damaged("a part has no name".into());
+        }
+        if !part_names.insert(part.name.as_str()) {
+            return damaged(format!("there are two parts called \"{}\"", part.name));
+        }
+        if let Err(e) = part.settings.check() {
+            return Err(format!(
+                "The project file is damaged: part \"{}\": {e}",
+                part.name
+            ));
         }
     }
     let mut op_ids = HashSet::new();
