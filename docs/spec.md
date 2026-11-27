@@ -108,7 +108,7 @@ A classic CAD/CAM layout, with a toolbar:
   both.
   - **Project** is the tree: Layers → drawing objects; Machining → Parts → operations. Click to
     select (Machining and parts too: their Properties are in 5.4), right-click for actions
-    (rename, delete, enable/disable, generate toolpath).
+    (rename, delete, enable/disable, generate toolpath; for parts, 5.4).
   - **Setup** holds the Master tool list, the Tool libraries (5.5), the Machines (5.7) and the
     Project templates (5.9).
     Clicking Master tool list opens its window. Right-click Tool libraries → New library;
@@ -314,10 +314,29 @@ Properties show:
   - **Tool**: a tool from that library, used by every part and operation that doesn't pick its
     own.
   - **Machine**: the machine the G-code is for (5.7). Its settings are not shown or edited here.
+  - The **shared settings** (below).
 - **Part**: **Tool**: "Use Machining tool" (default), or a tool from the library to use for the
-  part's operations instead. A part has no library choice of its own.
+  part's operations instead. A part has no library choice of its own. Then the shared settings.
 - **Operation**: Profile (inside / outside / on line), Pocket or Drill, with its settings
   (section 6), including how it gets its tool (5.5).
+
+**Shared settings follow the tree.** Stock surface, Depth increment, Final depth increment,
+Clearance plane, Fast plunge height, Cut feed rate, Plunge feed rate, Spindle speed, Spindle
+direction, Roughing clearance and Milling direction (6.1) are set on Machining. A part uses
+Machining's values, and an operation its part's, unless it sets its own:
+- Every level shows the values it really uses. Typing a value on a part or operation makes it
+  that level's own: its label shows in **bold** with a ↺ button that makes it follow again.
+- Changing a value on Machining or a part changes every part and operation following it, and
+  marks their toolpaths out of date. These changes are undo steps.
+- Target depth, the tool choice and the per-type settings (6.2–6.4) belong to each operation.
+- The engine fills in each operation's values before generating; the toolpath maths is the same
+  whichever level a value comes from.
+
+**Parts**: right-click Machining → **New part** (Part2, Part3…, following Machining in
+everything; it starts renaming in place). Right-click a part → **Rename**, **Delete part** (with
+its operations). Part names are unique. Right-click an operation → **Move to part** (the other
+parts): the settings and tool it follows then come from that part; its own ones stay. New
+operations go into the last part.
 
 ### 5.5 Tool library
 
@@ -342,8 +361,8 @@ Properties show:
 - The Add/Edit tool window shows a **live side view** of the tool on the right, drawn from the
   engine's outline: flat, ball or V end (drills with a 118° point), flute edges by flute type and
   helix angle, with the diameters and the flute and overall lengths marked.
-- **Tools hold no feeds or speeds**: those depend on the material as well as the tool. Each
-  operation keeps its own feeds, speeds, depth increment and stepover.
+- **Tools hold no feeds or speeds**: those depend on the material as well as the tool. Feeds,
+  speeds and depth increment are shared settings (5.4); stepover is the operation's own.
 
 **Tool libraries**
 - Named sets of master tools, each given a **tool number** (unique in the library, from 1), e.g.
@@ -470,13 +489,14 @@ without touching the toolpaths.
 Save/open a WHAM_CAM project: one readable JSON file, `.wc`, with a format version number.
 - File ▸ New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S), Save As… (Ctrl+Shift+S); New, Open and Save
   also on the toolbar. Save on a never-saved project does Save As.
-- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (3), `"saved_by"` (the
+- The file holds `"format": "WHAM_CAM project"`, `"format_version"` (4), `"saved_by"` (the
   WHAM_CAM version) and the document: project name, minor and major grid spacing, grid area, snap
   settings, the
   project template's name and which template settings were changed in the project, the
   machine's name and the project's copy of its settings, layers (name, colour, shapes),
-  the project's tool library (by name) and Machining tool, and parts with their tool and
-  operations (settings and tool).
+  the project's tool library (by name), Machining tool and shared settings, and parts with their
+  tool, shared settings and which of them they set, and operations (settings, which shared
+  settings they set, and tool).
 - **A project file is complete on its own.** Everything it uses from this computer's Setup is
   copied into it: the template's values (5.9), the machine's settings (5.7) and every picked tool
   (5.5). Opened on a new install with none of those templates, machines or libraries, it has the
@@ -486,7 +506,7 @@ Save/open a WHAM_CAM project: one readable JSON file, `.wc`, with a format versi
 - Opening checks the file (format, unique ids and layer names, valid colours and shapes) and gives
   a plain-English message on a damaged or non-WHAM_CAM file, leaving the current project as it
   was. A file from a newer format version is refused, naming the WHAM_CAM version that made it.
-  Older format versions will be upgraded on open.
+  A file from an older format version is refused too.
 - Opening a project whose template or machine has values in Setup that differ from the project's
   (for the template, in settings not changed in the project) asks: **Keep project values** or
   **Use new values**. Kept template settings then count as changed in the project (5.9).
@@ -526,24 +546,25 @@ Names follow common CAM terminology.
 | Tool | Use part/Machining tool, Custom tool, or a library tool (5.5) | use part/Machining tool |
 | Tool number | From the tool (editable for a Custom tool) | from tool |
 | Tool diameter | mm, from the tool (editable for a Custom tool) | from tool |
-| Stock surface | Z of top of material | 0 |
+| Stock surface | Z of top of material (shared, 5.4) | 0 |
 | Target depth | Final Z (negative = into material) | — (must be set) |
-| Depth increment | Max depth per pass | 1 |
-| Final depth increment | Size of the last pass (0 = equal passes) | 0 |
-| Clearance plane | Z for rapids between cuts | 3 |
-| Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down | 1 |
-| Cut feedrate | mm/min | 800 |
-| Plunge feedrate | mm/min | 300 |
-| Spindle speed | RPM | 10000 |
-| Spindle direction | CW / CCW / Off | CW |
-| Roughing clearance | Stock left on the wall (negative = overcut) | 0 |
+| Depth increment | Max depth per pass (shared) | 1 |
+| Final depth increment | Size of the last pass (0 = equal passes) (shared) | 0 |
+| Clearance plane | Z for rapids between cuts (shared) | 3 |
+| Fast plunge height | Between depth levels: rapid down to this far above the last cut level, then feed down (shared) | 1 |
+| Cut feedrate | mm/min (shared) | 800 |
+| Plunge feedrate | mm/min (shared) | 300 |
+| Spindle speed | RPM (shared) | 10000 |
+| Spindle direction | CW / CCW / Off (shared) | CW |
+| Roughing clearance | Stock left on the wall (negative = overcut) (shared) | 0 |
+| Milling direction | Conventional / Climb (shared). Shown with each type's settings (6.2–6.4) | Conventional |
 
 ### 6.2 Profile
 
 | Setting | Meaning | Default |
 |---|---|---|
 | Inside/Outside | Inside, Outside, or On line (no offset). Open shapes: On line only | Outside (On line if any shape is open) |
-| Milling direction | Conventional / Climb | Conventional |
+| Milling direction | Shared (6.1) | Conventional |
 | Cut ordering | Depth first / Level first (across multiple shapes) | Depth first |
 
 Behaviour (checked against the reference G-code `Profile_*.nc`, section 8):
@@ -570,7 +591,7 @@ Behaviour (checked against the reference G-code `Profile_*.nc`, section 8):
 |---|---|---|
 | Stepover | Fraction of tool diameter | 0.4 |
 | Stepover feedrate | Use Cut or Plunge feedrate for stepover moves | Plunge feedrate |
-| Milling direction | Conventional / Climb | Conventional |
+| Milling direction | Shared (6.1) | Conventional |
 | Region fill style | Inside→outside offsets (the only style) | Inside→outside offsets |
 | Cut ordering | Depth first / Level first | Depth first |
 
@@ -602,7 +623,7 @@ Behaviour (checked against the reference G-code `Pocket_*.nc`, section 8):
 | Retract height | Z the tool rapids down to before feeding in, and goes back to between pecks. Above the stock surface, not above the clearance plane | 3 |
 | Peck distance | Depth of each peck (Peck only) | 1 |
 | Hole diameter | Helical only, for point lists and arcs; must be bigger than the tool. Circles are cut to their own diameter | 10 |
-| Milling direction | Helical only: Conventional (clockwise round the hole) / Climb | Conventional |
+| Milling direction | Helical only: Conventional (clockwise round the hole) / Climb. Shared (6.1) | Conventional |
 | Depth per turn | Helical only: the common Depth increment, shown under this name | 1 |
 
 Behaviour (checked against the reference G-code `Drill_*.nc`, section 8):
