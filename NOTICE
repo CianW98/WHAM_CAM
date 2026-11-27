@@ -3,7 +3,7 @@ Copyright Blok21 Software Ltd, trading as wham_workshop.
 
 The WHAM_CAM source code is licensed under the Apache License 2.0 (see LICENSE).
 
-The wham_workshop logo, including the icon files in app/src-tauri/icons/, is
-copyright Blok21 Software Ltd, all rights reserved. It is not covered by the
+The wham_workshop logo, including the icon files in app/src-tauri/icons/ and
+app/src/assets/logo.png, is copyright Blok21 Software Ltd, all rights reserved. It is not covered by the
 Apache License 2.0 and may not be used without written permission. Anyone
 distributing a modified version of WHAM_CAM must replace the logo with their own.
