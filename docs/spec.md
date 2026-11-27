@@ -334,7 +334,7 @@ Machining's values, and an operation its part's, unless it sets its own:
 
 **Parts**: right-click Machining → **New part** (Part2, Part3…, following Machining in
 everything; it starts renaming in place). Right-click a part → **Rename**, **Delete part** (with
-its operations). Part names are unique. Right-click an operation → **Move to part** (the other
+its operations; also Delete with the part selected). Part names are unique. Right-click an operation → **Move to part** (the other
 parts): the settings and tool it follows then come from that part; its own ones stay. New
 operations go into the last part.
 

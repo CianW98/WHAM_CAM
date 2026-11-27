@@ -14,7 +14,7 @@ export const TOOLBAR_TIPS: Record<string, ToolbarTip> = {
   Import: { text: "Bring in shapes from a DXF or SVG file." },
   Undo: { text: "Undo the last change to the drawing or operations.", key: "Ctrl+Z" },
   Redo: { text: "Redo the change just undone.", key: "Ctrl+Y" },
-  Delete: { text: "Delete the selected shapes or operation.", key: "Del" },
+  Delete: { text: "Delete the selected shapes, operation, part (with its operations) or layer.", key: "Del" },
   Line: { text: "Draw a straight line: click its start, then its end.", key: "L" },
   Arc: { text: "Draw an arc: click its start, its end, then its centre.", key: "A" },
   Circle: { text: "Draw a circle: click its centre, then a point on it.", key: "C" },

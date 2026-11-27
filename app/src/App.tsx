@@ -576,10 +576,17 @@ export default function App() {
     ];
   };
 
-  /** Deletes the selected objects, or the selected layer (with everything on it). */
+  /** Deletes the selected objects, operation, part (with its operations) or layer (with
+   * everything on it). */
   const deleteSelected = useCallback(async () => {
     if (selection.kind === "operation") {
       await deleteOperation(selection.id);
+      return;
+    }
+    if (selection.kind === "part") {
+      await engine.deletePart(selection.part);
+      setSelection(NOTHING);
+      await refresh();
       return;
     }
     if (selection.kind === "layer") {
@@ -1263,7 +1270,7 @@ export default function App() {
   if (!view?.canUndo) disabled.add("Undo");
   if (!showToolpaths) disabled.add("Show cut width");
   if (!view?.canRedo) disabled.add("Redo");
-  if (ids.length === 0 && selection.kind !== "layer" && selection.kind !== "operation") disabled.add("Delete");
+  if (ids.length === 0 && !["layer", "operation", "part"].includes(selection.kind)) disabled.add("Delete");
 
   const placing = useMemo<Placing | null>(
     () => (draft ? { kind: "draw", draft } : special),
